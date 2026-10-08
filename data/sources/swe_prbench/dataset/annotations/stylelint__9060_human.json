@@ -1,0 +1,50 @@
+{
+  "task_id": "stylelint__9060",
+  "pr_number": 9060,
+  "repo": "stylelint/stylelint",
+  "has_severity_annotations": false,
+  "has_requested_changes": false,
+  "total_comment_count": 3,
+  "substantive_comment_count": 1,
+  "changes_required": true,
+  "requested_change_count": 1,
+  "substantive_comment_ids": [
+    "c_1"
+  ],
+  "requested_changes": [
+    {
+      "comment_id": "c_1",
+      "body": "```suggestion\r\nconst HAS_TIME = /\\d(?:m?)s/i;\r\n```\r\n\r\nSlightly simpler regex that should also be slightly faster?",
+      "file": "lib/rules/time-min-milliseconds/index.mjs",
+      "line": null,
+      "diff_hunk": "@@ -23,6 +23,8 @@ const meta = {\n \n const DELAY_PROPERTIES = new Set(['animation-delay', 'transition-delay']);\n \n+const HAS_TIME = /\\d.*s/i;",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "romainmenke",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": true,
+      "thread_resolved": null
+    }
+  ],
+  "comments": [
+    {
+      "comment_id": "c_1",
+      "body": "```suggestion\r\nconst HAS_TIME = /\\d(?:m?)s/i;\r\n```\r\n\r\nSlightly simpler regex that should also be slightly faster?",
+      "file": "lib/rules/time-min-milliseconds/index.mjs",
+      "line": null,
+      "diff_hunk": "@@ -23,6 +23,8 @@ const meta = {\n \n const DELAY_PROPERTIES = new Set(['animation-delay', 'transition-delay']);\n \n+const HAS_TIME = /\\d.*s/i;",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "romainmenke",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": true,
+      "thread_resolved": null
+    }
+  ]
+}

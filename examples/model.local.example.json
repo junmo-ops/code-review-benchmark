@@ -1,0 +1,9 @@
+{
+  "LCR_LLM_BASE_URL": "https://api.deepseek.com",
+  "LCR_LLM_TOKEN": "",
+  "LCR_LLM_MODEL": "填写官方接口当前可用的模型名",
+  "JUDGE_BASE_URL": "https://api.deepseek.com",
+  "JUDGE_API_KEY": "",
+  "JUDGE_MODEL": "填写官方接口当前可用的模型名",
+  "JUDGE_USE_MOCK": "false"
+}

@@ -1,0 +1,47 @@
+# 本地安装与运行产物
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+bin/
+lcr/
+wheelhouse/
+bundles/
+repos/
+runs/
+*.tar.gz
+*.tgz
+*.zip
+# 本地模型配置及令牌
+.env
+.env.*
+!.env.example
+judge.local.json
+*.local.json
+# Mac 上模拟云端时的运行时、配置和外层日志
+local-runtime.json
+local-command-logs/
+model.local.json
+
+# 本地构建来源及历史测评证据
+cli-logging-source/
+history/
+
+# 本地页面任务与持久化日志
+ui-state/
+
+# 浏览器验收产物
+.playwright-cli/
+output/playwright/
+
+# Server-only dependencies, data and credentials
+server-wheelhouse/
+server.env
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Pinned external Agent installations
+runtimes/
+.runtime/
+windows-wheelhouse/

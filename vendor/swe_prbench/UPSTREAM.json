@@ -1,0 +1,33 @@
+{
+  "project": "SWE-PRBench",
+  "repository": "https://github.com/FoundryHQ-AI/swe-prbench",
+  "upstream_revision": "379f0bfd8978a1734cd8399e115d04d4fdceeb89",
+  "license": "MIT",
+  "files": {
+    "LICENSE": "efc9cec2114ec1ff2cfa53c64e25e1aefbac9a4ef7728d823a66be1d4d88351b",
+    "README.md": "9667ba3808e76a87c5b317ae32ca25e113eef7ea15839e1d04689bbdc60c23f6",
+    "RUBRIC.md": "020c1d794432da16a7b3386a71cc773002e1b999ab87810775ee6a39fe7bcad8",
+    "eval_harness/COMMANDS.md": "2acaf4d7622468dd18940ecb27a7e446f6774267a595c118c925b941c51eb4c6",
+    "eval_harness/README.md": "057f03f3075b040aff751a7a30595b51c74e48ee1cd6a22cda53abf2c8348eb0",
+    "eval_harness/__init__.py": "5cdd51349f4ff92ad34a5ad6a326e2969e0515ed9938c1ea141941bd94825b6b",
+    "eval_harness/aggregate.py": "89b46618bcf234297d8db23d41f809be3015f45dcf30fedfc3b0c2fdc03a7438",
+    "eval_harness/assembler.py": "1ad1192220c104d2512500467357f80ed5fb84a50cb9d2782e99921094554829",
+    "eval_harness/cross_judge_validation.py": "987d0d391aa5180632269d63d84514d3c1bedb018c0c24b05217b31647df87a6",
+    "eval_harness/io_utils.py": "c45b8c5a4e9756b5cdf1fde988df6106d8961c25aa9039337d0e881c0ac84151",
+    "eval_harness/judge.py": "5626c4c64f2ccf6e55fd62580e7da11ad1223364a6c3ca7d582bc91c91c350c5",
+    "eval_harness/loader.py": "c947d8e5e07ff9b09070c1b8a7ebe830dd61352398e85a2e1643e037214ab22d",
+    "eval_harness/logging_utils.py": "89fc328fd377f3c8513c1debd2567dfe9029c901d92a62c67c67f1ac60b2103d",
+    "eval_harness/matching.py": "04562425dd9e60d6e58e80ac9e1de097be6edaa2e9f2e64c5917032feb891dd7",
+    "eval_harness/model_clients.py": "b82dc4f83fa43e8108b44092dfa1434a24acbcc8963c82d2ec5807b90544d25c",
+    "eval_harness/model_endpoints.example.yaml": "4bac5194de6516ecdd7a53afd73f08bcc7afa67213afe03e3d8b93236b0e4219",
+    "eval_harness/rebuild_report.py": "9d6f7f3ae3fe03dcc7d1423ef13a3d234e38c4623ba2426f8aa121ac52b1157d",
+    "eval_harness/rerun_failed.py": "1c600f85b28edefdde233c778c2fc924415e737c1a345037dea97022fce497d3",
+    "eval_harness/run_eval.py": "90629ca232458565fe5ae0589418aae10bccbcb4d89fef46f50d606f668b2a2f",
+    "eval_harness/runner.py": "34df27b3cf78b359b31c270ac9b73bf237425a4318754366edb18c6e0c962fc7",
+    "eval_harness/schema.py": "84cb7d9576965fd7a2d00ab6602843667e5f94efeca0317a7bd0ecaa6ab60bdb",
+    "eval_harness/scorer.py": "6c9cc98ce7cb9897ff8488d1e5128c903c421495ea5c4979c68cd81ad5d0e28f",
+    "eval_harness/validate_output.py": "fd96d5103120e9732ac67ac6417b7eb16bfaf305ffe8968cb6a771d39eeb1dcc",
+    "pipeline_version.txt": "cabc7b711b1719df760968c699decd961f9f2387ba262ecb7b2f3cf509e73a9f",
+    "requirements.txt": "18f5676227543305b8d9d2680b08f65619ed3a9e05d04c87e49bd12635234c27"
+  }
+}

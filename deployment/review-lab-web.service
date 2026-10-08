@@ -1,0 +1,16 @@
+[Unit]
+Description=Review Lab Web API
+After=network.target
+[Service]
+User=reviewlab
+Group=reviewlab
+WorkingDirectory=/opt/review-lab
+EnvironmentFile=/etc/review-lab/server.env
+ExecStart=/opt/review-lab/.venv/bin/gunicorn --bind 127.0.0.1:8766 --workers 1 --threads 1 --timeout 120 --access-logfile - webui.wsgi:create_app()
+Restart=on-failure
+RestartSec=5
+UMask=0077
+KillMode=control-group
+TimeoutStopSec=30
+[Install]
+WantedBy=multi-user.target

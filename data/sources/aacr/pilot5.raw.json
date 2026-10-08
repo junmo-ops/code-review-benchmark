@@ -1,0 +1,371 @@
+[
+  {
+    "change_line_count": 11,
+    "project_main_language": "TypeScript",
+    "source_commit": "4d8bdf29458db722a2bce1dfacc50771959b32fa",
+    "target_commit": "cb4d5c90460885942cbbae0298b95f4ee5682086",
+    "githubPrUrl": "https://github.com/cline/cline/pull/1808",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The condition for Azure API shape detection was incorrectly modified to check the base URL for 'deepseek'; it should verify 'azure.com' in the base URL while excluding DeepSeek models via the model ID to prevent duplicated logic.",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 17,
+        "to_line": 17,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Duplicate code**: The condition `modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` is duplicated across multiple provider files (openai.ts, deepseek.ts, qwen.ts, together.ts, requesty.ts). Consider extracting this into a shared utility function to improve maintainability.\n\nExample:\n```typescript\n// In a shared utils file\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```\n",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 39,
+        "to_line": 39,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Model checks using substring `includes` can create false positives (e.g., custom model names that contain these tokens). If model IDs are known, prefer exact match or a small set/regex anchored to expected patterns. Also consider normalizing case once (model IDs can sometimes be mixed-case).\n\n```suggestion\n\t\tconst normalizedModelId = modelId.toLowerCase()\n\t\tconst isDeepseekReasoner =\n\t\t\tnormalizedModelId === \"deepseek-reasoner\" || normalizedModelId === \"deepseek-r1\"\n```",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 39,
+        "to_line": 39,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 33,
+    "project_main_language": "TypeScript",
+    "source_commit": "a1bf1f95a30ca95581d9811488636aec42dd2f80",
+    "target_commit": "419534ccd4241fc11827741eb0d76ba0c9d21277",
+    "githubPrUrl": "https://github.com/cline/cline/pull/5177",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The checkpoint process comment is overly verbose and difficult to parse; restructure it using bullet points or shorter comments for clarity.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1320,
+        "to_line": 1320,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Missing error handling for the asynchronous checkpoint commit operation may cause unhandled promise rejections and leave checkpoint messages without commit hashes on failure.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1322,
+        "to_line": 1322,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 63,
+    "project_main_language": "TypeScript",
+    "source_commit": "07d20574868b2ebb51c95c30a7a81b3793f0f07e",
+    "target_commit": "7d18fb9df620c61420c6939df22fb6f7af836bb2",
+    "githubPrUrl": "https://github.com/cline/cline/pull/2347",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The encoding detection logic is complex and could benefit from a comment explaining why encoding detection is necessary (e.g., supporting non-UTF8 files) and the fallback behavior.\n\n```suggestion\n \t\tconst fileBuffer = await fs.readFile(absolutePath)\n \t\t// Detect file encoding to support non-UTF8 files (e.g., GBK, Shift-JIS)\n \t\t// Falls back to UTF8 if detection fails\n \t\tconst detected = chardet.detect(fileBuffer)\n \t\tthis.fileEncoding =\n```",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 49,
+        "to_line": 51,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling for file reading and encoding operations. If readFile fails or if encoding detection/decoding fails, it could cause unhandled exceptions. Consider wrapping in try/catch blocks and providing appropriate fallback behavior.\n",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 49,
+        "to_line": 57,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling for file writing operation. The writeFile operation should be wrapped in a try/catch block to handle potential errors during file encoding or disk I/O operations.\n",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 237,
+        "to_line": 240,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Remove the unnecessary double type cast (`as unknown as Uint8Array`) in the `fs.writeFile` call since `iconv.encode` returns a Buffer which is natively supported by the function.",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 239,
+        "to_line": 239,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`getFileSizeInKB` is imported but no longer used in the code. It is recommended to use it to check the file size before `fs.readFile` to avoid reading large files into memory.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 7,
+        "to_line": 7,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Reading the entire file into memory before checking its size can lead to high memory consumption or crashes with large files. It is strictly recommended to check the file size using `fs.stat` (or `getFileSizeInKB`) before reading the file content.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 26,
+        "to_line": 29,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`extractTextFromIPYNB` now duplicates the encoding-detection + decode logic from the default branch. Consider extracting a small helper like `readTextFileWithEncodingDetection(filePath)` to reduce duplication and keep behavior consistent (size limit, binary check, confidence threshold, normalization, error handling).",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 59,
+        "to_line": 63,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "This nested ternary expression is difficult to read and violates the coding standard. Refactor to use if-else statements for better readability.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 61,
+        "to_line": 62,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Using 'as any' weakens type safety. Prefer validating existence of '.encoding' before accessing it, e.g., 'if (detected && typeof detected === 'object' && 'encoding' in detected)'\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 61,
+        "to_line": 62,
+        "category": "Code Defect",
+        "context": "File Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 69,
+    "project_main_language": "TypeScript",
+    "source_commit": "398bc87a64800e021966868243be2f09be72e73c",
+    "target_commit": "2195a689b787a963bdacc35d348f4590c30a2692",
+    "githubPrUrl": "https://github.com/cline/cline/pull/4786",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Remove async keyword as this method doesn't perform any asynchronous operations. This is misleading and unnecessary.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 460,
+        "to_line": 460,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential security issue: Nonce is not being cleared after validation. This could allow reuse of the same state parameter (replay attack). Consider restoring the call to `this.authService.resetAuthNonce()` upon successful validation.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 461,
+        "to_line": 461,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Security issue: Nonce should be single-use to prevent replay attacks. The current implementation uses a static readonly nonce that never changes, making it vulnerable to replay attacks. Consider generating a new nonce for each authentication request.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 461,
+        "to_line": 461,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "State validation logic is duplicated in the activation function; delegate the `authService.authNonce !== state` check to `controller.validateAuthState` to maintain a single source of truth.",
+        "path": "src/extension.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 312,
+        "to_line": 312,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Security Issue: Nonce Reuse Vulnerability**\n\nGenerating the nonce once at service construction creates a serious security vulnerability. The nonce should be unique for each authentication request to provide proper CSRF protection. Reusing the same nonce allows potential replay attacks.\n\n**Recommendation**: Generate a new nonce for each `createAuthRequest()` call. Consider:\n```typescript\nprivate _authNonce: string = ''\n\nasync createAuthRequest(): Promise<String> {\n    if (this._authenticated) {\n        this.sendAuthStatusUpdate()\n        return String.create({ value: \"Already authenticated\" })\n    }\n    \n    // Generate fresh nonce for each auth request\n    this._authNonce = crypto.randomBytes(32).toString(\"hex\")\n    \n    // ... rest of the code\n}\n```\n",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 33,
+        "to_line": 33,
+        "category": "Security Vulnerability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`createAuthRequest(): Promise<String>` uses the protobuf/SDK `String` type (from `@modelcontextprotocol/sdk/types`?) rather than native `string`. This is easy to confuse and can lead to wrong usage. Consider renaming the import (`import { String as RpcString } ...`) and/or changing the method return type to a native `string` if RPC wrapping is not required at this layer.",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 173,
+        "to_line": 173,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Throwing a raw Error here may surface as an unhandled exception depending on caller; checklist asks for user-friendly error handling in async flows. Consider catching at the boundary and showing `vscode.window.showErrorMessage(...)` or returning a structured error result for the controller layer to display.",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 179,
+        "to_line": 181,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "Security Patches / Vulnerability Fixes"
+  },
+  {
+    "change_line_count": 165,
+    "project_main_language": "TypeScript",
+    "source_commit": "b3abbd886e7e693c48b31a0af8046035bf014118",
+    "target_commit": "f098af0f52bf1cdb7eb561c380caef5746b58d40",
+    "githubPrUrl": "https://github.com/cline/cline/pull/5955",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The constant `BUFFER_STUCK_TIMEOUT_MS` is declared within method scope; move it to the class level or configuration file to enable reuse and configurability.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1495,
+        "to_line": 1496,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential timer leak: If flushBuffer() is called multiple times rapidly, a new bufferStuckTimer could be created before the previous one is cleared, leading to multiple timers running simultaneously. Consider clearing any existing timer before creating a new one:\n```typescript\nif (bufferStuckTimer) {\n    clearTimeout(bufferStuckTimer)\n}\nbufferStuckTimer = setTimeout(...)\n```\n",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 1511,
+        "to_line": 1515,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The COMPLETION_TIMEOUT_MS constant is unnecessarily scoped within a function; relocate it to class level or configuration for maintainability and configurability.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1575,
+        "to_line": 1575,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider using a more robust timer management pattern. The current approach sets timers in multiple places without centralized cleanup. This could lead to memory leaks if timers aren't properly cleared in all execution paths.\n",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 1608,
+        "to_line": 1612,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`TerminalOutputFailureReason.TIMEOUT` is likely misleading here. This branch triggers when `fullOutput` is empty after shell integration finished, which could be “no output / stream empty / parsing removed everything”, not necessarily a timeout. Consider introducing/using a more accurate reason (e.g., `EMPTY_OUTPUT` / `SHELL_INTEGRATION_EMPTY_OUTPUT`) to avoid skewing telemetry.\n\n```suggestion\n    telemetryService.captureTerminalOutputFailure(TerminalOutputFailureReason.EMPTY_OUTPUT) // or a more accurate enum value\n```",
+        "path": "src/integrations/terminal/TerminalProcess.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 195,
+        "to_line": 195,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Hardcoded string literals: The method parameter values (\"clipboard\", \"none\", \"shell_integration\") are hardcoded strings. While the JSDoc in TelemetryService.ts documents these values, there's no type-safe way to enforce them. Consider defining a union type or enum to ensure type safety and consistency.",
+        "path": "src/integrations/terminal/TerminalProcess.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 200,
+        "to_line": 200,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Parameter 'method' in captureTerminalExecution should be constrained to the specific string literals `'shell_integration' | 'clipboard' | 'none'` instead of a generic string type for compile-time validation.",
+        "path": "src/services/telemetry/TelemetryService.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 959,
+        "to_line": 959,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Re-exporting enums from \"./TelemetryService\" couples the public telemetry index to a runtime module. If TelemetryService has side effects (singleton init, provider wiring) or imports back from this index, this can create circular deps and unexpected load-order issues. Consider moving these enums to a dedicated types/enums file (or exporting them from TelemetryProviderFactory if appropriate) and re-export from there. Also ensure these are `export enum`/`export const enum`/`export type` as intended to avoid bundling extra runtime code.",
+        "path": "src/services/telemetry/index.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 13,
+        "to_line": 17,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  }
+]

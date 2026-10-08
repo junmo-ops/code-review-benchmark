@@ -1,0 +1,28 @@
+{
+  "dataset": "inclusionAI/SWE-CARE",
+  "revision": "3b3a625ef26bd497a3a13485c0dc9ece537f24d0",
+  "split": "test",
+  "source_sha256": "be45381d2579e74d64abee7aedb1438843a83cd0a22a29d9bb8e141c35d26b07",
+  "source_rows": 671,
+  "selection": {
+    "method": "smallest_patch_chars_then_instance_id",
+    "limit": 1,
+    "purpose": "integration_only_not_representative"
+  },
+  "selected_ids": [
+    "psf__requests-5711@9484e13"
+  ],
+  "dataset_sha256": "48d6abea5deb3fd23bae86003c87f677a82abc49cdccd1e1cbd13d413134db02",
+  "note": "revision 为输入声明；官方来源认证需要核对原始下载哈希与来源清单",
+  "repository": "https://github.com/inclusionAI/SWE-CARE",
+  "code_revision": "d0b419cf9ab3ddeceaf8c3e6d55450b1e81ae61c",
+  "dataset_url": "https://huggingface.co/datasets/inclusionAI/SWE-CARE",
+  "source_file": "data/test-00000-of-00001.parquet",
+  "downloaded_parquet_sha256_verified_against_hf_lfs": true,
+  "files": {
+    "README.md": "b8367c856d83ba543c952c22adf332001db98e9353d7f68f14e46a7ab42d5ed5",
+    "LICENSE": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+    "LEGAL.md": "adba50d9794b9ef3f7ec8cbc680f7f1fa3fbf9df0ac8d1f9b9ccab6d941bc11b",
+    "selected.json": "780e79a65ea02d870d4b9a4870d84fc676a3679db01368829af90b8f3dd0ee5f"
+  }
+}

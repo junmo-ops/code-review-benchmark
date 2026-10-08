@@ -1,0 +1,292 @@
+{
+  "1d76479e3108ef3ec2f5fb6fb430a2be3d75b3cb6322277d3edffd6b0ff24805": {
+    "source": "This new condition can never evaluate to `true`: `getModel()` (lines 77-87) only ever returns an id that is a key of `deepSeekModels` (`deepseek-chat` / `deepseek-reasoner`) or the fallback `deepSeekDefaultModelId` (`deepseek-chat`). `deepseek-r1` is not part of `deepSeekModels` (it belongs to `qwenModels`), so users of this provider cannot reach this branch — the added check is effectively dead code and misleadingly implies R1 support here. Consider reverting this specific change (or, if R1 is meant to be supported, add `deepseek-r1` to `deepSeekModels` and also align the temperature guard on line 44, which still compares against `\"deepseek-reasoner\"` only).",
+    "zh": "新增的 `deepseek-r1` 子条件永远不会成立：`getModel()`（77–87 行）只会返回 `deepSeekModels` 中的键（`deepseek-chat` / `deepseek-reasoner`），或回退到 `deepSeekDefaultModelId`（`deepseek-chat`）。`deepseek-r1` 不属于 `deepSeekModels`，而属于 `qwenModels`，因此使用此适配器的用户无法进入这个新增分支。这项检查实际上是不可达代码，还会让人误以为这里支持 R1。建议撤回这项具体修改；如果确实要支持 R1，则将 `deepseek-r1` 加入 `deepSeekModels`，并同步调整第 44 行仍然只比较 `\"deepseek-reasoner\"` 的 temperature 条件。",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "989fba848534449462513a8040a0a8ceaf759fd1a27307365cee069cab9c87c4": {
+    "source": "This new branch is an exact duplicate of the final `else` branch (same `OpenAI` client, same `baseURL`/`apiKey`), so it changes no behavior — a base URL cannot meaningfully contain both `\"deepseek\"` and `\"azure.com\"`, so nothing is bypassed. It only adds dead/duplicated code. If the goal was to force the non-Azure client for DeepSeek, the existing `else` already does that; otherwise please add the DeepSeek-specific configuration that motivated this branch.",
+    "zh": "新增分支与最后的 `else` 分支完全重复：使用相同的 `OpenAI` 客户端，以及相同的 `baseURL` / `apiKey`。因此它不会改变行为——一个有实际意义的基础 URL 不可能同时包含 `\"deepseek\"` 和 `\"azure.com\"`，所以不会绕过任何逻辑。它只是增加了无用或重复代码。如果目的是为 DeepSeek 强制使用非 Azure 客户端，原有的 `else` 已经实现了这一点；否则，请加入促使你新增该分支的 DeepSeek 专用配置。",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "5c8a1268be1c912b0c58324167e2a7c8ff3a2a5ed4fda90a31dbeb0658c3125b": {
+    "source": "The condition for Azure API shape detection was incorrectly modified to check the base URL for 'deepseek'; it should verify 'azure.com' in the base URL while excluding DeepSeek models via the model ID to prevent duplicated logic.",
+    "zh": "Azure API 类型识别条件被错误地改为检查基础 URL 是否包含 `deepseek`；应检查基础 URL 中的 `azure.com`，同时通过模型 ID 排除 DeepSeek 模型，以避免重复逻辑。",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "aa0c1f0e69de595a244b97d0501cad47ed180d4f5373760f325d59dfc000820e": {
+    "source": "**Duplicate code**: The condition `modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` is duplicated across multiple provider files (openai.ts, deepseek.ts, qwen.ts, together.ts, requesty.ts). Consider extracting this into a shared utility function to improve maintainability.\n\nExample:\n```typescript\n// In a shared utils file\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```\n",
+    "zh": "重复代码：`modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` 条件在多个适配器文件中重复出现，包括 openai.ts、deepseek.ts、qwen.ts、together.ts、requesty.ts。建议将其提取为公共工具函数，提高可维护性。\n\n例如：\n```typescript\n// 放在公共工具文件中\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "d48ddde0a42445b2e923fa5f5bd4c334b8608103bc1e0938599b1fc15f4c3f7d": {
+    "source": "Model checks using substring `includes` can create false positives (e.g., custom model names that contain these tokens). If model IDs are known, prefer exact match or a small set/regex anchored to expected patterns. Also consider normalizing case once (model IDs can sometimes be mixed-case).\n\n```suggestion\n\t\tconst normalizedModelId = modelId.toLowerCase()\n\t\tconst isDeepseekReasoner =\n\t\t\tnormalizedModelId === \"deepseek-reasoner\" || normalizedModelId === \"deepseek-r1\"\n```",
+    "zh": "使用子串 `includes` 检查模型可能出现误匹配，例如自定义模型名称也包含这些字符串。如果模型 ID 已知，建议使用精确匹配、一个小型 ID 集合，或限定预期格式的正则表达式。还应考虑先统一大小写，因为模型 ID 有时可能混用大小写。\n\n```typescript\nconst normalizedModelId = modelId.toLowerCase()\nconst isDeepseekReasoner =\n  normalizedModelId === \"deepseek-reasoner\" || normalizedModelId === \"deepseek-r1\"\n```",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "e0468524fd44842c90c15987f17d2ab7cb82610dbe91fea78624be84d125b9e0": {
+    "source": "**Duplicate code**: The condition `modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` is duplicated across multiple provider files (openai.ts, deepseek.ts, qwen.ts, together.ts, requesty.ts). Consider extracting this into a shared utility function to improve maintainability.\n\nExample:\n```typescript\n// In a shared utils file\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```",
+    "zh": "重复代码：`modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` 条件在多个适配器文件中重复出现，包括 openai.ts、deepseek.ts、qwen.ts、together.ts、requesty.ts。建议将其提取为公共工具函数，提高可维护性。\n\n例如：\n```typescript\n// 放在公共工具文件中\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```",
+    "method": "助手整理中文译文，保留原文主张"
+  },
+  "2b99ad72ed004608b1f6d23d65dc8fe69aab2f2cea8a13aabd896a470f370fa5": {
+    "source": "This new branch is redundant: it builds exactly the same client as the final `else` branch (`new OpenAI({ baseURL, apiKey })`), so it adds no new behavior for DeepSeek URLs. It also runs *before* the `azure.com` check, so an Azure OpenAI endpoint whose host/resource name contains \"deepseek\" (e.g. `https://deepseek.openai.azure.com`) would now be misclassified as a plain OpenAI endpoint and lose the `apiVersion` that Azure requires. Suggest removing this branch entirely — the `else` already covers DeepSeek-compatible base URLs.",
+    "zh": "这个新分支是多余的：它构建的客户端与最终的 `else` 分支（`new OpenAI({ baseURL, apiKey })`）完全相同，因此对于 DeepSeek URL 而言它没有增加任何新行为。它还会在 `azure.com` 检查*之前*运行，因此一个主机/资源名称包含 \"deepseek\" 的 Azure OpenAI 端点（例如 `https://deepseek.openai.azure.com`）现在会被错误地归类为普通 OpenAI 端点，并丢失 Azure 所需的 `apiVersion`。建议完全移除此分支——`else` 已经覆盖了 DeepSeek 兼容的 base URL。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "78f542f589ce760cc23b2c855a327dd461381a14bebd8455760d5f0378d3d1b1": {
+    "source": "`getModel()` only ever returns ids taken from `deepSeekModels` (\"deepseek-chat\" / \"deepseek-reasoner\"; any other value falls back to the default), and there is no `deepseek-r1` entry in that registry — so `model.id.includes(\"deepseek-r1\")` can never be true. Additionally, if a `deepseek-r1` model were ever introduced, the parameter guard below still compares `model.id === \"deepseek-reasoner\"`, so such a model would still be sent `temperature: 0`, contradicting the new reasoner detection. Either drop the extra check or register the model in `deepSeekModels` and reuse `isDeepseekReasoner` in the temperature guard.",
+    "zh": "`getModel()` 只会返回取自 `deepSeekModels` 的 id（\"deepseek-chat\" / \"deepseek-reasoner\"；任何其他值都会回退到默认值），而该注册表中没有 `deepseek-r1` 条目——因此 `model.id.includes(\"deepseek-r1\")` 永远不可能为 true。此外，如果将来引入了 `deepseek-r1` 模型，下面的参数守卫仍然比较 `model.id === \"deepseek-reasoner\"`，因此这样的模型仍会被发送 `temperature: 0`，这与新的 reasoner 检测相矛盾。要么去掉这个额外的检查，要么在 `deepSeekModels` 中注册该模型，并在温度守卫中复用 `isDeepseekReasoner`。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "ab0d8411be24d8545c68f7b591db974512306c45b6a4e3cdc1ab29bf259c270a": {
+    "source": "Dismissing the warning dialog (Escape / close) makes `showWarningMessage` resolve to `undefined`, which does not equal `\"Cancel\"`, so the code falls through and stores the token. This means the *absence* of a user decision is treated as consent. Use a positive check so that only an explicit \"Store\" proceeds, making the default action safe.",
+    "zh": "关闭警告对话框（Escape / 关闭）会使 `showWarningMessage` 解析为 `undefined`，它不等于 `\"Cancel\"`，因此代码会继续向下执行并存储该 token。这意味着用户决策的*缺失*被当作同意。应使用正向检查，使得只有显式的 \"Store\" 才会继续执行，从而使默认操作安全。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "7c5c7d65c931ab4ea76a9b0717f05a6e47f1175cc012166c5ef2f78ab89e1875": {
+    "source": "Accepting the token on a state mismatch removes the CSRF protection the `state` parameter was providing: any page/agent that can invoke this URI scheme can deliver an arbitrary `idToken`, and a user clicking \"Store\" will save it as their Cline credential. The prompt text also gives the user no actionable information — `uri.path` is always `/auth`, so it does not reveal who originated the request. Consider keeping a hard failure for mismatched state and only relaxing it for a verifiable web-initiated flow, or at minimum surface the request origin and the security implication in the prompt.",
+    "zh": "在状态不匹配时接受该 token 会移除 `state` 参数所提供的 CSRF 保护：任何能够调用此 URI scheme 的页面/代理都可以传递任意的 `idToken`，而用户点击 \"Store\" 就会将其保存为他们的 Cline 凭据。提示文本也没有给用户任何可操作的信息——`uri.path` 始终是 `/auth`，因此它不会揭示请求是谁发起的。考虑对不匹配的 state 保持硬失败，仅对可验证的 web 发起流程放宽，或者至少在提示中呈现请求来源和安全影响。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "76438465203982d64dfe17b2cfd22bc29d2dc36b28ca24fbedad0444b6a6d5c5": {
+    "source": "The nonce is now generated once per service instance and, since `AuthService` is a session singleton, it never changes and is no longer cleared after use (`resetAuthNonce` was removed and `validateAuthState` no longer resets it). The `state` value therefore becomes a static, reusable value for the whole session instead of a per-request nonce, weakening its anti-replay/CSRF guarantees. If a fixed session nonce is intentional here it deserves an explanatory comment; otherwise regenerate it per `createAuthRequest()` and clear it after successful validation.",
+    "zh": "nonce 现在按服务实例生成一次，并且由于 `AuthService` 是会话单例，它永远不会改变，使用后也不再被清除（`resetAuthNonce` 已被移除，且 `validateAuthState` 不再重置它）。因此 `state` 值变成了整个会话中静态、可复用的值，而不是每请求的 nonce，削弱了其防重放/CSRF 保证。如果这里固定会话 nonce 是有意为之，那它值得加一条解释性注释；否则应按 `createAuthRequest()` 重新生成它，并在成功验证后清除它。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "a16e30494a1feea4d00d956084f530b25825dd61d6709be2e3dd9bc66e419c68": {
+    "source": "`validateAuthState` (and previously `resetAuthNonce`) no longer appears to have any callers — `extension.ts` performs its own inline comparison. If this method is truly unused it should be removed rather than kept as dead code.",
+    "zh": "`validateAuthState`（以及之前的 `resetAuthNonce`）似乎不再有任何调用者——`extension.ts` 执行自己的内联比较。如果此方法确实未被使用，应将其移除，而不是作为死代码保留。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "b7436af4871f9b2423885a17e7817f6ea929fac59aabecb3c6f2498f9ece6e3d": {
+    "source": "Since the commit is now fire-and-forget, a rejection is no longer surfaced through the awaited `saveCheckpoint()` call path. `CheckpointTracker.commit()` explicitly re-throws on any failure (see `throw new Error(\"Failed to create checkpoint: ...\")`), and the async callback can also reject (e.g. `updateClineMessage` throws `Invalid message index`). This creates an unhandled promise rejection (which can crash/log noisily depending on the runtime). Please attach a `.catch()` so the failure is at least logged and swallowed, matching the previous \"silently fails\" behavior.",
+    "zh": "由于该 commit 现在是即发即忘，拒绝不再通过被 await 的 `saveCheckpoint()` 调用路径暴露出来。`CheckpointTracker.commit()` 在任何失败时都会显式重新抛出（参见 `throw new Error(\"Failed to create checkpoint: ...\")`），并且异步回调也可能 reject（例如 `updateClineMessage` 抛出 `Invalid message index`）。这会产生未处理的 promise rejection（根据运行时不同，可能会崩溃/产生嘈杂日志）。请附加一个 `.catch()`，以便至少记录并吞掉该失败，与之前“静默失败”的行为保持一致。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "877a57ff1c97981dc8b80710c7be86fc4954f800ec2119fbcb50c8a5897a8d56": {
+    "source": "Race condition: `findLastIndex` is evaluated asynchronously (after the commit resolves), so it resolves the *latest* `checkpoint_created` message at that time, not the one created by this call. Because commits are now non-blocking, a subsequent `saveCheckpoint()` can append another `checkpoint_created` message while this commit is still in flight (e.g. the duplicate-check guard at the top only blocks consecutive `checkpoint_created` messages, not ones separated by an intervening message). In that case this commit hash gets written onto the newer message, and the message created here is left without a `lastCheckpointHash`, breaking its restore/\"see changes\" action. Capture the index of the just-said message synchronously after `await this.say(\"checkpoint_created\")` and update that specific index instead.",
+    "zh": "竞态条件：`findLastIndex` 是异步求值的（在 commit resolve 之后），因此它解析的是当时*最新的* `checkpoint_created` 消息，而不是本次调用所创建的那条。由于 commit 现在是非阻塞的，后续的 `saveCheckpoint()` 可以在本次 commit 仍在进行时追加另一条 `checkpoint_created` 消息（例如顶部的重复检查防护只阻止连续的 `checkpoint_created` 消息，而不阻止被中间消息分隔的那些）。在这种情况下，本次 commit 的 hash 会被写到较新的消息上，而这里创建的消息则没有 `lastCheckpointHash`，从而破坏其恢复/“查看更改”操作。应在 `await this.say(\"checkpoint_created\")` 之后同步捕获刚刚所说消息的索引，并更新那个特定索引。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "c12279a4da32caae173dc663146610c655a313a3b57e6afc8b518ce614b4e3cf": {
+    "source": "`jschardet` is a new runtime dependency, but the repo-tracked `package-lock.json` was not regenerated — it still has no `jschardet` entry (`iconv-lite@0.6.3` already exists there as a transitive dep). `npm ci` will fail until the lockfile is updated. Please regenerate and commit the lockfile.",
+    "zh": "`jschardet` 是一个新的运行时依赖，但仓库中跟踪的 `package-lock.json` 未重新生成——它仍然没有 `jschardet` 条目（`iconv-lite@0.6.3` 已作为传递依赖存在其中）。在锁文件更新之前，`npm ci` 将失败。请重新生成并提交锁文件。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "3e232280f46ed102f341c8c256c43a22bb54e8895b4babd8b2f5b634620d3924": {
+    "source": "`getFileSizeInKB` (line 7) is now unused since the size check was replaced with `fileBuffer.byteLength`. This is dead code and will likely trip the lint rule; remove the import.",
+    "zh": "`getFileSizeInKB`（第 7 行）现在未被使用，因为大小检查已被替换为 `fileBuffer.byteLength`。这是死代码，很可能会触发 lint 规则；请移除该导入。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "8873d57f52fc80d24ff5c487a7b1c9af80c877aec6840a92ebb29fec47acea1f": {
+    "source": "Ordering regression: `chardet.detect` returns a guessed encoding (e.g. `windows-1252`, `ISO-8859-1`) for almost any byte sequence, so the `else` branch containing the `isBinaryFile` check is rarely reached. Binary files will now be silently decoded into garbage text instead of throwing `Cannot read text for file type`, polluting the context. Run the `isBinaryFile` check first (or unconditionally) as before.\n\nAlso note `chardet.detect` returns `{ encoding, confidence } | null` (never a `string`), so the `typeof detected === \"string\"` branch is dead — `detected?.encoding ?? \"utf8\"` covers it and avoids the `as any` casts.",
+    "zh": "顺序回归：`chardet.detect` 对几乎任何字节序列都会返回一个猜测的编码（例如 `windows-1252`、`ISO-8859-1`），因此包含 `isBinaryFile` 检查的 `else` 分支很少会被执行到。二进制文件现在将被静默解码为乱码文本，而不是抛出 `Cannot read text for file type`，从而污染上下文。像之前一样先运行 `isBinaryFile` 检查（或无条件运行）。\n\n另请注意，`chardet.detect` 返回 `{ encoding, confidence } | null`（绝不是 `string`），因此 `typeof detected === \"string\"` 分支是死代码——`detected?.encoding ?? \"utf8\"` 已覆盖该情况，并避免了 `as any` 强制转换。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "86a0b17bdea039df4b64f0976ac82cb51b78235091ea3c00b3fd7170783e0371": {
+    "source": "Nested ternary (disallowed by the style rules) and this identical detection logic is now duplicated in three places (here, `extractTextFromFile`, and `DiffViewProvider.open`). Extract a single helper, e.g. `function detectEncoding(buffer: Buffer): string { return chardet.detect(buffer)?.encoding ?? \"utf8\" }`, and reuse it.",
+    "zh": "嵌套三元表达式（被样式规则禁止），并且这一相同的检测逻辑现在在三处重复（此处、`extractTextFromFile` 和 `DiffViewProvider.open`）。提取一个单一辅助函数，例如 `function detectEncoding(buffer: Buffer): string { return chardet.detect(buffer)?.encoding ?? \"utf8\" }`，并复用它。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "1f775f24156b44dedf35ad17e40cb09ae7c8b9592f4e924a91b8898d2a73213b": {
+    "source": "Nested ternary plus unnecessary `any` casts. `chardet.detect` returns `{ encoding, confidence } | null`, so `typeof detected === \"string\"` can never be true and the casts are not needed. This simplifies to `this.fileEncoding = chardet.detect(fileBuffer)?.encoding ?? \"utf8\"`. Better still, share the encoding-detection helper suggested for `extract-text.ts` instead of duplicating the logic.",
+    "zh": "嵌套三元表达式加上不必要的 `any` 强制转换。`chardet.detect` 返回 `{ encoding, confidence } | null`，因此 `typeof detected === \"string\"` 永远不可能为真，这些强制转换也不需要。这可以简化为 `this.fileEncoding = chardet.detect(fileBuffer)?.encoding ?? \"utf8\"`。更好的做法是，共享为 `extract-text.ts` 建议的编码检测辅助函数，而不是重复该逻辑。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "ca6ac0e0082eb018b11b68ed136eb85c0301199a09788703f85679c40a5f45a6": {
+    "source": "Several concerns with this re-encode path:\n1. The `!== \"utf8\"` check misses the names chardet actually returns: UTF-8 is reported as `\"utf-8\"` (hyphenated) and pure-ASCII files as `\"ascii\"`. Since `\"utf-8\".toLowerCase() !== \"utf8\"`, this branch fires for essentially every UTF-8 file with non-ASCII content and for every plain-ASCII file, not just genuinely non-UTF8 files. Normalize these names (treat `utf8`/`utf-8`/`ascii` as UTF-8) before deciding to re-encode.\n2. `normalizedPostSaveContent` was `trimEnd()`-ed and EOL-normalized for the model's baseline, so writing it back to disk can silently strip trailing blank lines/whitespace from the user's file. Encode `postSaveContent` instead.\n3. `iconv.encode` silently replaces characters that are not representable in the detected single-byte encoding (e.g. emoji/CJK the model adds to a `windows-1252` file) with `?`, causing irreversible data loss. Consider falling back to UTF-8 (or refusing) when content is not representable in `this.fileEncoding`.\n4. `as unknown as Uint8Array` is unnecessary — `Buffer` already extends `Uint8Array`.",
+    "zh": "关于此重新编码路径的几个问题：\n1. `!== \"utf8\"` 检查遗漏了 chardet 实际返回的名称：UTF-8 被报告为 `\"utf-8\"`（带连字符），纯 ASCII 文件被报告为 `\"ascii\"`。由于 `\"utf-8\".toLowerCase() !== \"utf8\"`，此分支会对几乎所有包含非 ASCII 内容的 UTF-8 文件以及每个纯 ASCII 文件触发，而不仅仅是真正非 UTF8 的文件。在决定重新编码之前，请规范化这些名称（将 `utf8`/`utf-8`/`ascii` 视为 UTF-8）。\n2. `normalizedPostSaveContent` 已为模型的基线进行了 `trimEnd()` 和 EOL 规范化，因此将其写回磁盘可能会静默地剥离用户文件中的尾部空行/空白。应改为编码 `postSaveContent`。\n3. `iconv.encode` 会静默地将无法在检测到的单字节编码中表示的字符（例如模型添加到 `windows-1252` 文件中的 emoji/CJK）替换为 `?`，导致不可逆的数据丢失。当内容无法在 `this.fileEncoding` 中表示时，考虑回退到 UTF-8（或拒绝）。\n4. `as unknown as Uint8Array` 是不必要的——`Buffer` 已经扩展了 `Uint8Array`。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "960fd514ef1d285611cfb3abd512277cefa6a240ca15529844e3119436e3538c": {
+    "source": "The encoding preservation added here is asymmetric: `saveChanges` re-encodes the file back to the detected `fileEncoding`, but `revertChanges` (still just `updatedDocument.save()`) always writes the document as UTF-8. For a non-UTF-8 file, rejecting an edit will therefore corrupt the file's original encoding/BOM instead of restoring the original bytes. Please apply the same `iconv.encode(..., this.fileEncoding)` write path on revert (or, more simply, restore from the originally-read buffer).",
+    "zh": "此处添加的编码保留是不对称的：`saveChanges` 会将文件重新编码回检测到的 `fileEncoding`，但 `revertChanges`（仍然只是 `updatedDocument.save()`）始终以 UTF-8 写入文档。因此，对于非 UTF-8 文件，拒绝编辑会破坏文件原始的编码/BOM，而不是恢复原始字节。请在 revert 时应用相同的 `iconv.encode(..., this.fileEncoding)` 写入路径（或者更简单地说，从最初读取的缓冲区恢复）。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "f78a0d09ad1ebb7343dd09db13b6bf0e2feca562ac536f35f0540a38a735f6cb": {
+    "source": "This new branch is functionally identical to the `else` branch below (both construct a plain `new OpenAI({ baseURL, apiKey })`). Any base URL containing \"deepseek\" would already fall into the `else` branch and produce the exact same client, so this special case is redundant duplicate code. Suggest removing it and keeping only the Azure special case.",
+    "zh": "这个新分支在功能上与下面的 `else` 分支完全相同（两者都构造一个普通的 `new OpenAI({ baseURL, apiKey })`）。任何包含 \"deepseek\" 的 base URL 本来就会落入 `else` 分支并产生完全相同的客户端，因此这个特殊分支是冗余的重复代码。建议删除它，只保留 Azure 的特殊分支。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "fc61b346df58304fa7a207895081bb12ad4af4c5f7bbdbb155290b9c7df9dcde": {
+    "source": "`model.id` is typed as `DeepSeekModelId`, and `deepSeekModels` only contains `\"deepseek-chat\"` and `\"deepseek-reasoner\"`. `getModel()` can therefore never return an id containing `\"deepseek-r1\"`, making this part of the condition always false (dead code). If the goal is to support R1 via the DeepSeek provider, the model id also needs to be added to `deepSeekModels`; otherwise this clause should be dropped.",
+    "zh": "`model.id` 的类型是 `DeepSeekModelId`，而 `deepSeekModels` 只包含 `\"deepseek-chat\"` 和 `\"deepseek-reasoner\"`。因此 `getModel()` 永远不可能返回包含 `\"deepseek-r1\"` 的 id，这使得该条件中的这部分始终为假（死代码）。如果目标是通过 DeepSeek 提供方支持 R1，那么还需要将模型 id 添加到 `deepSeekModels` 中；否则应删除该子句。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "a85bde1114c9a5133b38f2101cad9075ba1a7874c7b928c5c20aa21e919d83c9": {
+    "source": "This `catch` block reports a terminal hang (`STREAM_TIMEOUT`) for *any* error thrown by `this.ask(...)` or `process.continue()`, not just stream timeouts. `ask()` rejects when the task is aborted/cancelled by the user, so a normal user cancellation will be recorded as a terminal hang, polluting the telemetry with false positives. Consider distinguishing abort/cancellation from genuine stream failures (e.g. only capture `STREAM_TIMEOUT` when the failure is not an abort), or use a distinct reason for this case.",
+    "zh": "这个 `catch` 块会为 `this.ask(...)` 或 `process.continue()` 抛出的*任何*错误报告终端挂起（`STREAM_TIMEOUT`），而不仅仅是流超时。当任务被用户中止/取消时，`ask()` 会 reject，因此正常的用户取消会被记录为终端挂起，从而以误报污染遥测数据。考虑区分中止/取消与真正的流失败（例如仅在失败不是中止时捕获 `STREAM_TIMEOUT`），或者为此情况使用一个不同的原因。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "7cd62c0b26cc9acb5f574e2113511ddd7b18c20d7afe0716648ffe8f325a7dc6": {
+    "source": "Two concerns with this timer:\n1) It fires whenever the process has not signalled `completed` within 60s, which includes legitimately long-running commands (builds, installs, dev servers). Those will be reported as a `WAITING_FOR_COMPLETION` hang even though the command finishes normally, producing noisy/incorrect telemetry.\n2) The timer is only cleared in the `completed` handler and after `await process` resolves. If `await process` rejects (no try/catch surrounds it), the timer is leaked and will fire later. Consider a wall-clock threshold tuned to actual hangs and wrapping the wait in `try/finally` so the timer is always cleared.",
+    "zh": "关于这个定时器有两个问题：\n1) 只要进程在 60 秒内没有发出 `completed` 信号，它就会触发，这包括合法长时间运行的命令（构建、安装、开发服务器）。这些命令即使正常完成，也会被报告为 `WAITING_FOR_COMPLETION` 挂起，从而产生嘈杂/不正确的遥测数据。\n2) 该定时器只在 `completed` 处理器中以及 `await process` 解析后被清除。如果 `await process` 被 reject（其周围没有 try/catch），定时器就会泄漏并稍后触发。考虑使用根据实际挂起情况调整的墙钟时间阈值，并将等待包裹在 `try/finally` 中，以便定时器始终被清除。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "68f668fe8b40235060fa6ff2cb1d4b519442f19c0332c56feed17ecf35dac625": {
+    "source": "`method` is typed as a plain `string` while the sibling capture methods in this same change (`captureTerminalOutputFailure`, `captureTerminalUserIntervention`, `captureTerminalHang`) all use dedicated enums. The JSDoc lists the allowed values (\"shell_integration\" | \"clipboard\" | \"none\") but nothing enforces them, so a typo'd or arbitrary string at a call site would silently produce telemetry that can't be aggregated reliably. Consider a union type or enum for consistency and type safety.",
+    "zh": "`method` 的类型是普通的 `string`，而同一变更中的同级捕获方法（`captureTerminalOutputFailure`、`captureTerminalUserIntervention`、`captureTerminalHang`）都使用专用枚举。JSDoc 列出了允许的值（\"shell_integration\" | \"clipboard\" | \"none\"），但没有任何东西强制执行它们，因此调用点处拼写错误或任意的字符串会静默地产生无法可靠聚合的遥测数据。考虑使用联合类型或枚举以保持一致性和类型安全。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "381e2fe9853c93bcc53440d49544ce6328a52a2a9167e911129e85cb2562d4f8": {
+    "source": "`CLIPBOARD_FAILED` is declared but never referenced anywhere in the codebase. The clipboard-fallback failure path in `TerminalProcess.ts` reports `captureTerminalExecution(false, \"none\")` instead of emitting this failure reason, so this enum member currently produces no telemetry. Either wire it up at the clipboard-failure call site or remove it to avoid dead API surface.",
+    "zh": "`CLIPBOARD_FAILED` 已声明，但在代码库中从未被引用。`TerminalProcess.ts` 中的剪贴板回退失败路径报告的是 `captureTerminalExecution(false, \"none\")`，而不是发出这个失败原因，因此这个枚举成员目前不会产生任何遥测数据。要么在剪贴板失败的调用点将其接入，要么将其移除，以避免死 API 表面。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "81aa55c4b7594f402e66a72ab4d77fe173f2a8580ea6b1f655a6c7e22d656151": {
+    "source": "`MANUAL_PASTE` and `CANCELLED` are declared but never referenced anywhere in the codebase (only `PROCESS_WHILE_RUNNING` is emitted). If these actions aren't going to be instrumented yet, consider removing them to avoid dead telemetry API surface; otherwise wire up the corresponding call sites.",
+    "zh": "`MANUAL_PASTE` 和 `CANCELLED` 已声明，但在代码库中从未被引用（只有 `PROCESS_WHILE_RUNNING` 被发出）。如果这些操作暂时还不会被埋点，考虑移除它们以避免死遥测 API 表面；否则接入相应的调用点。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "33edc774025958bc99886f001cf211f1ad469e734e51c1cc673fa4001fd6430a": {
+    "source": "`returnCurrentTerminalContents()` already invokes `getLatestTerminalOutput()` internally, so calling it again right after is a redundant round-trip that re-reads/re-writes the user's clipboard and executes terminal commands a second time. More importantly, this second call is **not** wrapped in try/catch (unlike inside `returnCurrentTerminalContents`), so if `getLatestTerminalOutput()` rejects, the error propagates out of `run()` and the subsequent `this.emit(\"completed\")` / `this.emit(\"continue\")` (lines below) never fire, potentially stalling the task. Suggest having `returnCurrentTerminalContents()` return the captured snapshot and reuse it here, keeping the telemetry call inside the guarded flow.",
+    "zh": "`returnCurrentTerminalContents()` 内部已经调用了 `getLatestTerminalOutput()`，因此紧接着再次调用它是一次冗余的往返，会重新读取/重写用户的剪贴板并第二次执行终端命令。更重要的是，这第二次调用**没有**被包裹在 try/catch 中（不像 `returnCurrentTerminalContents` 内部那样），所以如果 `getLatestTerminalOutput()` 拒绝，错误会从 `run()` 中传播出去，后续的 `this.emit(\"completed\")` / `this.emit(\"continue\")`（下面的行）永远不会触发，可能导致任务停滞。建议让 `returnCurrentTerminalContents()` 返回捕获的快照并在此处复用它，同时将遥测调用保留在受保护的流程内。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "baa1f938a37dd3e9799333a0576b47ccb959611b9ffa7581006fe063cca9cfbc": {
+    "source": "This block (with the same `getLatestTerminalOutput()` re-fetch issue) is duplicated verbatim in the shell-integration branch above, only differing by comment/indentation. Consider extracting a small helper (e.g. `captureFallbackOutcome()`) that reuses the snapshot from `returnCurrentTerminalContents()` and emits the telemetry, to avoid the duplicated call and keep both paths consistent.",
+    "zh": "这个代码块（存在相同的 `getLatestTerminalOutput()` 重新获取问题）在上面的 shell 集成分支中被逐字重复，只是注释/缩进不同。考虑提取一个小辅助函数（例如 `captureFallbackOutcome()`），复用来自 `returnCurrentTerminalContents()` 的快照并发出遥测数据，以避免重复调用并保持两条路径一致。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "052f4291aebe4f596eeecc01ae8a31f235b27643d5a5cc2542e9e9aaf0043258": {
+    "source": "This branch is entered whenever `this.fullOutput` is empty after the shell-integration stream ends — which includes commands that legitimately produce no output (e.g. `cd`, `mkdir`, `touch`, `git checkout`). There is no timeout involved in this code path. Emitting `TerminalOutputFailureReason.TIMEOUT` here will mislabel silent-but-successful commands as timeouts and inflate timeout metrics. Consider a reason that reflects \"no output captured via shell integration\", or only report the failure when the empty output is actually caused by a timeout.",
+    "zh": "只要 shell 集成流结束后 `this.fullOutput` 为空，就会进入这个分支——这包括合法地不产生任何输出的命令（例如 `cd`、`mkdir`、`touch`、`git checkout`）。这条代码路径中不涉及任何超时。在这里发出 `TerminalOutputFailureReason.TIMEOUT` 会把静默但成功的命令错误标记为超时，并虚增超时指标。考虑使用一个能反映“未通过 shell 集成捕获到输出”的原因，或者仅在空输出实际上是由超时导致时才报告失败。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "c894b55c5d842a4cc1295b8810cace30cf9fc3305727f56aaacb32955de28128": {
+    "source": "The capture-method values (\"clipboard\", \"shell_integration\", \"none\") are passed as raw string literals, even though this same feature defines enums for the other terminal telemetry dimensions (`TerminalOutputFailureReason`, `TerminalHangStage`, `TerminalUserInterventionAction`). Because `captureTerminalExecution` types `method` as a plain `string`, a typo would silently create a new untracked dimension value without any compile-time error. Consider a shared enum/const (e.g. `TerminalCaptureMethod`) to keep these values consistent and type-checked.",
+    "zh": "捕获方法的值（\"clipboard\"、\"shell_integration\"、\"none\"）以原始字符串字面量的形式传递，尽管同一功能为其他终端遥测维度（`TerminalOutputFailureReason`、`TerminalHangStage`、`TerminalUserInterventionAction`）定义了枚举。由于 `captureTerminalExecution` 将 `method` 类型定义为普通的 `string`，拼写错误会静默地创建一个新的未跟踪维度值，而不会产生任何编译时错误。考虑使用一个共享的枚举/常量（例如 `TerminalCaptureMethod`）来保持这些值一致并受类型检查。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "180a2c9e23f5312832d36b110a016118b18bd1296d0ccdd37e02512d3d77579d": {
+    "source": "Remove async keyword as this method doesn't perform any asynchronous operations. This is misleading and unnecessary.",
+    "zh": "移除 async 关键字，因为此方法不执行任何异步操作。这具有误导性且没有必要。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "07ffbfb8521d58fd2f6ca0fd5676dae7f791e9b554c091b8c5caf9c62c774801": {
+    "source": "Potential security issue: Nonce is not being cleared after validation. This could allow reuse of the same state parameter (replay attack). Consider restoring the call to `this.authService.resetAuthNonce()` upon successful validation.",
+    "zh": "潜在安全问题：验证后未清除 Nonce。这可能允许重用相同的 state 参数（重放攻击）。考虑在验证成功时恢复对 `this.authService.resetAuthNonce()` 的调用。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "f672982df3e503e4251d24edcd136d112fcfffccc8199f0cc7037c568bd73a97": {
+    "source": "Security issue: Nonce should be single-use to prevent replay attacks. The current implementation uses a static readonly nonce that never changes, making it vulnerable to replay attacks. Consider generating a new nonce for each authentication request.",
+    "zh": "安全问题：Nonce 应为一次性使用，以防止重放攻击。当前实现使用了一个永不改变的静态只读 nonce，使其容易受到重放攻击。考虑为每个身份验证请求生成一个新的 nonce。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "98684f11497aefa8bf2699eff42d31ee2db72bee8e08b5a540b48c35713b93f3": {
+    "source": "State validation logic is duplicated in the activation function; delegate the `authService.authNonce !== state` check to `controller.validateAuthState` to maintain a single source of truth.",
+    "zh": "状态验证逻辑在激活函数中重复；将 `authService.authNonce !== state` 检查委托给 `controller.validateAuthState`，以保持单一事实来源。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "6dbb8e36771b052dac9fa82a13a8584fbefa1ee05d7e39a9ef3413f83b64b618": {
+    "source": "**Security Issue: Nonce Reuse Vulnerability**\n\nGenerating the nonce once at service construction creates a serious security vulnerability. The nonce should be unique for each authentication request to provide proper CSRF protection. Reusing the same nonce allows potential replay attacks.\n\n**Recommendation**: Generate a new nonce for each `createAuthRequest()` call. Consider:\n```typescript\nprivate _authNonce: string = ''\n\nasync createAuthRequest(): Promise<String> {\n    if (this._authenticated) {\n        this.sendAuthStatusUpdate()\n        return String.create({ value: \"Already authenticated\" })\n    }\n    \n    // Generate fresh nonce for each auth request\n    this._authNonce = crypto.randomBytes(32).toString(\"hex\")\n    \n    // ... rest of the code\n}\n```",
+    "zh": "**安全问题：Nonce 重用漏洞**\n\n在服务构造时生成一次 nonce 会造成严重的安全漏洞。nonce 应对每个身份验证请求都是唯一的，以提供适当的 CSRF 保护。重用相同的 nonce 会导致潜在的重放攻击。\n\n**建议**：为每次 `createAuthRequest()` 调用生成一个新的 nonce。考虑：\n```typescript\nprivate _authNonce: string = ''\n\nasync createAuthRequest(): Promise<String> {\n    if (this._authenticated) {\n        this.sendAuthStatusUpdate()\n        return String.create({ value: \"Already authenticated\" })\n    }\n    \n    // Generate fresh nonce for each auth request\n    this._authNonce = crypto.randomBytes(32).toString(\"hex\")\n    \n    // ... rest of the code\n}\n```",
+    "method": "DeepSeek 自动翻译"
+  },
+  "de931957e8af2a624ba50e0b81330f1071ca00eaa9bbf0a1ed98d006f85e069b": {
+    "source": "`createAuthRequest(): Promise<String>` uses the protobuf/SDK `String` type (from `@modelcontextprotocol/sdk/types`?) rather than native `string`. This is easy to confuse and can lead to wrong usage. Consider renaming the import (`import { String as RpcString } ...`) and/or changing the method return type to a native `string` if RPC wrapping is not required at this layer.",
+    "zh": "`createAuthRequest(): Promise<String>` 使用的是 protobuf/SDK 的 `String` 类型（来自 `@modelcontextprotocol/sdk/types`？），而不是原生 `string`。这很容易混淆，并可能导致错误使用。考虑重命名导入（`import { String as RpcString } ...`）和/或如果此层不需要 RPC 包装，则将方法返回类型改为原生 `string`。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "5ea086e53bf0b4b776abf66a5497e6ff83658d35acd6d642ddc8850f5ce2180e": {
+    "source": "Throwing a raw Error here may surface as an unhandled exception depending on caller; checklist asks for user-friendly error handling in async flows. Consider catching at the boundary and showing `vscode.window.showErrorMessage(...)` or returning a structured error result for the controller layer to display.",
+    "zh": "在这里抛出原始 Error 可能会根据调用方而表现为未处理的异常；检查清单要求在异步流程中提供用户友好的错误处理。考虑在边界处捕获并显示 `vscode.window.showErrorMessage(...)`，或返回结构化错误结果供控制器层显示。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "e964671823c0c1471ee4aad6e0e23c7e7b734cc425125f54ec9102a92d59ac5a": {
+    "source": "The checkpoint process comment is overly verbose and difficult to parse; restructure it using bullet points or shorter comments for clarity.",
+    "zh": "检查点流程的注释过于冗长且难以解析；请使用项目符号或更短的注释重新组织，以提高清晰度。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "3b7f4b4d013b916344040cb797f4382fc41afcd6de471d99e20511b7b026ea4d": {
+    "source": "Missing error handling for the asynchronous checkpoint commit operation may cause unhandled promise rejections and leave checkpoint messages without commit hashes on failure.",
+    "zh": "异步检查点提交操作缺少错误处理，可能导致未处理的 promise 拒绝，并在失败时使检查点消息没有提交哈希。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "af776d5420773b7630a6f4c4b304b424bc543e1986fe7d71bf001600ed2cdb26": {
+    "source": "The encoding detection logic is complex and could benefit from a comment explaining why encoding detection is necessary (e.g., supporting non-UTF8 files) and the fallback behavior.\n\n```suggestion\n \t\tconst fileBuffer = await fs.readFile(absolutePath)\n \t\t// Detect file encoding to support non-UTF8 files (e.g., GBK, Shift-JIS)\n \t\t// Falls back to UTF8 if detection fails\n \t\tconst detected = chardet.detect(fileBuffer)\n \t\tthis.fileEncoding =\n```",
+    "zh": "编码检测逻辑复杂，可以添加注释说明为什么需要编码检测（例如，支持非 UTF8 文件）以及回退行为。\n\n```suggestion\n \t\tconst fileBuffer = await fs.readFile(absolutePath)\n \t\t// 检测文件编码以支持非 UTF8 文件（例如 GBK、Shift-JIS）\n \t\t// 如果检测失败则回退到 UTF8\n \t\tconst detected = chardet.detect(fileBuffer)\n \t\tthis.fileEncoding =\n```",
+    "method": "DeepSeek 自动翻译"
+  },
+  "26481bdc5c9ac1332876b2ed0f9deb32c897af8e11ceb2c1000c30e3629a2fed": {
+    "source": "Missing error handling for file reading and encoding operations. If readFile fails or if encoding detection/decoding fails, it could cause unhandled exceptions. Consider wrapping in try/catch blocks and providing appropriate fallback behavior.",
+    "zh": "文件读取和编码操作缺少错误处理。如果 readFile 失败，或者编码检测/解码失败，可能会导致未处理的异常。考虑将其包裹在 try/catch 块中，并提供适当的回退行为。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "a5d3336d3ab1de76ba1e22ef2036f98f34724d310d59b03c2c55783bec5807b9": {
+    "source": "Missing error handling for file writing operation. The writeFile operation should be wrapped in a try/catch block to handle potential errors during file encoding or disk I/O operations.",
+    "zh": "文件写入操作缺少错误处理。writeFile 操作应包裹在 try/catch 块中，以处理文件编码或磁盘 I/O 操作期间可能出现的错误。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "1e4bbdb3ea97adddf917639abf269b4f9d546ab6f7dc56e212321cebe400acf5": {
+    "source": "Remove the unnecessary double type cast (`as unknown as Uint8Array`) in the `fs.writeFile` call since `iconv.encode` returns a Buffer which is natively supported by the function.",
+    "zh": "移除 `fs.writeFile` 调用中不必要的双重类型转换（`as unknown as Uint8Array`），因为 `iconv.encode` 返回的是 Buffer，该函数原生支持它。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "ac774a3735ecca73e71cce46199ab810ea3357d079455b55181f4ecddfe72645": {
+    "source": "`getFileSizeInKB` is imported but no longer used in the code. It is recommended to use it to check the file size before `fs.readFile` to avoid reading large files into memory.",
+    "zh": "`getFileSizeInKB` 已被导入，但代码中不再使用。建议在 `fs.readFile` 之前使用它检查文件大小，以避免将大文件读入内存。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "214cc0792dd7bde755ca8ec02d2cd2b8f4a9bcb230e9550fc45da71aa44ec56c": {
+    "source": "Reading the entire file into memory before checking its size can lead to high memory consumption or crashes with large files. It is strictly recommended to check the file size using `fs.stat` (or `getFileSizeInKB`) before reading the file content.",
+    "zh": "在检查文件大小之前将整个文件读入内存，可能导致高内存消耗或在大文件时崩溃。强烈建议在读取文件内容之前使用 `fs.stat`（或 `getFileSizeInKB`）检查文件大小。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "2e6b33cbfe94a8bbf22b769ff2378508a4ca5a5456c0008c6c3eaec1680d971e": {
+    "source": "`extractTextFromIPYNB` now duplicates the encoding-detection + decode logic from the default branch. Consider extracting a small helper like `readTextFileWithEncodingDetection(filePath)` to reduce duplication and keep behavior consistent (size limit, binary check, confidence threshold, normalization, error handling).",
+    "zh": "`extractTextFromIPYNB` 现在重复了默认分支中的编码检测 + 解码逻辑。考虑提取一个小的辅助函数，如 `readTextFileWithEncodingDetection(filePath)`，以减少重复并保持行为一致（大小限制、二进制检查、置信度阈值、规范化、错误处理）。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "2fcf437a1a85a884ffa44246409c36d9019ca0319bfe7419edfc597c1ba6b23a": {
+    "source": "This nested ternary expression is difficult to read and violates the coding standard. Refactor to use if-else statements for better readability.",
+    "zh": "这个嵌套三元表达式难以阅读，违反了编码标准。重构为使用 if-else 语句以提高可读性。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "a9e9eba1b970513be53570f61fde2d513ba39e3594895146f7867bc01a65ebac": {
+    "source": "Using 'as any' weakens type safety. Prefer validating existence of '.encoding' before accessing it, e.g., 'if (detected && typeof detected === 'object' && 'encoding' in detected)'",
+    "zh": "使用 'as any' 削弱了类型安全性。建议在访问 '.encoding' 之前验证其存在性，例如 'if (detected && typeof detected === 'object' && 'encoding' in detected)'",
+    "method": "DeepSeek 自动翻译"
+  },
+  "c3d403eb4027bd716420214add5ea9a0b7fb9795c638df384b2aa9878b69cd39": {
+    "source": "The constant `BUFFER_STUCK_TIMEOUT_MS` is declared within method scope; move it to the class level or configuration file to enable reuse and configurability.",
+    "zh": "常量 `BUFFER_STUCK_TIMEOUT_MS` 声明在方法作用域内；将其移到类级别或配置文件中，以实现复用和可配置性。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "9f0f68900bfb1aec10bc26439b6fb6114fcffaf04d16367e3b58ef905b74c8c7": {
+    "source": "Potential timer leak: If flushBuffer() is called multiple times rapidly, a new bufferStuckTimer could be created before the previous one is cleared, leading to multiple timers running simultaneously. Consider clearing any existing timer before creating a new one:\n```typescript\nif (bufferStuckTimer) {\n    clearTimeout(bufferStuckTimer)\n}\nbufferStuckTimer = setTimeout(...)\n```",
+    "zh": "潜在的定时器泄漏：如果快速多次调用 flushBuffer()，可能会在前一个 bufferStuckTimer 被清除之前创建一个新的 bufferStuckTimer，导致多个定时器同时运行。考虑在创建新定时器之前清除任何现有定时器：\n```typescript\nif (bufferStuckTimer) {\n    clearTimeout(bufferStuckTimer)\n}\nbufferStuckTimer = setTimeout(...)\n```",
+    "method": "DeepSeek 自动翻译"
+  },
+  "65dbb0c26b974f5a50b1583b8c88e7eeeadaa7ea0569dfd3ec6dc080af74759f": {
+    "source": "The COMPLETION_TIMEOUT_MS constant is unnecessarily scoped within a function; relocate it to class level or configuration for maintainability and configurability.",
+    "zh": "COMPLETION_TIMEOUT_MS 常量不必要地限定在函数作用域内；将其移到类级别或配置中，以提高可维护性和可配置性。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "60389407741bb3bf49935818d804e2d9430f753e115c6b1b0ae2e5d467fe88e0": {
+    "source": "Consider using a more robust timer management pattern. The current approach sets timers in multiple places without centralized cleanup. This could lead to memory leaks if timers aren't properly cleared in all execution paths.",
+    "zh": "考虑使用更健壮的定时器管理模式。当前方法在多个位置设置定时器，而没有集中清理。如果在所有执行路径中未正确清除定时器，这可能导致内存泄漏。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "4581c5ab4400f20de18572309d8aaf3e6106cfbb3800c274ccf4c7fd0704dbcf": {
+    "source": "`TerminalOutputFailureReason.TIMEOUT` is likely misleading here. This branch triggers when `fullOutput` is empty after shell integration finished, which could be “no output / stream empty / parsing removed everything”, not necessarily a timeout. Consider introducing/using a more accurate reason (e.g., `EMPTY_OUTPUT` / `SHELL_INTEGRATION_EMPTY_OUTPUT`) to avoid skewing telemetry.\n\n```suggestion\n    telemetryService.captureTerminalOutputFailure(TerminalOutputFailureReason.EMPTY_OUTPUT) // or a more accurate enum value\n```",
+    "zh": "`TerminalOutputFailureReason.TIMEOUT` 在这里可能具有误导性。此分支在 shell 集成完成后 `fullOutput` 为空时触发，这可能是“无输出 / 流为空 / 解析移除了所有内容”，而不一定是超时。考虑引入/使用更准确的原因（例如 `EMPTY_OUTPUT` / `SHELL_INTEGRATION_EMPTY_OUTPUT`），以避免扭曲遥测数据。\n\n```suggestion\n    telemetryService.captureTerminalOutputFailure(TerminalOutputFailureReason.EMPTY_OUTPUT) // 或更准确的枚举值\n```",
+    "method": "DeepSeek 自动翻译"
+  },
+  "277678f2efa570628dfd535d2028a1c47512bbe1b783a62845dc93ecd10c0204": {
+    "source": "Hardcoded string literals: The method parameter values (\"clipboard\", \"none\", \"shell_integration\") are hardcoded strings. While the JSDoc in TelemetryService.ts documents these values, there's no type-safe way to enforce them. Consider defining a union type or enum to ensure type safety and consistency.",
+    "zh": "硬编码字符串字面量：方法参数值（\"clipboard\"、\"none\"、\"shell_integration\"）是硬编码字符串。虽然 TelemetryService.ts 中的 JSDoc 记录了这些值，但没有类型安全的方式来强制它们。考虑定义联合类型或枚举，以确保类型安全和一致性。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "75371c4eea510f8e871bf07fdc19b4ee5ab99cdca516ab6f7739fbd151c4b695": {
+    "source": "Parameter 'method' in captureTerminalExecution should be constrained to the specific string literals `'shell_integration' | 'clipboard' | 'none'` instead of a generic string type for compile-time validation.",
+    "zh": "captureTerminalExecution 中的参数 'method' 应约束为特定的字符串字面量 `'shell_integration' | 'clipboard' | 'none'`，而不是泛型字符串类型，以便进行编译时验证。",
+    "method": "DeepSeek 自动翻译"
+  },
+  "17e6ed8515a7b9837a482be736d17b9b32ba7be3eb9a3cd2dc496eb06efbc290": {
+    "source": "Re-exporting enums from \"./TelemetryService\" couples the public telemetry index to a runtime module. If TelemetryService has side effects (singleton init, provider wiring) or imports back from this index, this can create circular deps and unexpected load-order issues. Consider moving these enums to a dedicated types/enums file (or exporting them from TelemetryProviderFactory if appropriate) and re-export from there. Also ensure these are `export enum`/`export const enum`/`export type` as intended to avoid bundling extra runtime code.",
+    "zh": "从 \"./TelemetryService\" 重新导出枚举会将公共遥测索引与运行时模块耦合。如果 TelemetryService 具有副作用（单例初始化、提供程序接线）或从此索引反向导入，则可能产生循环依赖和意外的加载顺序问题。考虑将这些枚举移至专用的 types/enums 文件（或在适当时从 TelemetryProviderFactory 导出），并从那里重新导出。同时确保这些按预期为 `export enum`/`export const enum`/`export type`，以避免打包额外的运行时代码。",
+    "method": "DeepSeek 自动翻译"
+  }
+}

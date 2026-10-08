@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/DeepSoftwareAnalytics/MCR-bench",
+  "revision": "fa88b72ca94b928560afd5573aaf715f64b7210b",
+  "files": {
+    "prompt_builder.py": "7a2d1410ce3586186cc6f516d8d12a90b50bd75930d3349d08fb9411f28580fa",
+    "metrics_calculator.py": "508e1557a994a1a6450760dc51ab9939a7d091158a40beddfd839d1b408fd1fa",
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "README.md": "2d5df5eea4d70ddef50a1827dba31053f9738537c8946c7c9117389ee47b1096"
+  }
+}

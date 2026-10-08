@@ -1,0 +1,19 @@
+{
+  "method": "complete_2_to_3_round_python_PRs_without_future_commit_SHA_or_current_future_events_then_smallest_total_prompt_chars_then_id",
+  "selected": "pallets__flask-4268",
+  "eligible": 33,
+  "rejected": [
+    {
+      "instance": "scikit-learn__scikit-learn-27043",
+      "reason": [
+        "scikit-learn__scikit-learn-27043_round2"
+      ]
+    },
+    {
+      "instance": "scikit-learn__scikit-learn-31480",
+      "reason": [
+        "scikit-learn__scikit-learn-31480_round2"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "pr_number": 9060,
+  "repo": "stylelint/stylelint",
+  "task_id": "stylelint__9060",
+  "config_name": "config_B",
+  "pipeline_version": "v0.4.1",
+  "total_tokens": 417,
+  "was_truncated": false,
+  "rendered": "## Layer 0 - Task + Focus\nYou are reviewing a pull request.\n\nFocus:\n- Identify real issues in the changes.\n- Prioritize correctness and logic.\n- Use surrounding code only if required.\n\nDo not speculate.\n\n---\n\n## Layer 1 - Key Changes Summary\nKey Changes:\n- `lib/rules/time-min-milliseconds/index.mjs`: 10 changed lines, 1 function/branch hunks, logic markers=2.\n- PR profile: type=bug_fix, difficulty=Type1_Direct, language=JavaScript, files_changed=2.\n\n---\n\n## Layer 2 - Diff (Core)\n\n### lib/rules/time-min-milliseconds/index.mjs\n```diff\ndiff --git a/lib/rules/time-min-milliseconds/index.mjs b/lib/rules/time-min-milliseconds/index.mjs\nindex bcf0090bdb..68d9324a22 100644\n--- a/lib/rules/time-min-milliseconds/index.mjs\n+++ b/lib/rules/time-min-milliseconds/index.mjs\n@@ -23,6 +23,8 @@ const meta = {\n \n const DELAY_PROPERTIES = new Set(['animation-delay', 'transition-delay']);\n \n+const HAS_TIME = /\\dm?s/i;\n+\n /** @type {import('stylelint').CoreRules[ruleName]} */\n const rule = (primary, secondaryOptions) => {\n \treturn (root, result) => {\n@@ -50,8 +52,12 @@ const rule = (primary, secondaryOptions) => {\n \t\tconst ignoreDelay = optionsMatches(secondaryOptions, 'ignore', 'delay');\n \n \t\troot.walkDecls((decl) => {\n-\t\t\tconst propertyName = vendor.unprefixed(decl.prop.toLowerCase());\n \t\t\tconst propertyValue = decl.value;\n+\n+\t\t\tif (!HAS_TIME.test(propertyValue)) return;\n+\n+\t\t\tconst propertyName = vendor.unprefixed(decl.prop.toLowerCase());\n+\n \t\t\tconst parsedValue = valueParser(getDeclarationValue(decl));\n \t\t\tlet timeValueCount = 0;\n \n\n```\n\n---\n\n## Layer 3 - Execution Context\n\n---\n\n## Layer 4 - Behavior Mapping\n\n---\n\n## Layer 6 - Minimal Metadata\n- Language: JavaScript\n- Files changed: 2\n- PR type: bug_fix"
+}

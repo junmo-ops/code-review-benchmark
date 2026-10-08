@@ -1,0 +1,17 @@
+{
+  "dataset": "inclusionAI/SWE-CARE",
+  "revision": "3b3a625ef26bd497a3a13485c0dc9ece537f24d0",
+  "split": "test",
+  "source_sha256": "be45381d2579e74d64abee7aedb1438843a83cd0a22a29d9bb8e141c35d26b07",
+  "source_rows": 671,
+  "selection": {
+    "method": "smallest_patch_chars_then_instance_id",
+    "limit": 1,
+    "purpose": "integration_only_not_representative"
+  },
+  "selected_ids": [
+    "psf__requests-5711@9484e13"
+  ],
+  "dataset_sha256": "48d6abea5deb3fd23bae86003c87f677a82abc49cdccd1e1cbd13d413134db02",
+  "note": "revision 为输入声明；官方来源认证需要核对原始下载哈希与来源清单"
+}

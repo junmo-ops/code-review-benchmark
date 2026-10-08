@@ -1,0 +1,301 @@
+[
+  {
+    "task_id": "pallets__flask-4268_round1",
+    "pr_title": "Fix grammatical error",
+    "pr_description": "Fix grammatical error in docs\r\n",
+    "events_up_to_round": [],
+    "code_diff": {
+      "commits": [
+        {
+          "sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+          "message": "Fix grammatical error"
+        }
+      ],
+      "diff": "diff --git a/src/flask/scaffold.py b/src/flask/scaffold.py\n@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if\n+        they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors.\n "
+    },
+    "linked_issues": [],
+    "ground_truth": {
+      "defects": [
+        {
+          "defect_id": "DEFECT-1",
+          "title": "Grammatical error and phrasing improvement in teardown_request docstring",
+          "description": "The docstring for teardown_request contained a broken sentence ('since they . If they'). The reviewer suggested using a full stop after 'raising exceptions' to create two clear sentences instead of using a conjunction.",
+          "taxonomy": "E.1.2",
+          "severity": "Trivial",
+          "state": "New",
+          "previous_state": "NotPresent",
+          "location": {
+            "file": "src/flask/scaffold.py",
+            "lines": "592"
+          }
+        }
+      ],
+      "defects_count": 1
+    }
+  },
+  {
+    "task_id": "pallets__flask-4268_round2",
+    "pr_title": "Fix grammatical error",
+    "pr_description": "Fix grammatical error in docs\r\n",
+    "events_up_to_round": [
+      {
+        "event_id": "commit_b259a80c_1_1",
+        "round_id": 1,
+        "event_type": "commit",
+        "author": "Pedro Torcatt",
+        "author_role": "PR author",
+        "created_at": "2021-09-22T15:46:28Z",
+        "body": "Fix grammatical error",
+        "commit_sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+        "commit_message": "Fix grammatical error",
+        "patch": "@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if\n+        they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors.\n ",
+        "parent_sha": "24aab7a08d0b3f40d9fc9e49706854ef8be7a05f",
+        "sequence": 1
+      },
+      {
+        "event_id": "comment_714104549_1_4",
+        "round_id": 1,
+        "event_type": "review_comment",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:15:53Z",
+        "body": "Sounds better with a stop: \"...raising exceptions. If they...\"",
+        "file_path": "src/flask/scaffold.py",
+        "line_start": null,
+        "line_end": null,
+        "diff_hunk": "@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if",
+        "commit_sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+        "in_reply_to": null,
+        "comment_id": "714104549"
+      },
+      {
+        "event_id": "comment_761135505_1_8",
+        "round_id": 1,
+        "event_type": "review_action",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:15:53Z",
+        "body": "",
+        "state": "COMMENTED",
+        "commit_sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+        "review_id": "761135505"
+      }
+    ],
+    "code_diff": {
+      "commits": [
+        {
+          "sha": "ec97d6cbf2abc89906a72bffc13dff368150ed85",
+          "message": "Update scaffold.py"
+        }
+      ],
+      "diff": "diff --git a/src/flask/scaffold.py b/src/flask/scaffold.py\n@@ -589,7 +589,7 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, because if\n+        Teardown functions must avoid raising exceptions. If\n         they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors."
+    },
+    "linked_issues": [],
+    "ground_truth": {
+      "defects": [
+        {
+          "defect_id": "DEFECT-1",
+          "title": "Grammatical error and phrasing improvement in teardown_request docstring",
+          "description": "The docstring for teardown_request contained a broken sentence ('since they . If they'). The reviewer suggested using a full stop after 'raising exceptions' to create two clear sentences instead of using a conjunction.",
+          "taxonomy": "E.1.2",
+          "severity": "Trivial",
+          "state": "Resolved",
+          "previous_state": "New",
+          "location": {
+            "file": "src/flask/scaffold.py",
+            "lines": "592"
+          }
+        },
+        {
+          "defect_id": "DEFECT-2",
+          "title": "Improve grammar and clarity in teardown_request docstring wording",
+          "description": "Reviewer suggested stylistic improvements in the teardown_request docstring: replacing 'these code by' with 'that code with' and 'occurring errors' with 'any errors' for better readability.",
+          "taxonomy": "E.1.1",
+          "severity": "Trivial",
+          "state": "New",
+          "previous_state": "NotPresent",
+          "location": {
+            "file": "src/flask/scaffold.py",
+            "lines": "592-595"
+          }
+        }
+      ],
+      "defects_count": 2
+    }
+  },
+  {
+    "task_id": "pallets__flask-4268_round3",
+    "pr_title": "Fix grammatical error",
+    "pr_description": "Fix grammatical error in docs\r\n",
+    "events_up_to_round": [
+      {
+        "event_id": "commit_b259a80c_1_1",
+        "round_id": 1,
+        "event_type": "commit",
+        "author": "Pedro Torcatt",
+        "author_role": "PR author",
+        "created_at": "2021-09-22T15:46:28Z",
+        "body": "Fix grammatical error",
+        "commit_sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+        "commit_message": "Fix grammatical error",
+        "patch": "@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if\n+        they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors.\n ",
+        "parent_sha": "24aab7a08d0b3f40d9fc9e49706854ef8be7a05f",
+        "sequence": 1
+      },
+      {
+        "event_id": "comment_714104549_1_4",
+        "round_id": 1,
+        "event_type": "review_comment",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:15:53Z",
+        "body": "Sounds better with a stop: \"...raising exceptions. If they...\"",
+        "file_path": "src/flask/scaffold.py",
+        "line_start": null,
+        "line_end": null,
+        "diff_hunk": "@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if",
+        "commit_sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+        "in_reply_to": null,
+        "comment_id": "714104549"
+      },
+      {
+        "event_id": "comment_761135505_1_8",
+        "round_id": 1,
+        "event_type": "review_action",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:15:53Z",
+        "body": "",
+        "state": "COMMENTED",
+        "commit_sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+        "review_id": "761135505"
+      },
+      {
+        "event_id": "commit_ec97d6cb_2_2",
+        "round_id": 2,
+        "event_type": "commit",
+        "author": "Pedro Torcatt",
+        "author_role": "PR author",
+        "created_at": "2021-09-22T16:37:12Z",
+        "body": "Update scaffold.py",
+        "commit_sha": "ec97d6cbf2abc89906a72bffc13dff368150ed85",
+        "commit_message": "Update scaffold.py",
+        "patch": "@@ -589,7 +589,7 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, because if\n+        Teardown functions must avoid raising exceptions. If\n         they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors.",
+        "parent_sha": "b259a80cdeae4fb6a7b733249c446d1ba54649a7",
+        "sequence": 2
+      },
+      {
+        "event_id": "comment_714124905_2_5",
+        "round_id": 2,
+        "event_type": "review_comment",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:41:18Z",
+        "body": "\"that code with\" instead of \"these code by\"",
+        "file_path": "src/flask/scaffold.py",
+        "line_start": null,
+        "line_end": null,
+        "diff_hunk": "@@ -589,7 +589,7 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, because if\n+        Teardown functions must avoid raising exceptions. If\n         they execute code that might fail they\n         will have to surround the execution of these code by try/except",
+        "commit_sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+        "in_reply_to": null,
+        "comment_id": "714124905"
+      },
+      {
+        "event_id": "comment_761162183_2_9",
+        "round_id": 2,
+        "event_type": "review_action",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:41:18Z",
+        "body": "",
+        "state": "COMMENTED",
+        "commit_sha": "ec97d6cbf2abc89906a72bffc13dff368150ed85",
+        "review_id": "761162183"
+      },
+      {
+        "event_id": "comment_714125324_2_6",
+        "round_id": 2,
+        "event_type": "review_comment",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:41:50Z",
+        "body": "\"any errors\" instead of \"occurring errors\"",
+        "file_path": "src/flask/scaffold.py",
+        "line_start": null,
+        "line_end": null,
+        "diff_hunk": "@@ -589,7 +589,7 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, because if\n+        Teardown functions must avoid raising exceptions. If\n         they execute code that might fail they\n         will have to surround the execution of these code by try/except\n         statements and log occurring errors.",
+        "commit_sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+        "in_reply_to": null,
+        "comment_id": "714125324"
+      },
+      {
+        "event_id": "comment_761162757_2_10",
+        "round_id": 2,
+        "event_type": "review_action",
+        "author": "davidism",
+        "author_role": "reviewer",
+        "created_at": "2021-09-22T16:41:51Z",
+        "body": "",
+        "state": "COMMENTED",
+        "commit_sha": "ec97d6cbf2abc89906a72bffc13dff368150ed85",
+        "review_id": "761162757"
+      },
+      {
+        "event_id": "comment_714128053_2_7",
+        "round_id": 2,
+        "event_type": "review_comment",
+        "author": "Jalkhov",
+        "author_role": "PR author",
+        "created_at": "2021-09-22T16:45:11Z",
+        "body": "Ready",
+        "file_path": "src/flask/scaffold.py",
+        "line_start": null,
+        "line_end": null,
+        "diff_hunk": "@@ -589,8 +589,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n         stack of active contexts.  This becomes relevant if you are using\n         such constructs in tests.\n \n-        Teardown functions must avoid raising exceptions, since they . If they\n-        execute code that might fail they\n+        Teardown functions must avoid raising exceptions, because if",
+        "commit_sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+        "in_reply_to": null,
+        "comment_id": "714128053"
+      },
+      {
+        "event_id": "comment_761166195_2_11",
+        "round_id": 2,
+        "event_type": "review_action",
+        "author": "Jalkhov",
+        "author_role": "author",
+        "created_at": "2021-09-22T16:45:11Z",
+        "body": "",
+        "state": "COMMENTED",
+        "commit_sha": "ec97d6cbf2abc89906a72bffc13dff368150ed85",
+        "review_id": "761166195"
+      }
+    ],
+    "code_diff": {
+      "commits": [
+        {
+          "sha": "92402ccf2bf920b8121e9eae09d89ea97a8e3454",
+          "message": "Update scaffold.py"
+        }
+      ],
+      "diff": "diff --git a/src/flask/scaffold.py b/src/flask/scaffold.py\n@@ -591,8 +591,8 @@ def teardown_request(self, f: TeardownCallable) -> TeardownCallable:\n \n         Teardown functions must avoid raising exceptions. If\n         they execute code that might fail they\n-        will have to surround the execution of these code by try/except\n-        statements and log occurring errors.\n+        will have to surround the execution of that code with try/except\n+        statements and log any errors.\n \n         When a teardown function was called because of an exception it will\n         be passed an error object."
+    },
+    "linked_issues": [],
+    "ground_truth": {
+      "defects": [
+        {
+          "defect_id": "DEFECT-2",
+          "title": "Improve grammar and clarity in teardown_request docstring wording",
+          "description": "Reviewer suggested stylistic improvements in the teardown_request docstring: replacing 'these code by' with 'that code with' and 'occurring errors' with 'any errors' for better readability.",
+          "taxonomy": "E.1.1",
+          "severity": "Trivial",
+          "state": "Resolved",
+          "previous_state": "New",
+          "location": {
+            "file": "src/flask/scaffold.py",
+            "lines": "591-594"
+          }
+        }
+      ],
+      "defects_count": 1
+    }
+  }
+]

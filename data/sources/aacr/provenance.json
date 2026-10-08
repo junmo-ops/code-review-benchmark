@@ -1,0 +1,57 @@
+{
+  "benchmark_name": "AACR-Bench",
+  "scope": "five_case_integration_pilot",
+  "raw_file": "data/sources/aacr/pilot5.raw.json",
+  "raw_sha256": "73dcb5c9511e4bd9b8bb9bb33ff8fb412c6bb3ba97f1bb172a4f725d71ab5b33",
+  "case_count": 5,
+  "upstream_url": null,
+  "upstream_revision": null,
+  "sampling_seed": null,
+  "provenance_limitations": "保留的五例原始记录来自早期 AACR 接入实验；原始下载地址、上游版本和抽样种子未保存，不能据此证明与上游某个版本完全一致。",
+  "converter": "vendor/aacr/evaluation/converters/aacr_bench.py",
+  "validation": "原始五例逐例转换后，与 pilot5.jsonl 全量和 pilot1.jsonl 子集的仓库、提交、参考评论及行号完全一致。",
+  "datasets": [
+    {
+      "path": "data/pilot5.jsonl",
+      "sha256": "22e1b44a7f1b276bb671985d6c199be6edb6d9bba2f7d7c8bbc78fc413ed698d",
+      "case_count": 5,
+      "instance_ids": [
+        "cline__cline@2195a68",
+        "cline__cline@419534c",
+        "cline__cline@7d18fb9",
+        "cline__cline@f098af0",
+        "cline__cline@cb4d5c9"
+      ]
+    },
+    {
+      "path": "data/pilot1.jsonl",
+      "sha256": "373cf969349fa0951bf897e626365744daabca2df0b7bc72f21718511bcad637",
+      "case_count": 1,
+      "instance_ids": [
+        "cline__cline@419534c"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "instance_id": "cline__cline@cb4d5c9",
+      "github_pr_url": "https://github.com/cline/cline/pull/1808"
+    },
+    {
+      "instance_id": "cline__cline@419534c",
+      "github_pr_url": "https://github.com/cline/cline/pull/5177"
+    },
+    {
+      "instance_id": "cline__cline@7d18fb9",
+      "github_pr_url": "https://github.com/cline/cline/pull/2347"
+    },
+    {
+      "instance_id": "cline__cline@2195a68",
+      "github_pr_url": "https://github.com/cline/cline/pull/4786"
+    },
+    {
+      "instance_id": "cline__cline@f098af0",
+      "github_pr_url": "https://github.com/cline/cline/pull/5955"
+    }
+  ]
+}

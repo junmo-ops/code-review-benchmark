@@ -1,0 +1,9 @@
+{
+  "LCR_LLM_BASE_URL": "https://api.openai.com/v1",
+  "LCR_LLM_TOKEN": "",
+  "LCR_LLM_MODEL": "gpt-5.4",
+  "JUDGE_BASE_URL": "https://api.deepseek.com",
+  "JUDGE_API_KEY": "",
+  "JUDGE_MODEL": "填写原有 DeepSeek 裁判模型名",
+  "JUDGE_USE_MOCK": "false"
+}

@@ -1,0 +1,34 @@
+{
+  "repository": "https://github.com/DeepSoftwareAnalytics/MCR-bench",
+  "revision": "fa88b72ca94b928560afd5573aaf715f64b7210b",
+  "dataset_sha256": "78fa84d76b2b25483af54bd2b7ab72f6c43703c9096a3114e272af9a12bb1cf0",
+  "source_files": {
+    "py.jsonl": "a4267eb02cbb04e34c267e9e6075692278f1718e406249892db07d1085cf4ccc",
+    "py_prompts.actual.jsonl": "fd27259d25ce13eff47804f5acff6fef787f8a098da2538571ca568339a4e404"
+  },
+  "selection": {
+    "method": "complete_2_to_3_round_python_PRs_without_future_commit_SHA_or_current_future_events_then_smallest_total_prompt_chars_then_id",
+    "selected": "pallets__flask-4268",
+    "eligible": 33,
+    "rejected": [
+      {
+        "instance": "scikit-learn__scikit-learn-27043",
+        "reason": [
+          "scikit-learn__scikit-learn-27043_round2"
+        ]
+      },
+      {
+        "instance": "scikit-learn__scikit-learn-31480",
+        "reason": [
+          "scikit-learn__scikit-learn-31480_round2"
+        ]
+      }
+    ]
+  },
+  "files": {
+    "selected-prompts.json": "67de1689ed35f20e511094c2535c739b5b6f4c59e85fc66d727a03556e9fd861",
+    "selected-rounds.json": "a4595b0ed03f37f03a5810ce2be6ec756d77fbf8580f9487b4f5f38e7e36c115",
+    "selection.json": "6107e2b068237d3939e07c45983599736272c8a6f0301814b46789b27a79767d"
+  },
+  "boundary": "published prompts exclude current round discussion; constructor source differs; matched task IDs and ground truth checked"
+}

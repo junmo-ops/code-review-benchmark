@@ -1,0 +1,21 @@
+{
+  "suite": "ccrab",
+  "status": "prepared_not_executed",
+  "upstream": "https://github.com/c-CRAB-Benchmark/dataset",
+  "revision": "856dfa3102b8996d168c4f195217b7603e1d1bc6",
+  "source_stage": "stage4_agent_resolved",
+  "source_instances": 184,
+  "instance_id": "networkx__networkx-7159@7e65b7d",
+  "selection": "Smallest patch among Stage 4 NetworkX instances (pure Python); selected before any local review. Smoke test only, not representative.",
+  "source_sha256": "12984d013921bbffb0542e4eafbc5dfede75760eed9953e1a7db82def6ef17d9",
+  "testgen_archive_sha256": "c5300efc426abf2d7e0a67f09e878b48186bf68ba1bd4f66a031747437502a42",
+  "license": "No LICENSE file found in pinned upstream tree; no license inferred. Local research preparation only.",
+  "test_limitation": "Released test checks exact source string spelling, not broad behavioral equivalence.",
+  "repair_backend": "local bounded DeepSeek file-editing adapter; protocol ccrab_deepseek_local_v1; runtime validation recorded per run",
+  "files": {
+    "data/ccrab-pilot1.jsonl": "9a3e9a3a29b73d4adfa1519adfe3a721f71da6f0b7d865c80a9b12304360a4dc",
+    "data/sources/ccrab/pilot1.raw.json": "df007783212693bd0fa5850231b1a30a8b112a2d4999adabbb997bb7004fb7c3",
+    "data/sources/ccrab/testgen/networkx__networkx-7159@7e65b7d/result.json": "a50e05f75f9c99817e683fa09a331e3087ed85010c3ae5c9e2b69d85fb7ded38",
+    "data/sources/ccrab/testgen/networkx__networkx-7159@7e65b7d/test_review_comment_0.py": "686d1519dc57d9254f7e16882f662b06b247911bd9f3e2f7bc8b96b08ca4434c"
+  }
+}

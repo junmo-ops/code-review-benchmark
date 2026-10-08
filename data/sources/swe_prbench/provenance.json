@@ -1,0 +1,16 @@
+{
+  "dataset": "https://huggingface.co/datasets/foundry-ai/swe-prbench",
+  "revision": "b87f5797aef3ed2c3153bb1304ea4d801d36ba6e",
+  "license": "CC-BY-4.0",
+  "selection": "eval_100 subset: smallest diff_patch character length, tie by task_id; selected before reading annotations",
+  "task_id": "stylelint__9060",
+  "files": {
+    "prs.jsonl": "3f2c577fd7a8dc64661f880a73f9a2e26876d82492545fb43d6becdc6d269fb1",
+    "README.md": "d89d602a4b486f5278198ec085e8c30a8ed2e455ca99281b7331bcc92d3fd90c",
+    "dataset/annotations/stylelint__9060_human.json": "ec5ae8f076e701d869af562bed8d51ebbef5791629cc5f7af0b22e710754861e",
+    "dataset/contexts/config_A/stylelint__9060.json": "d0c03d78bb99983cf8be909e7fd00f312218b26250e48b33a8facbd9c05c707a",
+    "dataset/contexts/config_C/stylelint__9060.json": "3df596c1d65546706542799c8e86fbd8bdb50f794f7e0230954604f9dbbeb5fe",
+    "dataset/contexts/config_B/stylelint__9060.json": "cda16b4ee4b6b8cef57116890f2483281021c01acbc42020ad9e8e6bbb4af753"
+  },
+  "dataset_sha256": "69d93fb227abf9be0eb875e1ff2d79f8ee3b9452c117f2d1de9570f11abd1223"
+}

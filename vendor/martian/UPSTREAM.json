@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/withmartian/code-review-benchmark",
+  "revision": "e616e849755441da38f18bf3adba2c9583b03803",
+  "license": "MIT",
+  "files": {
+    "LICENSE": "3d0f7aacf358c3578c1e541bdd297b675d76805e6bf3dddaf89b6d2b45e3afad",
+    "README.md": "4eca16de461cf4dad0cf09f51595b19c48ad81be60bb63b9d4874b8bc5e99bf9",
+    "offline/README.md": "53ec48dc3b4751455491d80ab9f2247a2afb8bbfeb52512cd92a3cfb47ac6a32",
+    "offline/pyproject.toml": "f5f91bfe5074babc830d699e4aa1445c5e8b6c7e13701cedc25d4153efd866cb",
+    "offline/code_review_benchmark/step3_judge_comments.py": "7370dfb21bed01655aada1d4d75f32e07c92e4c4c86dfc6cf6d47058a65ce16d",
+    "offline/code_review_benchmark/step2_5_dedup_candidates.py": "5438ffb2a487129bd0f85d5a8c43020efe5027ec2d1d51e599b9c1d9f743cd4c"
+  }
+}

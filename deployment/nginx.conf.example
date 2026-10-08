@@ -1,0 +1,22 @@
+# Replace domain, TLS certificate paths and proxy token before installation.
+# Restrict this file's read permissions: it contains the proxy credential.
+server {
+    listen 443 ssl;
+    server_name review-lab.example.internal;
+    ssl_certificate /etc/review-lab/tls/fullchain.pem;
+    ssl_certificate_key /etc/review-lab/tls/privkey.pem;
+    client_max_body_size 16k;
+    # Pilot fallback when the company SSO gateway is not yet connected.
+    auth_basic "Review Lab";
+    auth_basic_user_file /etc/review-lab/htpasswd;
+    location / {
+        proxy_pass http://127.0.0.1:8766;
+        proxy_set_header Host $host;
+        proxy_set_header X-Bench-Proxy-Token "REPLACE_WITH_BENCH_PROXY_TOKEN";
+        proxy_set_header X-Bench-User $remote_user;
+        # This pilot grants authenticated users operator rights.
+        # For SSO, map validated identities to viewer/operator at the gateway.
+        proxy_set_header X-Bench-Role operator;
+        proxy_read_timeout 120s;
+    }
+}

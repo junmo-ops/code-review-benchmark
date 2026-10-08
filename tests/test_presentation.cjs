@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const ux=require('../webui/static/presentation.js');
+const r={suite:'aacr',status:'pending',completed:0,total:5,metrics:{}};
+assert.equal(ux.primary(r).action,'workflow');
+assert.equal(ux.primary({...r,status:'reviewed'}).action,'eval');
+assert.equal(ux.primary({...r,status:'scored'}).view,'report');
+assert.equal(ux.primary(r,{status:'queued'}).view,'log');
+assert.equal(ux.primary(r,{status:'failed'}).view,'log');
+assert.equal(ux.primary({...r,compatibility_warning:'old'}).action,undefined);
+assert.match(ux.result({...r,suite:'ccrab',status:'complete_no_findings'}),/未执行/);
+assert.match(ux.result({...r,status:'partial',completed:2}),/2\/5/);
+assert.match(ux.result({...r,status:'failed'}),/不等于/);
+assert.equal(ux.duration(125),'2 分 5 秒');
+console.log('Presentation decisions: 10 assertions passed');

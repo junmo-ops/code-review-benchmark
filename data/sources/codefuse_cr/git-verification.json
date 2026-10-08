@@ -1,0 +1,10 @@
+{
+  "instance_id": "psf__requests-5711@9484e13",
+  "base": "5351469472eccee7ed1a6cae53341446c520d807",
+  "head": "9484e13c7da927119fe82794bb5571cec144b6d7",
+  "merge_base": "c2b307dbefe21177af03f9feb37181a89a799fcc",
+  "normalized_patch_equal": true,
+  "normalization": "ignore index abbreviation and hunk heading function labels only",
+  "official_patch_sha256": "f2acb0720c8bc13e6f685b21890d33ce468ea7729eb8932ee367d591b7b896df",
+  "actual_patch_sha256": "04f0b8bcf4842d6b42cd6e844d3702db07d52ce005d75873e279f2592b7030dd"
+}

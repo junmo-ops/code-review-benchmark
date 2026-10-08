@@ -1,0 +1,16 @@
+{
+  "contract": "review-service-v1-draft",
+  "base_url": "http://127.0.0.1:8877",
+  "simulation": true,
+  "token_env": "BENCH_AGENT_TOKEN",
+  "paths": {"create": "/review-tasks", "status": "/review-tasks/{task_id}", "result": "/review-tasks/{task_id}/result"},
+  "repositories": {"cline/cline": "benchmark/cline"},
+  "diff_mode": "merge_base",
+  "poll_seconds": 2,
+  "request_timeout_seconds": 20,
+  "request_fields": {},
+  "response_fields": {},
+  "result_fields": {},
+  "comment_fields": {},
+  "status_values": {}
+}

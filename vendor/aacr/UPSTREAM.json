@@ -1,0 +1,26 @@
+{
+  "project": "AACR-Bench",
+  "repository": "https://github.com/alibaba/aacr-bench",
+  "upstream_revision": null,
+  "revision_status": "历史引入时未记录提交号；这是本地继承快照，不声称为未修改的官方版本。",
+  "snapshot_id": "local-45bf8d4c5a67afaa",
+  "files": {
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "evaluation/config.py": "c0152f6d4c8a4b103f99943cc9f6838e31281460b15686e6c4979b8dd5909e76",
+    "evaluation/mcp_finding_server.py": "328ef85186711c6b5a9c39771de6de47557254a262393b7967e6aac359c34b4e",
+    "evaluation/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evaluation/repo_utils.py": "994e04b94cb969eaba298ba40da3ace8dbf02b574ac806b2d53174c489aae2d9",
+    "evaluation/pipeline.py": "9d9e3ec0cbf9eada45a0a0b8c8ddf97eb153bacdc116a18e08d6dcac3c0820cf",
+    "evaluation/judge.py": "c5305284ae895d7d184a181bc3eb1ba6c3aee1d163cf37435138cd3dd7af663a",
+    "evaluation/mcp_codex_finding_server.py": "e3b780e031ecc88b3fdf6428259cfffc4357b167b75c54e022e15d625f102eb9",
+    "evaluation/evaluate.py": "51917af91b29d00d4f4d1c45d089ff73c7ede74e84d82eb1ba241b50d88d7979",
+    "evaluation/schema.py": "55310e814bbb649170a17acd5f76889ff032b81ce9722f5f3c26e04a809cb68f",
+    "evaluation/reviewers/codex.py": "c0b41a7eba4eb0c904eddd7d427dfb6de80744e0f71eac08f6386a38631ad6a7",
+    "evaluation/reviewers/claude.py": "59a4506291205fb86b0e114f82f9d872e0f15bf15e16899f68f5cf6dff8ff20d",
+    "evaluation/reviewers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evaluation/reviewers/ocr.py": "8fefcb50e18d65f9e5b907f1596abcbb70ad8d8d88a0349ace8f9e1916d9450f",
+    "evaluation/converters/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evaluation/converters/aacr_bench.py": "ff91d08efbfc72ad39d7b863eebeecb9bc653ab4f46dfed7ab1352fc479582d3",
+    "evaluation/hooks/on_stop_failure.py": "7c3157f70c54e3838cb87596385d1ed680bc5b40ad1c60c51310df53c83469b5"
+  }
+}

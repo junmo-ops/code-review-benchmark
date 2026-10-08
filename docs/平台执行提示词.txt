@@ -1,0 +1,4 @@
+请在当前绑定的 code-review-benchmark 仓库执行离线安装和环境校验。先 pwd 确认仓库根目录，阅读 README.md。后续每次 shell 命令先 cd 至该实际绝对路径，不依赖上一条命令的工作目录。
+找到上传的 lcr-cloud-assets.tar.gz，使用 python3 tools/prepare_assets.py --archive 其实际绝对路径，再 python3 tools/setup.py。安装命令timeout可设360000ms。不要联网，不输出令牌，不改LCR逻辑或案例答案，不启动后台进程。
+若平台注入了LCR_LLM_MODEL，则创建cloud-pilot-01（已有则沿用）：.venv/bin/python cloud.py init --suite aacr --run-id cloud-pilot-01 --dataset data/pilot5.jsonl --model "$LCR_LLM_MODEL" --timeout-minutes 30，然后执行check。若已确认持久化目录，所有命令统一使用--runs-root；否则明确当前runs目录持久化未确认。
+此次不调用模型。报告Linux CLI版本、离线依赖安装结果、五例提交历史校验及每例平台命令时限要求。确认平台最大timeout、任务总时限、关闭浏览器/本机后的执行和结果持久化下载机制；无证据则标记未确认。返回验证结果后停止。
