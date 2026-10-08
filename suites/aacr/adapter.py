@@ -30,7 +30,7 @@ class AACRSuite:
                 "evaluator": "aacr-inherited-local-snapshot", "files": files}
 
     def provenance(self, dataset):
-        manifest = json.loads((ROOT / "data/sources/aacr/provenance.json").read_text())
+        manifest = json.loads((ROOT / "data/sources/aacr/provenance.json").read_text(encoding="utf-8"))
         digest = hashlib.sha256(Path(dataset).read_bytes()).hexdigest()
         known = next((d for d in manifest["datasets"] if d["sha256"] == digest), None)
         if known:

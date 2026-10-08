@@ -8,6 +8,8 @@
 
 Public repository for **running evaluations** on the SWE-PRBench dataset.
 
+本项目保留该上游版本及原始指纹，并按内网安全要求做了本地整改；差异见 [LOCAL_PATCHES.md](LOCAL_PATCHES.md)。
+
 | Path | Purpose |
 |------|---------|
 | `eval_harness/` | Agent + judge pipeline (`run_eval.py`), scoring — see `eval_harness/README.md` |
@@ -65,7 +67,6 @@ cp eval_harness/model_endpoints.example.yaml eval_harness/model_endpoints.yaml
 
 **Step 3 — Set API keys:**
 ```bash
-export ANTHROPIC_API_KEY=...
 export OPENAI_API_KEY=...
 export GEMINI_API_KEY=...
 export GROQ_API_KEY=...

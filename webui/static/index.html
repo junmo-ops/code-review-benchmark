@@ -18,6 +18,11 @@
   <header class="topbar"><div><span class="breadcrumb">工作空间</span><span class="slash">/</span><span id="page-label">测评工作台</span></div><div class="topbar-right"><span id="connection" class="connection"><i></i> 正在连接</span><button class="icon-button" id="refresh" title="刷新" aria-label="刷新">↻</button></div></header>
   <main>
     <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    <section id="case-upload-panel" class="panel guide case-upload-panel" hidden>
+      <h2>AACR 案例准备</h2><p id="case-upload-status" role="status"></p>
+      <form id="case-upload-form"><div class="form-row"><label>选择案例 ZIP<input id="case-upload-file" type="file" accept=".zip" required></label><button id="case-upload-submit" class="primary" type="submit">上传并准备案例</button></div></form>
+      <p id="case-upload-feedback" role="status"></p>
+    </section>
     <section id="runs-view">
       <div class="page-heading"><div><div class="eyebrow">BENCHMARK WORKSPACE</div><h1>单模型测评<span class="heading-dot">.</span></h1><p>选择一个模型运行测评；需要比较多个模型时，请使用“多模型实验”。</p></div><button class="primary" id="new-run">＋ 新建测评</button></div>
       <div class="suite-grid" id="suite-grid"></div>
@@ -45,7 +50,7 @@
 <label>测评名称（选填）<input name="display_name" maxlength="80" placeholder="例如：DeepSeek · AACR 五例验证"></label><label>测评编号（自动生成）<input readonly id="create-name" name="name" pattern="[A-Za-z0-9_\-]+" maxlength="100" required></label>
 <label>被测模型<select id="create-profile" name="review_profile"></select><small id="profile-hint"></small></label><label id="create-judge-field">裁判模型<select id="create-judge" name="judge_profile"></select><small>用于评分，建议不同被测模型使用同一裁判。</small></label>
 <div class="form-row"><label>被测工具<select name="reviewer" id="create-reviewer"></select></label><label>评分方法<select name="evaluator" id="create-evaluator"></select></label></div>
-<details class="advanced-settings"><summary>高级参数</summary><div class="form-row"><label id="timeout-field">LCR 每文件任务时限（分钟）<input type="number" id="create-timeout" name="timeout_minutes" value="10" min="1" max="120"></label><label id="token-field" hidden>直接模型输出上限<input type="number" name="max_tokens" id="create-tokens" value="32768" min="1" max="131072"></label></div>
+<details class="advanced-settings"><summary>高级参数</summary><div class="form-row"><label id="timeout-field">LCR 每文件任务时限（分钟）<input type="number" id="create-timeout" name="timeout_minutes" value="10" min="1" max="120"></label><label id="concurrency-field">案例并发<input type="number" id="create-concurrency" name="case_jobs" value="1" min="1" max="16" step="1" required><small>同时运行的案例数，默认 1；每个案例内部的文件仍顺序检视。</small></label><label id="token-field" hidden>直接模型输出上限<input type="number" name="max_tokens" id="create-tokens" value="32768" min="1" max="131072"></label></div>
 </details><div id="create-readiness" class="notice" role="status"></div><div id="create-plan" class="plan-summary"></div><div class="notice" id="create-note">仅创建并冻结批次，不调用模型。开始检视或评分后会使用所选接口。</div><div id="create-error" class="form-error" role="alert"></div>
 </div><div class="dialog-footer"><button type="button" class="secondary close-create">取消</button><button type="submit" class="secondary" name="intent" value="save">仅保存配置</button><button type="submit" class="primary" id="create-submit" name="intent" value="start">创建并开始 →</button></div></form></dialog>
 <dialog id="detail-dialog" class="detail-dialog"><div class="dialog-heading"><div><div class="eyebrow" id="detail-eyebrow"></div><h2 id="detail-name"></h2></div><button type="button" class="icon-button" id="close-detail" aria-label="关闭批次详情">×</button></div><div id="detail-meta" class="detail-meta"></div><div class="detail-toolbar"><label class="compact-label">运行配置（需与本次模型一致）<select id="detail-profile"></select></label><button class="primary" id="primary-action">开始测评</button><button class="secondary" id="detail-stop" hidden>停止任务</button></div><div class="detail-tabs"><button class="active" data-tab="overview">概览与案例</button><button data-tab="log">执行日志</button><button data-tab="report">中文报告</button><button data-tab="files">原始文件</button></div><div class="detail-content">

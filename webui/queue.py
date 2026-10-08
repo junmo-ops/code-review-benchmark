@@ -96,7 +96,7 @@ class DurableDashboard(Dashboard):
         return hashlib.sha256(json.dumps({k:env.get(k) for k in names},sort_keys=True).encode()).hexdigest()
     def enqueue(self,job,request,spec):
         actor=request.get('_actor','local')
-        request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','max_tokens','task','retry','start_after_create'}}
+        request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create'}}
         job['profile_fingerprint']=self.fingerprint(job['profile'])
         job['submitted_by']=actor
         self.queue.insert(job,request,spec)

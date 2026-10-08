@@ -4,7 +4,7 @@
 
 ## 运行条件
 
-- Windows 10/11 x64、Python 3.11、Git、Node.js 20 或更新版本。
+- Windows 10/11 x64、Python 3.11 或更新版本、Git、Node.js 20 或更新版本。
 - 可访问的 LCR 检视模型和裁判接口。模型令牌仅保存在本地模型配置中。
 - 可访问公司的 npm 源和 Python 包源。
 - AACR 案例 Git bundle，包含五例所需提交历史。
@@ -13,16 +13,16 @@ Mac `.venv` 不能复用到 Windows；运行时由行内包源安装。
 
 ## 准备 Windows 资源
 
-Windows 运行时从公司 npm 源安装固定版本的 LCR，从公司 Python 包源安装项目依赖，无需另行交叉编译或制作 wheelhouse。运行时版本记录在 `reviewers/lcr/windows-runtime.json`。
+Windows 运行时从公司 npm 源安装固定版本的 LCR；Python 依赖按 `requirements.txt` 中的包名从公司 Python 包源解析可用版本，避免内部镜像尚未同步 Mac 环境锁定的新版本。无需另行交叉编译或制作 wheelhouse。LCR 版本记录在 `reviewers/lcr/windows-runtime.json`。
 
 在工程根目录运行 `tools/build_delivery.py`，生成 `code-review-benchmark-source.zip`。该 ZIP 包含源码和 AACR 五例所需的 Cline Git 历史，不含模型配置或令牌。将这个文件带入行内电脑即可。
 
 ## 安装和启动
 
-在 PowerShell 中进入工程根目录，确认 `py -3.11 --version` 显示 Python 3.11，然后准备环境。脚本会使用电脑已配置的公司 Python 和 npm 包源：
+在 PowerShell 中进入工程根目录，使用电脑已安装的 Python 启动准备脚本。比如 Python 3.12.9 使用 `py -3.12 --version` 确认版本，再运行下方命令。脚本会使用电脑已配置的公司 Python 和 npm 包源，并将实际 Python 版本写入 `local-runtime.json`：
 
 ```powershell
-py -3.11 tools/prepare_windows.py
+py -3.12 tools/prepare_windows.py
 ```
 
 复制 `examples/model.local.example.json` 为工程根目录的 `model.local.json`，再填写可访问的模型检视与裁判接口及令牌，并限制本机文件访问权限。不要提交配置文件或粘贴到命令行。
@@ -34,3 +34,7 @@ py -3.11 tools/prepare_windows.py
 ## 当前验收边界
 
 本地代码已补 Windows Python 路径、`.cmd` LCR 调用和子进程树终止处理。五例完整检视、取消/超时清理、结果恢复、模型接口与工作台交互仍需在目标 Windows 电脑完成实机验收后，才能称为 Windows 版已跑通。
+
+## 调整案例并发
+
+新建测评时，展开“高级参数”，设置“案例并发”（1–16，默认 1）。例如设为 5，会同时运行最多 5 个案例；每个案例内的文件仍顺序检视。参数在创建时冻结，调整请新建测评。MCR、c-CRAB 和其他检视工具暂不开放此参数。

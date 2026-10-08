@@ -34,6 +34,11 @@ class SuiteTests(unittest.TestCase):
         cfg['suite']['identity']['adapter_version']='changed'
         with self.assertRaisesRegex(ValueError,'已变化'):registry.resolve_run_suite(cfg)
         self.assertEqual(registry.resolve_run_suite(cfg,verify=False).id,'aacr')
+    def test_windows_local_runtime_is_not_mislabeled_as_mac(self):
+        runtime=self.root/'local-runtime.json';runtime.write_text('{"platform":"Windows"}')
+        with patch.object(cloud,'ROOT',self.root),patch.object(cloud.platform,'system',return_value='Windows'),patch.object(cloud.adapter,'tool_identity',return_value={}):
+            run,cfg=self.freeze()
+        self.assertEqual(cfg['runtime_mode'],'windows_local')
     def test_old_batches_remain_readable_without_rewriting(self):
         self.assertEqual(registry.resolve_run_suite({'schema_version':1}).id,'aacr')
         with self.assertRaisesRegex(ValueError,'缺少'):registry.resolve_run_suite({'schema_version':2})

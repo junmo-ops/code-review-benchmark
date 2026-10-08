@@ -23,7 +23,7 @@ def main():
     source=[]
     for pattern in ['*.py','*.md','*.example.json']:
         source.extend(ROOT.glob(pattern))
-    source.extend(ROOT/name for name in ['.gitignore','requirements.txt','assets-manifest.json','assets-archive.sha256','打开测评工作台.command','打开测评工作台.bat','bin/lcr.cmd'])
+    source.extend(ROOT/name for name in ['.gitignore','Dockerfile','.dockerignore','requirements.txt','assets-manifest.json','assets-archive.sha256','打开测评工作台.command','打开测评工作台.bat','bin/lcr.cmd'])
     for name in ['framework','data','tests','benchmark','tools','docs','examples','runner','reviewers','suites','vendor','evaluators','scoring','multiround','webui','executable','deployment','comparison']:
         source.extend(p for p in (ROOT/name).rglob('*') if p.is_file() and not p.is_symlink() and '__pycache__' not in p.parts)
     aacr_repos={json.loads(line)['repo'].replace('/','__') for line in (ROOT/'data/pilot5.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()}

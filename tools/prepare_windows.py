@@ -12,8 +12,6 @@ def main():
         parser.error('Windows 本地运行包要求 Windows x64')
     if not shutil.which('node') or not shutil.which('npm') or not shutil.which('git'):
         parser.error('PATH 中需要 Node.js、npm 和 Git')
-    if sys.version_info[:2] != (3, 11):
-        parser.error('请使用 Python 3.11 运行此脚本')
     runtime_spec = json.loads((ROOT/'reviewers/lcr/windows-runtime.json').read_text(encoding='utf-8'))
     package_root = ROOT/'.runtime/lcr/node_modules'/runtime_spec['npm_package'].replace('/', os.sep)
     binary = package_root/'dist'/runtime_spec['binary']
@@ -23,7 +21,16 @@ def main():
     py = venv/'Scripts'/'python.exe'
     if not args.restore_only:
         # Uses the Windows machine's configured company Python package index.
-        pip_args = [str(py), '-m', 'pip', 'install', '--disable-pip-version-check', '-r', str(ROOT/'requirements.txt')]
+        # requirements.txt records the versions on the authoring machine. An
+        # internal mirror may lag those releases, so let its resolver choose
+        # available compatible releases on Windows.
+        windows_requirements = ROOT/'.runtime'/'requirements-windows.txt'
+        windows_requirements.parent.mkdir(parents=True, exist_ok=True)
+        packages = [line.split('==', 1)[0].strip()
+                    for line in (ROOT/'requirements.txt').read_text(encoding='utf-8').splitlines()
+                    if line.strip() and not line.lstrip().startswith('#')]
+        windows_requirements.write_text('\n'.join(packages)+'\n', encoding='utf-8')
+        pip_args = [str(py), '-m', 'pip', 'install', '--disable-pip-version-check', '-r', str(windows_requirements)]
         subprocess.run(pip_args, check=True)
         npm_args = [shutil.which('npm'), 'install', '--prefix', str(ROOT/'.runtime/lcr'), '--no-audit', '--no-fund', f"{runtime_spec['npm_package']}@{runtime_spec['npm_version']}"]
         subprocess.run(npm_args, cwd=ROOT, check=True)
@@ -61,7 +68,8 @@ def main():
                 subprocess.run(['git','-C',str(repo),'cat-file','-e',expression],check=True)
             subprocess.run(['git','-C',str(repo),'merge-base',item.base_commit,item.head_commit],check=True,capture_output=True)
     (ROOT/'local-runtime.json').write_text(json.dumps({
-        'platform': 'Windows', 'architecture': platform.machine(), 'python': '3.11',
+        'platform': 'Windows', 'architecture': platform.machine(),
+        'python': '.'.join(map(str, sys.version_info[:3])),
         'binary': binary.name, 'suite': 'aacr', 'assets': 'company_package_sources',
         'npm_package': runtime_spec['npm_package'], 'npm_version': runtime_spec['npm_version']
     }, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')

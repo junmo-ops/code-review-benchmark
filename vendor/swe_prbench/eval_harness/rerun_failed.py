@@ -219,7 +219,7 @@ def main() -> None:
     target_group = parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument(
         "--run-dir",
-        help="Path to one model-pair run directory, e.g. evals_fast/gpt_4o__judge_claude_sonnet_46",
+        help="Path to one model-pair run directory, e.g. evals_fast/gpt_4o__judge_gpt_5_2",
     )
     target_group.add_argument(
         "--evals-root",
@@ -427,4 +427,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

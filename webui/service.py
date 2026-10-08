@@ -96,7 +96,7 @@ class Dashboard:
 
     def redact(self, text):
         # Both console logs and browsed artifacts are filtered. Never return config contents.
-        secrets = [os.getenv('BENCH_AGENT_TOKEN')]
+        secrets = [os.getenv(name) for name in ('BENCH_AGENT_TOKEN', 'BENCH_BASIC_PASSWORD', 'BENCH_PROXY_TOKEN', 'BENCH_CSRF_TOKEN')]
         try:
             from reviewers.server_agent.adapter import load_config
             secrets.append(os.getenv(load_config().get('token_env','BENCH_AGENT_TOKEN')))
@@ -222,7 +222,7 @@ class Dashboard:
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
                     status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else 'scored' if summary and completed == total else 'reviewed' if completed == total else 'partial' if completed else 'failed' if any(c['status'] != 'pending' for c in cases) else 'pending',
                     completed=completed, total=total, cases=cases, metrics=summary, artifacts=reports,
-                    timeout_minutes=cfg.get('timeout_minutes', 10), profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+                    timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1), profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
 
     def artifacts(self, key):
         root = self.run_dir(key)
@@ -252,7 +252,10 @@ class Dashboard:
 
     def catalog(self):
         result = []
+        enabled = os.environ.get('BENCH_ENABLED_SUITES', '')
         for entry in CATALOG:
+            if enabled and entry['id'] not in enabled.split(','):
+                continue
             item = dict(entry, datasets=[])
             for filename in entry['datasets']:
                 path = self.root / 'data' / filename
@@ -286,8 +289,12 @@ class Dashboard:
             from comparison.service import list_experiments
             from .experiment_view import decorate
             experiments=decorate(self,list_experiments(self),runs)
+            case_assets = None
+            if os.environ.get('BENCH_CASE_UPLOAD') == '1':
+                from .case_assets import status
+                case_assets = status(self.root, self.data)
             return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
-                        active=self.active, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
+                        active=self.active, case_assets=case_assets, storage_mode=os.environ.get('BENCH_STORAGE_MODE', 'persistent'), runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
     def command(self, key, stage, profile, task=None, retry=False, init=None):
         if stage=='comparison':
@@ -328,17 +335,22 @@ class Dashboard:
         else:
             entry = 'local.py'
             if init is not None:
-                args += ['--dataset', 'data/'+init['dataset'], '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes'])]
+                args += ['--dataset', 'data/'+init['dataset'], '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
             if task:
                 args += ['--instance', task]
             if stage == 'review':
-                # Match the existing per-file timeout policy exactly; fail before a costly call if refs are absent.
+                # Bound one batch review command by the slowest case, since cases run concurrently.
                 from runner.cloud import checked_instances
-                item = next(i for i in checked_instances(self.run_dir(key)/'dataset.jsonl', cfg['suite']['id']) if i.instance_id == task)
-                repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
-                base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
-                files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-                limit = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 240
+                items = checked_instances(self.run_dir(key)/'dataset.jsonl', cfg['suite']['id'])
+                if task:
+                    items = [i for i in items if i.instance_id == task]
+                limits=[]
+                for item in items:
+                    repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
+                    base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
+                    files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
+                    limits.append(max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 240)
+                limit = max(limits, default=900) + 60*len(items)
             if retry:
                 args.append('--retry')
         command = [sys.executable, str(self.root/entry), '--timeout-seconds', str(limit)]
@@ -353,6 +365,10 @@ class Dashboard:
         return command+args, env, limit
 
     def submit(self, request):
+        if os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
+            from .case_assets import status
+            if not status(self.root, self.data)['ready']:
+                raise ValueError('请先在网页上传并准备 AACR 案例包')
         action = request.get('action')
         request = dict(request)
         role_config = None
@@ -363,6 +379,9 @@ class Dashboard:
         if action == 'create':
             suite = request.get('suite')
             entry = next((s for s in CATALOG if s['id'] == suite), None)
+            enabled = os.environ.get('BENCH_ENABLED_SUITES', '')
+            if enabled and suite not in enabled.split(','):
+                raise ValueError('本部署未启用该案例集')
             if not entry or request.get('dataset') not in entry['datasets']:
                 raise ValueError('案例集与数据清单不匹配')
             run_id = request.get('name')
@@ -394,7 +413,12 @@ class Dashboard:
             tokens = request.get('max_tokens', 32768)
             if type(timeout) is not int or not 1 <= timeout <= 120 or type(tokens) is not int or not 1 <= tokens <= 131072:
                 raise ValueError('超时或输出上限不在允许范围内')
-            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens)
+            case_jobs = request.get('case_jobs', 1)
+            if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
+                raise ValueError('案例并发必须为 1–16 的整数')
+            if (suite in {'mcr','ccrab'} or reviewer != 'lcr') and case_jobs != 1:
+                raise ValueError('案例并发仅适用于单轮 LCR 测评')
+            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens, case_jobs=case_jobs)
         else:
             key = request.get('key')
             self.config(key)
@@ -466,11 +490,14 @@ class Dashboard:
             case_ids = [request['task']]
         if action == 'check':
             return [('prepare-repos' if mcr else 'check', None, None)]
+        if action == 'review' and not request.get('task') and not mcr and self.config(key).get('reviewer', 'lcr') == 'lcr':
+            return [('review', None, None)]
         if action in {'review','preview','recover'}:
             return [(action, case, None) for case in case_ids]
         if action == 'workflow':
             steps = [] if mcr and self.config(key)['reviewer'] == 'llm_direct' else [('prepare-repos' if mcr else 'check', None, None)]
-            return steps + [('review', case, None) for case in case_ids] + ([] if self.summary(key) or self.config(key).get('simulation') else [('eval', None, None)])
+            review_steps = [('review', None, None)] if not mcr and self.config(key).get('reviewer', 'lcr') == 'lcr' and not request.get('task') else [('review', case, None) for case in case_ids]
+            return steps + review_steps + ([] if self.summary(key) or self.config(key).get('simulation') else [('eval', None, None)])
         if action == 'eval' and self.summary(key):
             raise ValueError('该批次已有完整评分。请直接阅读报告；更换裁判或模型需新建批次。')
         return [(action, request.get('task') if mcr else None, None)]
@@ -489,15 +516,25 @@ class Dashboard:
                     label = stage + (' · '+task if task else '')
                     self.update(job_id, step=label, step_started_at=now(), completed_steps=index)
                     cmd, env, limit = self.command(job['key'], stage, job['profile'], task, bool(request.get('retry')), init)
+                    # The web service decodes subprocess logs as UTF-8. Force
+                    # child Python's text files and standard streams to match,
+                    # independent of the Windows console code page.
+                    env['PYTHONUTF8'] = '1'
                     log.write(f'\n[{now()}] {label}\n'+self.redact(' '.join(cmd))+'\n')
                     process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt'
                                        else {'start_new_session': True})
                     process = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                                text=True, encoding='utf-8', errors='replace', **process_options)
                     self.update(job_id, pid=process.pid)
+                    stream = process.stdout
                     def output():
-                        for line in process.stdout:
-                            log.write(self.redact(line))
+                        try:
+                            for line in stream:
+                                log.write(self.redact(line))
+                        except (OSError, ValueError):
+                            # A child may inherit the pipe after the command exits; preserve the
+                            # command's exit status as the source of truth for workflow progress.
+                            pass
                     reader = threading.Thread(target=output, daemon=True)
                     reader.start()
                     deadline = time.monotonic()+limit+30
@@ -510,8 +547,9 @@ class Dashboard:
                             break
                     reader.join(timeout=10)
                     if reader.is_alive():
-                        raise ValueError('日志输出流尚未关闭，停止后续步骤以保留现场')
-                    process.stdout.close()
+                        log.write('主命令已退出；仍有子进程持有日志流，按主命令退出码继续。\n')
+                    else:
+                        stream.close()
                     code = process.returncode
                     self.update(job_id, exit_code=code)
                     if self.cancelled.is_set():

@@ -11,10 +11,6 @@ defaults:
 # PROVIDERS
 # ─────────────────────────────────────────────
 providers:
-  anthropic:
-    api_key_env: ANTHROPIC_API_KEY
-    base_url: https://api.anthropic.com
-
   openai:
     api_key_env: OPENAI_API_KEY
     base_url: https://api.openai.com/v1
@@ -42,24 +38,9 @@ judge:
     note: "Dedicated judge only. Cross-family avoids self-enhancement bias."
 
 # ─────────────────────────────────────────────
-# AGENTS — 13 models across 7 families
+# AGENT model examples for the supported providers
 # ─────────────────────────────────────────────
 models:
-
-  # ── Anthropic (3 models) ──────────────────
-  claude_sonnet_46:
-    provider: anthropic
-    model: claude-sonnet-4-6
-    tier: mid
-    cost_input_per_mtok: 3.00
-    cost_output_per_mtok: 15.00
-
-  claude_haiku_45:
-    provider: anthropic
-    model: claude-haiku-4-5-20251001
-    tier: budget
-    cost_input_per_mtok: 1.00
-    cost_output_per_mtok: 5.00
 
   # ── OpenAI (2 models) ────────────────────
   gpt_4o:

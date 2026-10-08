@@ -4,9 +4,9 @@ __pycache__/
 *.py[cod]
 .DS_Store
 bin/
-lcr/
+/lcr/
 wheelhouse/
-bundles/
+/bundles/
 repos/
 runs/
 *.tar.gz

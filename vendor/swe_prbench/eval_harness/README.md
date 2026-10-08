@@ -8,7 +8,7 @@
 | `runner.py` | Agent prompt + API calls |
 | `judge.py` | Judge prompt + rubric classification |
 | `loader.py` | Resolve `prs` records and paths to context JSON |
-| `model_clients.py` | Anthropic / OpenAI-compatible / Google Gemini HTTP |
+| `model_clients.py` | OpenAI-compatible / Google Gemini HTTP |
 | `schema.py` | Dataclasses for I/O |
 | `matching.py` | Judge alignment + semantic similarity (optional `sentence-transformers`) |
 | `scorer.py` | Coverage / FPR-style aggregates |
@@ -26,7 +26,6 @@ These are **not** needed for a standard eval; use when debugging or revisiting r
 |--------|---------|
 | `rebuild_report.py` | Recompute `eval_report.json` from `eval_results/*_eval.json` |
 | `rerun_failed.py` | Build shell commands to rerun failed task ids |
-| `cross_judge_validation.py` | Secondary judge labels on a stratified sample (research / κ) |
 
 ## CLI groups
 

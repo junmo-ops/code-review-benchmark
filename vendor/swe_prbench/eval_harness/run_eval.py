@@ -187,141 +187,6 @@ def _find_alternate_python_with_numpy(current_exe: str) -> str | None:
     return None
 
 
-def _extract_text_from_anthropic_content(content: object) -> str:
-    if not isinstance(content, list):
-        return ""
-    text_parts: list[str] = []
-    for block in content:
-        if isinstance(block, dict):
-            t = block.get("text")
-            if isinstance(t, str):
-                text_parts.append(t)
-            continue
-        t = getattr(block, "text", None)
-        if isinstance(t, str):
-            text_parts.append(t)
-    return "\n".join(text_parts).strip()
-
-
-def _extract_attr_or_key(obj: object, name: str) -> object:
-    if isinstance(obj, dict):
-        return obj.get(name)
-    return getattr(obj, name, None)
-
-
-def _run_agent_batch_anthropic(
-    model_router: ModelRouter,
-    agent_model_id: str,
-    record_items: list[tuple[str, str, object, str]],
-    poll_seconds: int,
-    log,
-) -> dict[str, object]:
-    endpoint = model_router.resolve_endpoint(agent_model_id)
-    if endpoint.provider != "anthropic":
-        raise RuntimeError("Anthropic Batch API can only be used for anthropic provider models.")
-
-    try:
-        from anthropic import Anthropic
-    except Exception as e:
-        raise RuntimeError(
-            "anthropic SDK is required for --use-anthropic-batch-agent. "
-            "Install in active venv: python -m pip install anthropic"
-        ) from e
-
-    kwargs: dict[str, object] = {"api_key": endpoint.api_key}
-    if endpoint.base_url:
-        kwargs["base_url"] = endpoint.base_url
-    client = Anthropic(**kwargs)
-
-    requests_payload = []
-    for task_id, cfg, eval_input, stem in record_items:
-        _ = task_id, cfg
-        requests_payload.append(
-            {
-                "custom_id": stem,
-                "params": {
-                    "model": endpoint.model,
-                    "max_tokens": 2000,
-                    "system": AGENT_SYSTEM_PROMPT,
-                    "messages": [{"role": "user", "content": eval_input.rendered_context}],
-                },
-            }
-        )
-
-    batch = client.messages.batches.create(requests=requests_payload)
-    batch_id = _extract_attr_or_key(batch, "id")
-    if not isinstance(batch_id, str) or not batch_id:
-        raise RuntimeError("Failed to create Anthropic batch: missing batch id.")
-    log.info("agent_batch_submitted", batch_id=batch_id, requests=len(requests_payload))
-
-    poll_interval = max(5, int(poll_seconds))
-    poll_count = 0
-    while True:
-        batch_obj = client.messages.batches.retrieve(batch_id)
-        status = str(
-            _extract_attr_or_key(batch_obj, "processing_status")
-            or _extract_attr_or_key(batch_obj, "status")
-            or ""
-        ).lower()
-        if status in {"ended", "completed", "succeeded"}:
-            break
-        if status in {"canceled", "cancelled", "errored", "failed", "expired"}:
-            raise RuntimeError(f"Anthropic batch failed with status={status}")
-        poll_count += 1
-        log.info(
-            "anthropic_batch_polling",
-            batch_id=batch_id,
-            status=status or "pending",
-            poll_count=poll_count,
-            wait_sec=poll_count * poll_interval,
-        )
-        time.sleep(poll_interval)
-
-    # Parse batch results and map custom_id -> AgentOutput.
-    out: dict[str, object] = {}
-    result_obj = client.messages.batches.results(batch_id)
-    if isinstance(result_obj, list):
-        result_iter = result_obj
-    else:
-        data_attr = _extract_attr_or_key(result_obj, "data")
-        if isinstance(data_attr, list):
-            result_iter = data_attr
-        else:
-            try:
-                result_iter = list(result_obj)
-            except Exception:
-                result_iter = []
-
-    by_stem = {stem: (task_id, cfg, eval_input) for task_id, cfg, eval_input, stem in record_items}
-    for item in result_iter:
-        custom_id = _extract_attr_or_key(item, "custom_id")
-        if not isinstance(custom_id, str) or custom_id not in by_stem:
-            continue
-        _, _, eval_input = by_stem[custom_id]
-
-        result = _extract_attr_or_key(item, "result")
-        result_type = str(_extract_attr_or_key(result, "type") or "").lower()
-        if result_type and result_type != "succeeded":
-            err_msg = str(_extract_attr_or_key(result, "error") or f"batch_result_type={result_type}")
-            out[custom_id] = build_agent_output_from_raw(eval_input, agent_model_id, "[]")
-            out[custom_id].parse_success = False
-            out[custom_id].parse_error = err_msg
-            continue
-
-        message = _extract_attr_or_key(result, "message")
-        content = _extract_attr_or_key(message, "content")
-        raw_text = _extract_text_from_anthropic_content(content)
-        try:
-            out[custom_id] = build_agent_output_from_raw(eval_input, agent_model_id, raw_text)
-        except Exception as e:
-            out[custom_id] = build_agent_output_from_raw(eval_input, agent_model_id, "[]")
-            out[custom_id].parse_success = False
-            out[custom_id].parse_error = str(e)
-            out[custom_id].raw_response = raw_text
-    log.info("agent_batch_completed", batch_id=batch_id, completed=len(out), total=len(record_items))
-    return out
-
-
 def _run_agent_batch_openai(
     model_router: ModelRouter,
     agent_model_id: str,
@@ -577,11 +442,6 @@ def main() -> None:
 
     g_batch = parser.add_argument_group("Optional batch APIs (lower cost, slower turnaround)")
     g_batch.add_argument(
-        "--use-anthropic-batch-agent",
-        action="store_true",
-        help="Anthropic Batch API for agent calls (anthropic agent models only).",
-    )
-    g_batch.add_argument(
         "--use-openai-batch-agent",
         action="store_true",
         help="OpenAI Batch API for agent calls (openai-compatible agent models only).",
@@ -590,7 +450,7 @@ def main() -> None:
         "--batch-poll-seconds",
         type=int,
         default=30,
-        help="Poll interval for Anthropic batch jobs (default: 30).",
+        help="Poll interval for batch jobs (default: 30).",
     )
 
     parser.add_argument("-q", "--quiet", action="store_true", help="Less verbose logs")
@@ -671,17 +531,16 @@ def main() -> None:
         if not task_ids:
             raise RuntimeError("No tasks discovered for requested configs. Check contexts/prs paths.")
 
-        # Backward-compatible fallback: both model refs are treated as Anthropic model names.
-        api_key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+        api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
         if not api_key:
             raise RuntimeError(
-                "ANTHROPIC_API_KEY is required when --model-config is not provided."
+                "OPENAI_API_KEY is required when --model-config is not provided."
             )
         model_router = ModelRouter(
             models={
-                args.model: ModelEndpoint(provider="anthropic", model=args.model, api_key=api_key),
+                args.model: ModelEndpoint(provider="openai", model=args.model, api_key=api_key),
                 (args.judge_model or args.model): ModelEndpoint(
-                    provider="anthropic", model=(args.judge_model or args.model), api_key=api_key
+                    provider="openai", model=(args.judge_model or args.model), api_key=api_key
                 ),
             }
         )
@@ -707,7 +566,7 @@ def main() -> None:
             configs=len(configs),
             out=str(run_root),
             concurrency=max(1, int(args.concurrency)),
-            use_batch=bool(args.use_anthropic_batch_agent or args.use_openai_batch_agent),
+            use_batch=bool(args.use_openai_batch_agent),
         )
 
         # Build eval inputs up front.
@@ -726,23 +585,7 @@ def main() -> None:
 
         agent_outputs_by_stem: dict[str, object] = {}
         endpoint = model_router.resolve_endpoint(agent_model_id)
-        if args.use_anthropic_batch_agent and endpoint.provider == "anthropic":
-            try:
-                agent_outputs_by_stem = _run_agent_batch_anthropic(
-                    model_router=model_router,
-                    agent_model_id=agent_model_id,
-                    record_items=record_items,
-                    poll_seconds=max(5, int(args.batch_poll_seconds)),
-                    log=log,
-                )
-            except Exception as e:
-                log.warning(
-                    "agent_batch_failed_fallback_to_realtime",
-                    agent_model=agent_model_id,
-                    error=str(e),
-                )
-                agent_outputs_by_stem = {}
-        elif args.use_openai_batch_agent and endpoint.provider in ("openai", "openai_compatible"):
+        if args.use_openai_batch_agent and endpoint.provider in ("openai", "openai_compatible"):
             try:
                 agent_outputs_by_stem = _run_agent_batch_openai(
                     model_router=model_router,

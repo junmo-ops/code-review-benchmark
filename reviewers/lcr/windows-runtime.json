@@ -1,0 +1,5 @@
+{
+  "npm_package": "@LV01.30/leancode-code-review-cli",
+  "npm_version": "1.0.8",
+  "binary": "lcr-win32-x64.exe"
+}

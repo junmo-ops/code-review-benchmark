@@ -10,6 +10,27 @@ from runner.runtime import data_root
 def command(*args, **kw):
     subprocess.run(list(map(str,args)),check=True,**kw)
 
+def restore_repositories(cases, bundle_root=None, repos_root=None):
+    bundle_root = Path(bundle_root) if bundle_root is not None else ROOT / 'bundles'
+    repos_root = Path(repos_root) if repos_root is not None else data_root(ROOT) / 'repos'
+    items=[dict(repo=i.repo,base_commit=i.base_commit,head_commit=i.head_commit) for i in cases]
+    for name in sorted({item['repo'] for item in items}):
+        slug=name.replace('/','__');repo=repos_root/slug;bundle=bundle_root/(slug+'.bundle')
+        if not repo.exists():
+            repo.parent.mkdir(parents=True,exist_ok=True)
+            if bundle.exists():
+                command('git','clone','--no-checkout',bundle,repo)
+            else:
+                snapshot=bundle_root/(slug+'.git.tar.gz')
+                restore_snapshot(snapshot,repo)
+            head=next(i['head_commit'] for i in items if i['repo']==name)
+            env=dict(os.environ,GIT_LFS_SKIP_SMUDGE='1')
+            command('git','-C',repo,'-c','filter.lfs.process=','-c','filter.lfs.smudge=','-c','filter.lfs.required=false','checkout','--detach',head,env=env)
+        for item in (i for i in items if i['repo']==name):
+            command('git','-C',repo,'cat-file','-e',item['base_commit']+'^{commit}')
+            command('git','-C',repo,'cat-file','-e',item['head_commit']+'^{commit}')
+            command('git','-C',repo,'merge-base',item['base_commit'],item['head_commit'])
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--repos-only',action='store_true')
     p.add_argument('--suite',default='aacr')
@@ -31,22 +52,6 @@ def main():
         command(ROOT/'.venv/bin/python','-m','pip','install','--disable-pip-version-check','--no-index','--find-links',ROOT/'wheelhouse','-r',ROOT/'requirements.txt')
         for f in ['bin/lcr','lcr/dist/lcr-linux-x64']:(ROOT/f).chmod(0o755)
         command(ROOT/'bin/lcr','version')
-    items=[dict(repo=i.repo,base_commit=i.base_commit,head_commit=i.head_commit) for i in cases]
-    for name in sorted({item['repo'] for item in items}):
-        slug=name.replace('/','__');repo=data_root(ROOT)/'repos'/slug;bundle=ROOT/'bundles'/(slug+'.bundle')
-        if not repo.exists():
-            repo.parent.mkdir(parents=True,exist_ok=True)
-            if bundle.exists():
-                command('git','clone','--no-checkout',bundle,repo)
-            else:
-                snapshot=ROOT/'bundles'/(slug+'.git.tar.gz')
-                restore_snapshot(snapshot,repo)
-            head=next(i['head_commit'] for i in items if i['repo']==name)
-            env=dict(os.environ,GIT_LFS_SKIP_SMUDGE='1')
-            command('git','-C',repo,'-c','filter.lfs.process=','-c','filter.lfs.smudge=','-c','filter.lfs.required=false','checkout','--detach',head,env=env)
-        for item in (i for i in items if i['repo']==name):
-            command('git','-C',repo,'cat-file','-e',item['base_commit']+'^{commit}')
-            command('git','-C',repo,'cat-file','-e',item['head_commit']+'^{commit}')
-            command('git','-C',repo,'merge-base',item['base_commit'],item['head_commit'])
+    restore_repositories(cases)
     print('仓库提交与历史验证完成；未调用模型。')
 if __name__=='__main__':main()

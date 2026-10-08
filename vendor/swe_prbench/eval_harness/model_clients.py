@@ -58,15 +58,12 @@ class ModelRouter:
     """
     Routes logical model IDs to concrete provider endpoints.
 
-    Supports:
-    - anthropic
-    - openai / openai_compatible (Chat Completions API)
+    Supports OpenAI-compatible and Google Gemini HTTP APIs.
     """
 
     def __init__(self, models: dict[str, ModelEndpoint], defaults: dict[str, Any] | None = None):
         self.models = models
         self.defaults = defaults or {}
-        self._anthropic_clients: dict[tuple[str, str | None], Any] = {}
 
     @classmethod
     def from_config_file(cls, path: str | None) -> "ModelRouter":
@@ -144,14 +141,6 @@ class ModelRouter:
         endpoint = self.models[model_id]
         resolved_endpoint = self.resolve_endpoint(model_id)
         provider = endpoint.provider
-        if provider == "anthropic":
-            return self._generate_anthropic(
-                resolved_endpoint,
-                system,
-                user,
-                max_tokens,
-                cache_system_prompt=cache_system_prompt,
-            )
         # Google: use native Gemini API with safetySettings support
         if provider == "google":
             return self._generate_gemini_native(resolved_endpoint, system, user, max_tokens)
@@ -166,105 +155,6 @@ class ModelRouter:
         }:
             return self._generate_openai_compatible(resolved_endpoint, system, user, max_tokens)
         raise ValueError(f"Unsupported provider '{provider}' for model '{model_id}'.")
-
-    def _generate_anthropic(
-        self,
-        endpoint: ModelEndpoint,
-        system: str,
-        user: str,
-        max_tokens: int,
-        cache_system_prompt: bool = False,
-    ) -> str:
-        try:
-            from anthropic import Anthropic
-        except Exception:
-            # Fallback: call Anthropic Messages HTTP API directly so the harness
-            # can run even when the anthropic SDK is unavailable.
-            return self._generate_anthropic_http(
-                endpoint,
-                system,
-                user,
-                max_tokens,
-                cache_system_prompt=cache_system_prompt,
-            )
-
-        cache_key = (endpoint.api_key, endpoint.base_url)
-        client = self._anthropic_clients.get(cache_key)
-        if client is None:
-            kwargs: dict[str, Any] = {"api_key": endpoint.api_key}
-            if endpoint.base_url:
-                kwargs["base_url"] = endpoint.base_url
-            client = Anthropic(**kwargs)
-            self._anthropic_clients[cache_key] = client
-
-        system_payload: str | list[dict[str, Any]]
-        if cache_system_prompt:
-            system_payload = [
-                {
-                    "type": "text",
-                    "text": system,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-        else:
-            system_payload = system
-
-        resp = client.messages.create(
-            model=endpoint.model,
-            max_tokens=max_tokens,
-            system=system_payload,
-            messages=[{"role": "user", "content": user}],
-        )
-        return str(resp.content[0].text or "")
-
-    def _generate_anthropic_http(
-        self,
-        endpoint: ModelEndpoint,
-        system: str,
-        user: str,
-        max_tokens: int,
-        cache_system_prompt: bool = False,
-    ) -> str:
-        base = (endpoint.base_url or "https://api.anthropic.com").rstrip("/")
-        url = f"{base}/v1/messages"
-        headers = {
-            "x-api-key": endpoint.api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        if cache_system_prompt:
-            headers["anthropic-beta"] = "prompt-caching-2024-07-31"
-            system_payload: str | list[dict[str, Any]] = [
-                {
-                    "type": "text",
-                    "text": system,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-        else:
-            system_payload = system
-        payload = {
-            "model": endpoint.model,
-            "max_tokens": max_tokens,
-            "system": system_payload,
-            "messages": [{"role": "user", "content": user}],
-        }
-        resp = _post_with_retries(url=url, headers=headers, payload=payload, provider_label="Anthropic HTTP")
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                f"Anthropic HTTP request failed ({resp.status_code}): {resp.text[:500]}"
-            )
-        data = resp.json()
-        content = data.get("content") or []
-        if not isinstance(content, list):
-            return ""
-        text_parts: list[str] = []
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "text" and isinstance(block.get("text"), str):
-                text_parts.append(block["text"])
-        return "\n".join(text_parts).strip()
 
     def _generate_gemini_native(
         self, endpoint: ModelEndpoint, system: str, user: str, max_tokens: int
@@ -477,4 +367,3 @@ def _retry_sleep_seconds(resp: requests.Response | None, attempt: int) -> float:
                 pass
     # bounded exponential backoff
     return min(2 ** min(attempt, 5), 20)
-

@@ -1,0 +1,400 @@
+"""LCR review adapter. Does not load benchmark references or select a scorer."""
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, CancelledError
+import threading
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import platform
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+
+from runner.storage import ROOT, save, safe_json, validate_answer
+from runner.process import capture_process
+from .logs import parse_lcr_output, redact, write_summary
+
+REPO = ROOT / "repos"
+CASE_JOBS = 2
+FILE_CONCURRENCY = 1
+REPOS_ROOT = ROOT / "repos"
+CASE_REPOS = {}
+WORKER = threading.local()
+
+LCR_TIMEOUT_MINUTES = 10
+PROCESS_TIMEOUT_POLICY = "changed_files * 600 + 120 seconds"
+
+
+def git(*args):
+    repo = getattr(WORKER, "repo", REPO)
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                          text=True, timeout=60, check=False)
+
+
+def check_repos(instances):
+    if not (REPO / ".git").exists():
+        raise SystemExit("缺少包含 .git 的案例仓库")
+    for item in instances:
+        for commit in (item.base_commit, item.head_commit):
+            if git("cat-file", "-e", f"{commit}^{{commit}}").returncode:
+                raise SystemExit(f"本地缺少提交 {commit}，案例 {item.instance_id}")
+        if git("merge-base", item.base_commit, item.head_commit).returncode:
+            raise SystemExit(f"历史不完整，案例 {item.instance_id}")
+
+
+def process_timeout(item):
+    ancestor = git("merge-base", item.base_commit, item.head_commit)
+    if ancestor.returncode:
+        raise ValueError("无法计算案例进程时限：merge-base 失败")
+    diff = git("diff", "--name-only", "-z", ancestor.stdout.strip(), item.head_commit, "--")
+    if diff.returncode:
+        raise ValueError("无法计算案例进程时限：文件清单读取失败")
+    # Count every changed file conservatively, including files LCR may exclude.
+    count = len([path for path in diff.stdout.split("\0") if path])
+    return max(1, count) * LCR_TIMEOUT_MINUTES * 60 + 120
+
+
+def convert(item, result):
+    state = result.get("status")
+    if state not in ("success", "completed"):
+        raise ValueError(f"状态 {state!r}；请检查原始结果，不将部分成功计入完整答卷")
+    if any(isinstance(w, dict) and w.get("type") == "subtask_error" for w in (result.get("warnings") or [])):
+        raise ValueError("结果含逐文件失败，不作为完整答卷")
+    comments = result.get("comments")
+    if not isinstance(comments, list):
+        raise ValueError("缺少 comments 数组")
+    summary = result.get("summary") or {}
+    if not isinstance(summary, dict):
+        raise ValueError("summary 不是对象")
+    if "comments" in summary and summary["comments"] != len(comments):
+        raise ValueError("summary.comments 与实际意见数不一致")
+    adapted = []
+    for index, comment in enumerate(comments, 1):
+        if not isinstance(comment, dict):
+            raise ValueError(f"第 {index} 条意见不是对象")
+        path = comment.get("filePath")
+        line = comment.get("startLine")
+        end = comment.get("endLine", line)
+        description = comment.get("description")
+        suggestion = comment.get("fixSuggestion")
+        if (not isinstance(path, str) or not path or path.startswith(("/", "\\"))
+                or ":" in path or ".." in Path(path).parts
+                or not isinstance(line, int) or isinstance(line, bool) or line < 1
+                or not isinstance(end, int) or isinstance(end, bool) or end < line
+                or not isinstance(description, str) or not description.strip()):
+            raise ValueError(f"第 {index} 条意见的位置或描述无效")
+        if suggestion is not None and not isinstance(suggestion, str):
+            raise ValueError(f"第 {index} 条意见的 fixSuggestion 无效")
+        adapted.append({"path": path.replace("\\", "/"), "start_line": line,
+                        "end_line": end,
+                        "content": description.strip() + (("\n" + suggestion.strip()) if suggestion and suggestion.strip() else ""),
+                        "source_issue_key": comment.get("issueKey")})
+    return {"instance_id": item.instance_id, "repo": item.repo,
+            "base_commit": item.base_commit, "head_commit": item.head_commit,
+            "reviewer": "lcr", "ocr_exit_code": 0,
+            "review": {"status": "complete", "comments": adapted,
+                       "summary": summary,
+                       "tool_calls": result.get("tool_calls"),
+                       "session_id": result.get("session_id"),
+                       "llm": {"model": os.getenv("LCR_LLM_MODEL", "请参阅 run-config.json")}},
+            "conversion": "LCR filePath/startLine/endLine/description+fixSuggestion -> official reviewer fields; raw JSON retained"}
+
+
+def recover_answer(item, run):
+    """Adapt a saved successful invocation without launching LCR or a model."""
+    destination = run / "results" / (item.safe_id + ".json")
+    if destination.exists():
+        validate_answer(item, destination)
+        print("跳过已有完整答卷：", item.instance_id)
+        return
+    folder = run / "raw"
+    stdout_path = folder / (item.safe_id + ".stdout.json")
+    execution_path = folder / (item.safe_id + ".execution.json")
+    execution = safe_json(execution_path.read_text(encoding="utf-8"), "执行记录")
+    if execution.get("status") != "exited" or execution.get("exit_code") != 0:
+        raise ValueError("原执行未正常成功退出，不能恢复为完整答卷")
+    command = execution.get("command_without_credentials")
+    if not isinstance(command, list) or "--preview" in command:
+        raise ValueError("执行记录不是正式检视命令")
+    for flag, expected in (("--from", item.base_commit), ("--to", item.head_commit), ("--format", "json")):
+        if (command.count(flag) != 1 or command.index(flag) + 1 >= len(command)
+                or command[command.index(flag) + 1] != expected):
+            raise ValueError(f"执行记录 {flag} 与案例或正式 JSON 检视不符")
+    answer = convert(item, parse_lcr_output(stdout_path.read_text(encoding="utf-8")))
+    answer["duration_seconds"] = execution.get("elapsed_seconds")
+    answer["recovery"] = {
+        "mode": "adapt_saved_success_no_model_calls",
+        "stdout_sha256": hashlib.sha256(stdout_path.read_bytes()).hexdigest(),
+        "execution_sha256": hashlib.sha256(execution_path.read_bytes()).hexdigest(),
+    }
+    save(destination, answer)
+    print("已从原始文件恢复完整答卷（未调用模型）：", item.instance_id)
+
+
+def stage_recover(instances, run):
+    for item in instances:
+        try:
+            recover_answer(item, run)
+        except (ValueError, OSError) as error:
+            raise SystemExit(f"恢复失败：{item.instance_id}；{error}；原始文件保留，不自动重跑。")
+
+
+def cancellation_requested():
+    stop = getattr(WORKER, "stop", None)
+    marker = getattr(WORKER, "stop_file", None)
+    return (stop is not None and stop.is_set()) or (marker is not None and marker.exists())
+
+
+def run_lcr(item, preview, run, diagnostic=False):
+    repo = getattr(WORKER, "repo", REPO)
+    executable = shutil.which("lcr.cmd") if os.name == "nt" else shutil.which("lcr")
+    if not executable:
+        raise ValueError("找不到 LCR 启动器；请在同一 PowerShell 窗口运行 Get-Command lcr 检查 PATH")
+    command = [executable, "review", "--repo", str(repo), "--from", item.base_commit,
+               "--to", item.head_commit, "--format", "text" if diagnostic else "json",
+               "--audience", "human",
+               "--concurrency", str(FILE_CONCURRENCY), "--timeout", str(LCR_TIMEOUT_MINUTES), "--max-tools", "50"]
+    if preview:
+        command.append("--preview")
+    else:
+        command.append("--keep-session")
+    if os.name == "nt" and executable.lower().endswith((".cmd", ".bat")):
+        command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", subprocess.list2cmdline(command)]
+    print("运行：", " ".join(command), flush=True)
+    folder = run / ("diagnostic" if diagnostic else "preview" if preview else "raw")
+    outer_timeout = 120 if preview else process_timeout(item)
+    print(f"本案例外层进程上限：{outer_timeout // 60} 分钟（提前结束即返回）", flush=True)
+    completed = capture_process(command, folder, item.safe_id,
+                                timeout=outer_timeout, cwd=repo, case_jobs=CASE_JOBS,
+                                cancellation_requested=cancellation_requested, redact=redact,
+                                stdout_suffix=".stdout.txt" if diagnostic else ".stdout.json")
+    if completed.returncode:
+        raise ValueError(f"LCR 退出码 {completed.returncode}；参见 {folder}")
+    if diagnostic:
+        return {"status": "diagnostic_exited", "note": "诊断输出不计入正式答卷"}
+    if preview:
+        output = completed.stdout.strip()
+        if output.startswith("Preview:") and "file(s) changed" in output:
+            return {"status": "preview_completed", "preview_text": output}
+    return parse_lcr_output(completed.stdout)
+
+
+def stage_review(instances, run, preview):
+    try:
+        _stage_review(instances, run, preview)
+    finally:
+        if not preview:
+            try:
+                write_summary(instances, run)
+                print("运行汇总：", run / "run-summary.zh-CN.md", flush=True)
+            except Exception as error:
+                print("运行汇总生成失败，原始日志保留：", redact(error), file=sys.stderr)
+
+
+def review_case(item, run, preview, stop):
+    WORKER.stop = stop
+    WORKER.stop_file = run / "stop-request.json"
+    try:
+        if REPOS_ROOT is not None:
+            WORKER.repo = CASE_REPOS.get(item.safe_id, Path(REPOS_ROOT) / item.repo.replace("/", "__"))
+        if cancellation_requested():
+            return item.instance_id
+        out = run / "results" / (item.safe_id + ".json")
+        if not preview and out.exists():
+            validate_answer(item, out)
+            print("跳过已有完整答卷：", item.instance_id)
+            return None
+        raw = run_lcr(item, preview, run)
+        if preview:
+            print("预览完成：", item.instance_id, "状态", raw.get("status"))
+        else:
+            answer = convert(item, raw)
+            execution = json.loads((run / "raw" / (item.safe_id + ".execution.json")).read_text(encoding="utf-8"))
+            answer["duration_seconds"] = execution["elapsed_seconds"]
+            save(out, answer)
+            print("检视完成：", item.instance_id)
+        return None
+    except (ValueError, OSError, subprocess.TimeoutExpired, CancelledError) as error:
+        print("案例未完成：", item.instance_id, type(error).__name__, error, file=sys.stderr)
+        save(run / ("preview" if preview else "raw") / (item.safe_id + ".outcome.json"),
+             {"error": redact(f"{type(error).__name__}: {error}")})
+        return item.instance_id
+    finally:
+        WORKER.__dict__.clear()
+
+
+def _stage_review(instances, run, preview):
+    if (run / "stop-request.json").exists():
+        raise SystemExit("本轮已有停止请求，不再启动任务。核对日志后使用新轮次。")
+    global CASE_REPOS
+    CASE_REPOS = {}
+    if REPOS_ROOT is None:
+        check_repos(instances)
+    else:
+        checked = set()
+        for item in instances:
+            path = Path(REPOS_ROOT) / item.repo.replace("/", "__")
+            if path in checked:
+                continue
+            checked.add(path)
+            if not (path / ".git").exists():
+                raise SystemExit(f"缺少包含 .git 的案例仓库：{path}")
+            previous = REPO
+            try:
+                globals()["REPO"] = path
+                check_repos([item])
+            finally:
+                globals()["REPO"] = previous
+        workspace_root = run / "workspaces"
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        created = []
+        try:
+            for item in instances:
+                source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
+                workspace = workspace_root / item.safe_id
+                if workspace.exists():
+                    raise ValueError(f"案例工作区已存在，先检查上次任务是否结束：{workspace}")
+                result = subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(workspace), item.head_commit],
+                                        capture_output=True, text=True, timeout=180, check=False)
+                if result.returncode:
+                    raise ValueError(f"创建案例独立工作区失败：{item.instance_id}；{(result.stderr or result.stdout).strip()}")
+                created.append((source, workspace))
+                CASE_REPOS[item.safe_id] = workspace
+        except BaseException:
+            for source, workspace in reversed(created):
+                subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
+                               capture_output=True, text=True, timeout=60, check=False)
+            CASE_REPOS = {}
+            raise
+    if not instances:
+        return
+    stop = threading.Event()
+    jobs = min(CASE_JOBS, len(instances))
+    print(f"案例并发：{jobs}；每案例文件并发：1；每案例独立 Git 工作树；日志按案例独立保存", flush=True)
+    failures = []
+    pool = ThreadPoolExecutor(max_workers=jobs)
+    futures = []
+    interrupted = threading.Event()
+    previous_handlers = {}
+
+    def request_interrupt(signum, frame):
+        # Never raise during process-tree cleanup, even on repeated Ctrl+C.
+        interrupted.set()
+        stop.set()
+
+    if threading.current_thread() is threading.main_thread():
+        for signum in (signal.SIGINT, getattr(signal, "SIGBREAK", None)):
+            if signum is not None:
+                previous_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, request_interrupt)
+    announced = False
+    try:
+        futures = [pool.submit(review_case, item, run, preview, stop) for item in instances]
+        pending = set(futures)
+        while pending:
+            if stop.is_set():
+                if interrupted.is_set() and not announced:
+                    print("已收到取消请求，正在终止本轮 LCR 子进程并保存日志；请勿关闭窗口。", flush=True)
+                    announced = True
+                for future in pending:
+                    future.cancel()
+                pending = {future for future in pending if not future.cancelled()}
+                if not pending:
+                    break
+            # Windows indefinite condition waits can delay Python signal handling.
+            # Return to the main thread regularly, including when LCR is silent.
+            done, pending = wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
+            for future in done:
+                if future.cancelled():
+                    continue
+                failure = future.result()
+                if failure:
+                    failures.append(failure)
+    finally:
+        # Ctrl+C signals running workers, whose capture_process cleans its own tree.
+        stop.set()
+        for future in futures:
+            future.cancel()
+        try:
+            pool.shutdown(wait=True, cancel_futures=True)
+        finally:
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
+            for item in reversed(instances):
+                workspace = CASE_REPOS.get(item.safe_id)
+                if workspace is None:
+                    continue
+                source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
+                result = subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
+                                        capture_output=True, text=True, timeout=60, check=False)
+                if result.returncode:
+                    print(f"独立工作区清理失败：{workspace}；{(result.stderr or result.stdout).strip()}", file=sys.stderr, flush=True)
+            CASE_REPOS = {}
+    if interrupted.is_set():
+        raise KeyboardInterrupt
+    if failures:
+        raise SystemExit("本阶段未完成；请查看运行汇总，失败案例：" + "、".join(failures))
+
+
+CAPABILITIES = frozenset({"git_range", "findings"})
+
+def tool_identity():
+    runtime_path = ROOT/'local-runtime.json'
+    if runtime_path.exists():
+        runtime = json.loads(runtime_path.read_text(encoding='utf-8'))
+        if runtime.get('platform') != platform.system() or runtime.get('architecture') != platform.machine():
+            raise ValueError('本地 runtime 与当前平台不一致')
+        binary_name = runtime.get('binary')
+        expected = {('Darwin', 'arm64'): 'lcr-darwin-arm64',
+                    ('Windows', 'AMD64'): 'lcr-win32-x64.exe',
+                    ('Windows', 'x86_64'): 'lcr-win32-x64.exe'}.get((platform.system(), platform.machine()))
+        if expected is None or binary_name != expected:
+            raise ValueError('本地 runtime 二进制无效')
+        launcher = 'lcr.cmd' if platform.system() == 'Windows' else 'lcr'
+        if platform.system() == 'Windows':
+            package_root = ROOT/'.runtime/lcr/node_modules/@LV01.30/leancode-code-review-cli'
+            paths = [package_root/'dist'/binary_name, ROOT/'bin'/launcher, runtime_path,
+                     package_root/'package.json', package_root/'bin/lcr.js', package_root/'bin/version-check.js',
+                     ROOT/'reviewers/lcr/windows-runtime.json']
+            rules_root = package_root/'rules'
+        else:
+            paths = [ROOT/'lcr/dist'/binary_name, ROOT/'bin'/launcher, runtime_path, ROOT/'lcr/package.json']
+            rules_root = ROOT/'lcr/rules'
+    else:
+        binary = ROOT / 'lcr/dist/lcr-linux-x64'
+        paths = [binary, ROOT/'lcr/bin/lcr.js', ROOT/'lcr/bin/version-check.js', ROOT/'lcr/package.json']
+    if runtime_path.exists() and platform.system() == 'Windows':
+        paths += sorted(p for p in rules_root.rglob('*') if p.is_file())
+    else:
+        paths += sorted(p for p in (ROOT/'lcr/rules').rglob('*') if p.is_file())
+    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+
+
+
+def configure(cfg, run):
+    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT
+    case_jobs = cfg.get('case_jobs', 1)
+    if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
+        raise ValueError('案例并发必须为 1–16 的整数')
+    CASE_JOBS = case_jobs
+    FILE_CONCURRENCY = 1
+    REPOS_ROOT = Path(cfg.get('repos_root', ROOT/'repos'))
+    LCR_TIMEOUT_MINUTES = cfg['timeout_minutes']
+    os.environ['PATH'] = str(ROOT/'bin') + os.pathsep + os.environ.get('PATH','')
+    os.environ['LCR_DIAGNOSTICS_DIR'] = str(run/'diagnostics')
+
+
+
+def require_model(cfg):
+    for key in ('LCR_LLM_BASE_URL','LCR_LLM_TOKEN'):
+        if not os.getenv(key):
+            raise ValueError('请在平台环境变量中配置 '+key+'，不要将令牌写入命令或日志')
+    endpoint_hash=cfg.get('review_endpoint_sha256')
+    if endpoint_hash and hashlib.sha256(os.environ['LCR_LLM_BASE_URL'].encode()).hexdigest()!=endpoint_hash:
+        raise ValueError('本轮检视接口已改变，请使用新批次，不混用接口')
+    if os.getenv('LCR_LLM_MODEL') != cfg['review_model']:
+        raise ValueError('请在平台环境变量中设置与本轮 --model 一致的 LCR_LLM_MODEL')
