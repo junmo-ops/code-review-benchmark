@@ -1,0 +1,39 @@
+{
+  "revision": "b87f5797aef3ed2c3153bb1304ea4d801d36ba6e",
+  "selection": "eval_100 subset, stylelint/stylelint; smallest diff_patch character length, tie by task_id; selected before reading annotations",
+  "task_ids": [
+    "stylelint__9060",
+    "stylelint__9026",
+    "stylelint__8953",
+    "stylelint__8985",
+    "stylelint__9062"
+  ],
+  "files": {
+    "dataset/annotations/stylelint__9060_human.json": "ec5ae8f076e701d869af562bed8d51ebbef5791629cc5f7af0b22e710754861e",
+    "dataset/annotations/stylelint__9026_human.json": "8a76c301e989c59d22ca022ee1daefcd74611fef0b7c7d49ac4823bbe0795aee",
+    "dataset/annotations/stylelint__8953_human.json": "fdaab0715f1076c0d0d8f22e27f79d75654f3808412acd4a24368709280314d6",
+    "dataset/annotations/stylelint__8985_human.json": "f07719d89e48046b6389b0b984264e8c7d19defd7eb3e7772d1938feeba7211c",
+    "dataset/annotations/stylelint__9062_human.json": "27e65aa6503ba52d090b641585877bcc42edefc8f4d42edc6bafa62d86fedca6",
+    "dataset/contexts/config_A/stylelint__9060.json": "d0c03d78bb99983cf8be909e7fd00f312218b26250e48b33a8facbd9c05c707a",
+    "dataset/contexts/config_B/stylelint__9060.json": "cda16b4ee4b6b8cef57116890f2483281021c01acbc42020ad9e8e6bbb4af753",
+    "dataset/contexts/config_C/stylelint__9060.json": "3df596c1d65546706542799c8e86fbd8bdb50f794f7e0230954604f9dbbeb5fe",
+    "dataset/contexts/config_A/stylelint__9026.json": "2748099ef3746c29a4f6164a3fe91ecbe73ac8be24a0d42373f57011b33afd12",
+    "dataset/contexts/config_B/stylelint__9026.json": "f436ad981f97a904722301fc4f0a1f96e9b7d9b2a8835c476176541c0009eeab",
+    "dataset/contexts/config_C/stylelint__9026.json": "5261dbf8992dd37d57c6f71f54b89d00cd75ba57b495c31bc56035253b361cee",
+    "dataset/contexts/config_A/stylelint__8953.json": "a4d91667613b1fcac254098c1c992ad89ad6b4d14f9c0c56aa971fd5761781dd",
+    "dataset/contexts/config_B/stylelint__8953.json": "c1a2c655639f4edd6107d66add8f71d1d5d4d26ac51a80997fe7b00bf4298b18",
+    "dataset/contexts/config_C/stylelint__8953.json": "5496d09d658d51e995ddead928abefa234fbcdecb1b6ee27ca68cd8290494b26",
+    "dataset/contexts/config_A/stylelint__8985.json": "9b00d502a65136abf9f13e3415feb55cece3432a53944ed1da1c4124bf874edd",
+    "dataset/contexts/config_B/stylelint__8985.json": "f5ed9248f2a03646b6e15c7b24a3a6aedb2d0a4879fba802f3b261e71dfb1b4d",
+    "dataset/contexts/config_C/stylelint__8985.json": "3f3f1c99563b7d5d0a945edd5310c92555d5266aadfb6f3bfc96f4e650ffeffb",
+    "dataset/contexts/config_A/stylelint__9062.json": "05967221b3e83fe28cdaf8927e5d6b2bd54793f74aad7ff2491b9c681fd324d3",
+    "dataset/contexts/config_B/stylelint__9062.json": "467a39e72ae7e5d6d69273b4834b21f379192ef92be8891cc7c7ddfce33f29a5",
+    "dataset/contexts/config_C/stylelint__9062.json": "537d5d5a8ade995fd3d6f3f1a97058d075c081ddb706f3c3fb14d1505870f26d",
+    "prs.jsonl": "a58e1f713533f6bc260a93f6e234b85acd16a77f55a756893694b96495eb43cd",
+    "eval_100.json": "0f08bc5719763749ead7b71270ed79ab4955aad3e5c94b25827a5ebb7256ac25",
+    "selected-prs.jsonl": "d1bb51496090cc2bc207a0a299d657e0e0864507e6bc3d028c66a974cbae5b98"
+  },
+  "dataset": "https://huggingface.co/datasets/foundry-ai/swe-prbench",
+  "license": "CC-BY-4.0",
+  "dataset_sha256": "322f7876dc2a7fd477c729dad4c85ec3335bc553dcad403d8b74230e9450df23"
+}

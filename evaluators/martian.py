@@ -2,8 +2,9 @@
 import argparse,asyncio,hashlib,importlib.util,json,math,os,sys
 from pathlib import Path
 from runner.storage import ROOT,save,validate_answer
+from reviewers.lcr.adapter import answer_session_failures
 from suites.registry import resolve_run_suite
-from .registry import verify
+from scoring.registry import verify
 
 PATH=ROOT/'vendor/martian/offline/code_review_benchmark/step3_judge_comments.py'
 spec=importlib.util.spec_from_file_location('martian_offline_upstream',PATH)
@@ -69,12 +70,23 @@ async def evaluate(run,config):
     if os.environ['JUDGE_MODEL']!=config['judge_model'] or hashlib.sha256(os.environ['JUDGE_BASE_URL'].encode()).hexdigest()!=config['judge_endpoint_sha256']:raise ValueError('裁判模型或接口与冻结值不同')
     if any((run/p).exists() for p in ('judge','metrics')):raise ValueError('已有评分记录，另建批次，不覆盖证据')
     rows=[json.loads(x) for x in (run/'dataset.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-    cases=suite.load_cases(run/'dataset.jsonl');prepared=[]
+    cases=suite.load_cases(run/'dataset.jsonl');prepared=[];included=[];excluded=[]
     for row,case in zip(rows,cases):
-        answer=validate_answer(case,run/'results'/f'{case.safe_id}.json')
+        try:answer=validate_answer(case,run/'results'/f'{case.safe_id}.json')
+        except (OSError,ValueError) as error:
+            reason='缺少完整答卷' if isinstance(error,FileNotFoundError) else '答卷无法读取或未通过完整性校验'
+            excluded.append({'instance_id':case.instance_id,'reason':reason})
+            continue
+        if answer_session_failures(case,run,answer):
+            excluded.append({'instance_id':case.instance_id,'reason':'LCR 会话记录了失败条目'})
+            continue
         candidates=[c['content'] for c in answer['review']['comments']]
         if any(not isinstance(c,str) or not c.strip() for c in candidates):raise ValueError('答卷含空意见')
         prepared.append((case,golden_rows(row,suite.id),candidates))
+        included.append(case.instance_id)
+    if not prepared:raise ValueError('没有可评分的完整答卷；请先完成至少一个案例。')
+    save(run/'evaluation-scope.json',{'included':included,'excluded':excluded,
+        'note':f'本轮共 {len(cases)} 例，其中 {len(included)} 例有完整答卷并纳入评分；其余案例不计零分。'})
     parameters=config['evaluator']['parameters'];results=[]
     save(run/'evaluation-config.json',config['evaluator'])
     try:
@@ -113,6 +125,13 @@ def report(run,config):
         f"| 精确率（上游口径） | {s['precision']:.1%} |",f"| 召回率 | {s['recall']:.1%} |",f"| F1（由 P/R 推导） | {s['f1']:.3f} |",'',
         '上游 TP 按命中的参考意见计数，没有强制一对一；一条检视意见命中多个参考时，精确率可能超过 100%。报告保留该口径，不截断、不冒充一对一指标。相同文本会受上游字典合并行为影响。',
         '上游 false_positives 表示未匹配参考，不能直接认定为事实误报。与原始裁判对比时，分数差异同时包含位置筛选、提示词、匹配和计数规则差异。','']
+    scope_path=run/'evaluation-scope.json'
+    if scope_path.exists():
+        scope=json.loads(scope_path.read_text(encoding='utf-8'))
+        if scope.get('excluded'):
+            ids=[row.get('instance_id','未知案例') if isinstance(row,dict) else row for row in scope['excluded']]
+            lines += [f"> 本次仅对 {len(scope['included'])} 个完整答卷评分。未完成案例："
+                +'、'.join(f'`{i}`' for i in ids)+'。未完成案例不计零分，结果仅代表纳入评分的案例。','']
     for row in data['results']:
         lines += [f"## {row['instance_id']}",'',f"重复参考文本：{row['duplicate_reference_texts']}；重复检视文本：{row['duplicate_candidate_texts']}。",'']
         for hit in row['metrics']['true_positives']:

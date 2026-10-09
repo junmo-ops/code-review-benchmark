@@ -9,6 +9,7 @@
   <button class="nav-item" data-view="jobs">执行记录</button>
   <button class="nav-item" data-view="experiments">多模型实验</button>
   <button class="nav-item" data-view="comparisons">结果对比</button>
+  <button class="nav-item" data-view="cases">案例集管理</button>
   <button class="nav-item" data-view="models">模型配置</button>
   <button class="nav-item" data-view="guide">使用指南</button>
   <div class="sidebar-note" id="runtime-note"><span class="dot"></span> 本地运行<br><p>数据与日志保存在当前项目<br>沿用已有检视工具和评分协议</p></div>
@@ -18,10 +19,22 @@
   <header class="topbar"><div><span class="breadcrumb">工作空间</span><span class="slash">/</span><span id="page-label">测评工作台</span></div><div class="topbar-right"><span id="connection" class="connection"><i></i> 正在连接</span><button class="icon-button" id="refresh" title="刷新" aria-label="刷新">↻</button></div></header>
   <main>
     <div id="error-banner" class="error-banner" role="alert" hidden></div>
-    <section id="case-upload-panel" class="panel guide case-upload-panel" hidden>
-      <h2>AACR 案例准备</h2><p id="case-upload-status" role="status"></p>
-      <form id="case-upload-form"><div class="form-row"><label>选择案例 ZIP<input id="case-upload-file" type="file" accept=".zip" required></label><button id="case-upload-submit" class="primary" type="submit">上传并准备案例</button></div></form>
-      <p id="case-upload-feedback" role="status"></p>
+    <section id="cases-view" hidden>
+      <div class="page-heading"><div><div class="eyebrow">CASE DATASETS</div><h1>案例集管理<span class="heading-dot">.</span></h1><p>下方案例集可用于测评；需要扩充时，先选择案例 ZIP，再确认导入。</p></div></div>
+      <div id="case-upload-disabled" class="notice" hidden>当前工作台未开启案例上传，可使用下方已有案例集。</div>
+    <section id="case-upload-panel" class="panel case-upload-panel" hidden>
+      <div class="case-import-heading"><div><h2>导入新的案例集</h2><p>选择已打包的案例 ZIP。导入完成后，它会出现在下方列表中。</p></div><span class="badge">不会调用模型</span></div>
+      <form id="case-upload-form">
+        <input id="case-upload-file" type="file" accept=".zip" hidden aria-label="选择案例 ZIP">
+        <div class="case-file-picker"><span class="case-file-icon" aria-hidden="true">↑</span><div class="case-file-info"><strong id="case-upload-filename">尚未选择文件</strong><small id="case-upload-filehint">支持 AACR、SWE-PRBench、CodeFuse 案例包</small></div><button id="case-upload-select" class="secondary" type="button">选择 ZIP 文件</button></div>
+        <div class="case-import-actions"><p id="case-upload-feedback" role="status">选择文件后，点击“确认导入”。</p><button id="case-upload-submit" class="primary" type="submit" disabled>确认导入</button></div>
+      </form>
+      <p id="case-upload-status" class="case-import-summary" role="status"></p>
+    </section>
+      <section class="panel"><div class="panel-heading"><div class="section-title">可用案例集 <span class="count" id="case-dataset-count">0</span></div></div>
+        <div class="table-wrap"><table class="runs-table"><thead><tr><th>案例集名称</th><th>测评类型</th><th>案例数量</th><th>来源</th><th>操作</th></tr></thead><tbody id="case-dataset-body"></tbody></table></div>
+        <div class="table-footer">点击“新建测评”会预选该案例集；开始检视或评分时才会调用模型。</div>
+      </section>
     </section>
     <section id="runs-view">
       <div class="page-heading"><div><div class="eyebrow">BENCHMARK WORKSPACE</div><h1>单模型测评<span class="heading-dot">.</span></h1><p>选择一个模型运行测评；需要比较多个模型时，请使用“多模型实验”。</p></div><button class="primary" id="new-run">＋ 新建测评</button></div>
@@ -41,7 +54,7 @@
       <article class="panel guide"><span class="step-number">01</span><h2>新建测评批次</h2><p>选择案例集、已有模型配置和裁判。可直接创建并开始；“仅保存配置”不会调用模型。模型名称会显示在页面，密钥始终留在本机。</p></article>
       <article class="panel guide"><span class="step-number">02</span><h2>运行并查看进度</h2><p>打开批次，点击随状态提示的主按钮。各案例顺序执行，一步失败就停止。可查看实时日志、停止任务，已完成答卷不会丢失。</p></article>
       <article class="panel guide"><span class="step-number">03</span><h2>阅读报告，保留证据</h2><p>在“报告”中阅读中文报告；“文件”里查看原始输出和评分证据。生成归档后可下载完整结果，不需要寻找目录。</p></article>
-    </div><article class="panel guide full-guide"><h2>单模型与多模型怎么选</h2><p>单模型测评：运行一个模型，也可分步检视和评分。多模型实验：在统一条件下顺序运行多个模型，单案例失败后继续；结果对比：读取已有结果，不调用模型。两类入口的时限不同，请在提交前核对执行条件。</p><h2>恢复与对比</h2><p>检视中断：先查看案例日志。若进程成功但答卷未转换，可选中该案例点击“恢复答卷”；确需重试时勾选“允许重跑所选未完成案例（可能产生费用）”。默认不会自动重试。</p><p>模型、裁判或超时参数改变时新建批次。MCR 是多轮专项，直接模型成绩与 LCR 成绩分开；缺少状态字段不会当成问题已解决。</p><h2>c-CRAB 执行验证专项</h2><p>选择 c-CRAB 和 DeepSeek 配置创建批次，再点击“检查准备”和“运行单例验证”。它先做容器测试对照，再检视、修复和执行发布测试；无意见则跳过修复，结果不使用 F1。当前支持固定的 1 个 NetworkX 案例，每批次仅执行一次。</p><h2>运行边界</h2><p id="runtime-guide">本页面只监听本机。关闭浏览器不会终止服务中的任务；关闭服务终端或关机则会中断。它不是云端后台服务，也不会绕过公司平台的任务时限。</p><p>在“模型配置”中新增 DeepSeek / Qwen，密钥写入运行服务器的配置文件，不回显。Linux Cloud 的部署与长任务能力需要在目标平台单独验证。</p></article></section>
+    </div><article class="panel guide full-guide"><h2>导入案例集</h2><p>打开左侧“案例集管理”，选择案例 ZIP 并点击“上传并导入案例集”。可重复导入其他案例集，完成后在新建测评或多模型实验中选择使用。</p><h2>单模型与多模型怎么选</h2><p>单模型测评：运行一个模型，也可分步检视和评分。多模型实验：在统一条件下顺序运行多个模型，单案例失败后继续；结果对比：读取已有结果，不调用模型。两类入口的时限不同，请在提交前核对执行条件。</p><h2>恢复与对比</h2><p>检视中断：先查看案例日志。若进程成功但答卷未转换，可选中该案例点击“恢复答卷”；确需重试时勾选“允许重跑所选未完成案例（可能产生费用）”。默认不会自动重试。</p><p>模型、裁判或超时参数改变时新建批次。MCR 是多轮专项，直接模型成绩与 LCR 成绩分开；缺少状态字段不会当成问题已解决。</p><h2>c-CRAB 执行验证专项</h2><p>选择 c-CRAB 和 DeepSeek 配置创建批次，再点击“检查准备”和“运行单例验证”。它先做容器测试对照，再检视、修复和执行发布测试；无意见则跳过修复，结果不使用 F1。当前支持固定的 1 个 NetworkX 案例，每批次仅执行一次。</p><h2>运行边界</h2><p id="runtime-guide">本页面只监听本机。关闭浏览器不会终止服务中的任务；关闭服务终端或关机则会中断。它不是云端后台服务，也不会绕过公司平台的任务时限。</p><p>在“模型配置”中新增 DeepSeek / Qwen，密钥写入运行服务器的配置文件，不回显。Linux Cloud 的部署与长任务能力需要在目标平台单独验证。</p></article></section>
   </main>
 </div>
 <dialog id="create-dialog"><form id="create-form"><div class="dialog-heading"><div><div class="eyebrow">NEW BENCHMARK</div><h2>新建测评</h2></div><button type="button" class="icon-button close-create" aria-label="关闭">×</button></div><div class="form-body">
@@ -50,7 +63,7 @@
 <label>测评名称（选填）<input name="display_name" maxlength="80" placeholder="例如：DeepSeek · AACR 五例验证"></label><label>测评编号（自动生成）<input readonly id="create-name" name="name" pattern="[A-Za-z0-9_\-]+" maxlength="100" required></label>
 <label>被测模型<select id="create-profile" name="review_profile"></select><small id="profile-hint"></small></label><label id="create-judge-field">裁判模型<select id="create-judge" name="judge_profile"></select><small>用于评分，建议不同被测模型使用同一裁判。</small></label>
 <div class="form-row"><label>被测工具<select name="reviewer" id="create-reviewer"></select></label><label>评分方法<select name="evaluator" id="create-evaluator"></select></label></div>
-<details class="advanced-settings"><summary>高级参数</summary><div class="form-row"><label id="timeout-field">LCR 每文件任务时限（分钟）<input type="number" id="create-timeout" name="timeout_minutes" value="10" min="1" max="120"></label><label id="concurrency-field">案例并发<input type="number" id="create-concurrency" name="case_jobs" value="1" min="1" max="16" step="1" required><small>同时运行的案例数，默认 1；每个案例内部的文件仍顺序检视。</small></label><label id="token-field" hidden>直接模型输出上限<input type="number" name="max_tokens" id="create-tokens" value="32768" min="1" max="131072"></label></div>
+<details class="advanced-settings"><summary>高级参数</summary><div class="form-row"><label id="timeout-field">LCR 每文件任务时限（分钟）<input type="number" id="create-timeout" name="timeout_minutes" value="10" min="1" max="120"></label><label id="concurrency-field">案例并发<input type="number" id="create-concurrency" name="case_jobs" value="1" min="1" max="16" step="1" required><small>同时运行的案例数，默认 1；每个案例内部的文件仍顺序检视。</small></label><label id="retry-field">失败案例自动重试次数<input type="number" id="create-retries" name="max_case_retries" value="1" min="0" max="2" step="1"><small>默认重试 1 次；每次重试会重新运行该案例，可能增加模型调用和耗时。</small></label><label id="token-field" hidden>直接模型输出上限<input type="number" name="max_tokens" id="create-tokens" value="32768" min="1" max="131072"></label></div>
 </details><div id="create-readiness" class="notice" role="status"></div><div id="create-plan" class="plan-summary"></div><div class="notice" id="create-note">仅创建并冻结批次，不调用模型。开始检视或评分后会使用所选接口。</div><div id="create-error" class="form-error" role="alert"></div>
 </div><div class="dialog-footer"><button type="button" class="secondary close-create">取消</button><button type="submit" class="secondary" name="intent" value="save">仅保存配置</button><button type="submit" class="primary" id="create-submit" name="intent" value="start">创建并开始 →</button></div></form></dialog>
 <dialog id="detail-dialog" class="detail-dialog"><div class="dialog-heading"><div><div class="eyebrow" id="detail-eyebrow"></div><h2 id="detail-name"></h2></div><button type="button" class="icon-button" id="close-detail" aria-label="关闭批次详情">×</button></div><div id="detail-meta" class="detail-meta"></div><div class="detail-toolbar"><label class="compact-label">运行配置（需与本次模型一致）<select id="detail-profile"></select></label><button class="primary" id="primary-action">开始测评</button><button class="secondary" id="detail-stop" hidden>停止任务</button></div><div class="detail-tabs"><button class="active" data-tab="overview">概览与案例</button><button data-tab="log">执行日志</button><button data-tab="report">中文报告</button><button data-tab="files">原始文件</button></div><div class="detail-content">

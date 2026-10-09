@@ -20,7 +20,9 @@ function options(node,values,wanted){const old=wanted ?? node.value;node.innerHT
 function availableModel(p){return p.id!=='environment'||p.review_ready===true}
 function profileOptions(node,wanted){options(node,state.profiles.filter(p=>availableModel(p)&&(!p.internal||p.id===wanted)).map(p=>({value:p.id,label:`${p.label} · ${p.review_model}`})),wanted)}
 async function refresh(){if(loading)return;loading=true;try{const incoming=await api('/api/state');const changed=JSON.stringify(incoming)!==JSON.stringify(state);state=incoming;$('#connection').classList.remove('disconnected');$('#connection').innerHTML=incoming.queue_mode?'<i></i> 服务器已连接':'<i></i> 本地服务已连接';$('#error-banner').hidden=!(incoming.queue_mode&&!incoming.worker_ready);if(changed)render();else if(selected&&tab==='log')loadLog();if(!routeReady)restoreRoute();}catch(e){$('#connection').classList.add('disconnected');$('#connection').innerHTML='<i></i> 连接已断开';$('#error-banner').hidden=false;$('#error-banner').textContent=e.message+'。请确认页面服务仍在运行；已有日志保留在项目中。'}finally{loading=false}}
-let caseUploading=false;
+const caseUploadLimit=()=>state?.case_assets?.upload_max_bytes??2*1024*1024*1024;
+const caseUploadLimitLabel=()=>state?.case_assets?.upload_max_label??'2 GiB';
+let caseUploading=false,caseUploadFeedback='选择文件后，点击“确认导入”。';
 function render(){renderModels();renderComparisons();renderCaseUpload();
  if(state.queue_mode){const ephemeral=state.storage_mode==='ephemeral';$('#runtime-note').innerHTML=`<span class="dot"></span> 内网服务器<p>${ephemeral?'试运行 · 重建后数据丢失':'任务独立运行 · 结果持久保存'}</p>`;$('#runtime-guide').textContent=(ephemeral?'请及时导出结果；容器重建会丢失批次、模型配置与进度。 ':'')+'关闭浏览器或重启 Web 服务不会停止 Worker。Worker 中断后保留结果，需确认旧进程停止再恢复；不会自动重跑模型请求。';$('#error-banner').hidden=state.worker_ready;$('#error-banner').textContent=state.recovery_required?'Worker 曾中断，队列暂停。请管理员确认旧进程停止后解除恢复阻塞。':'Worker 尚未就绪；任务会保留在队列中。';}
  $('#platform').textContent=state.queue_mode?state.platform+' · 内网服务器':state.platform==='darwin'?'macOS · 本机工作空间':state.platform+' · 本机工作空间';
@@ -32,7 +34,7 @@ function render(){renderModels();renderComparisons();renderCaseUpload();
 function renderRuns(){const term=$('#search').value.trim().toLowerCase();const runs=state.runs.filter(r=>!isExperimentGroup(r.key)&&(!filter||inSuite(r.suite,filter))&&(!term||((r.display_name||r.name)+' '+r.model+' '+suiteName(r.suite)).toLowerCase().includes(term)));$('#run-count').textContent=runs.length;$('#filter-label').textContent=filter?suiteName(filter)+' · 点击卡片取消筛选':'全部案例集';$('#runs-body').innerHTML=runs.length?runs.map(r=>{const live=state.jobs.find(j=>j.id===state.active&&j.key===r.key);return `<tr><td><button class="run-title" data-open="${esc(r.key)}">${esc(r.display_name||r.name)}</button><div class="subline"><span class="suite-label">${esc(suiteName(r.suite))}</span>${stamp(r.created)}</div></td><td class="model-cell">${esc(r.model||'—')}<small>${esc(r.reviewer==='llm_direct'?'直接模型':r.reviewer||'—')} · ${esc(r.evaluator||'—')}</small></td><td><div class="progress-value"><b>${r.completed} / ${r.total}</b><span>${r.suite==='mcr'?'轮':'例'}</span></div><div class="progress-track"><progress value="${r.completed}" max="${r.total||1}"></progress></div></td><td>${badge(live?live.status:r.status)}</td><td class="f1-value">${r.suite==='ccrab'?(r.metrics?.test_pass_rate===1?'测试通过':r.metrics?.test_pass_rate===0?'测试未通过':'未执行测试'):Number.isFinite(r.metrics?.f1)?'F1 '+pct(r.metrics.f1):r.status==='failed'?'无有效评分':'尚未评分'}</td><td><button class="text-button" data-open="${esc(r.key)}">查看 →</button></td></tr>`}).join(''):'<tr><td colspan="6" class="empty-row">没有符合条件的批次。试试其他关键词，或新建一次测评。</td></tr>'}
 function renderActive(){const job=state.jobs.find(j=>j.id===state.active);$('#active-task').hidden=!job;if(job)$('#active-task').innerHTML=`<div class="active-panel"><span class="spinner"></span><div class="active-info"><strong>${esc(actionName(job))} · ${esc(job.key.split('/').pop())}</strong><small>${esc(stageName(job.step)||job.message)} · ${job.completed_steps}/${job.total_steps} 步</small></div><button class="text-button" data-job="${job.id}">查看日志 →</button><button class="secondary" data-stop="${job.id}" ${job.status==='cancelling'||state.access_role==='viewer'?'disabled':''}>停止</button></div>`}
 function renderJobs(){$('#job-list').innerHTML=state.jobs.length?state.jobs.map(j=>`<article class="panel job-card"><div><h3>${esc(actionName(j))} · ${esc(j.key)}</h3><p>${stamp(j.created_at)} · ${j.completed_steps}/${j.total_steps} 步 · ${esc(stageName(j.step))}</p><div class="job-message">${esc(j.message)}</div></div>${badge(j.status)}${state.queue_mode&&state.access_role!=='viewer'&&j.status==='queued'?`<button class="secondary" data-stop="${j.id}">取消排队</button>`:''}<button class="secondary" data-job="${j.id}">查看日志</button></article>`).join(''):'<article class="panel guide"><h2>还没有执行记录</h2><p>在页面创建或运行批次后，任务和日志会显示在这里。之前在终端执行的原始日志仍可从批次详情查看。</p></article>'}
-const viewRoutes={runs:'/',jobs:'/jobs',experiments:'/experiments',comparisons:'/comparisons',models:'/models',guide:'/guide'};
+const viewRoutes={runs:'/',jobs:'/jobs',experiments:'/experiments',comparisons:'/comparisons',models:'/models',cases:'/cases',guide:'/guide'};
 let routeRestoring=false,routeReady=false;
 function viewAtLocation(){return Object.keys(viewRoutes).find(v=>viewRoutes[v]===(location.pathname.replace(/\/$/,'')||'/'))||'runs'}
 function writeRoute(view,params={},replace=false){
@@ -47,7 +49,7 @@ function showView(view,{fromHistory=false}={}){
  if(!Object.hasOwn(viewRoutes,view))view='runs';
  for(const v of Object.keys(viewRoutes))$('#'+v+'-view').hidden=v!==view;
  document.querySelectorAll('[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
- const title={runs:'单模型测评',jobs:'执行记录',models:'模型配置',experiments:'多模型实验',comparisons:'结果对比',guide:'使用指南'}[view];
+ const title={runs:'单模型测评',jobs:'执行记录',models:'模型配置',cases:'案例集管理',experiments:'多模型实验',comparisons:'结果对比',guide:'使用指南'}[view];
  $('#page-label').textContent=title;document.title=title+' · Review Lab';
  if(!fromHistory)writeRoute(view);
 }
@@ -74,30 +76,52 @@ function restoreRoute(){
 window.addEventListener('popstate',restoreRoute);
 function renderCaseUpload(){
  const assets=state.case_assets;$('#case-upload-panel').hidden=!assets;
+ $('#case-upload-disabled').hidden=!!assets;
+ const datasets=state.catalog.flatMap(suite=>suite.datasets.map(dataset=>({...dataset,suite:suite.name,suiteId:suite.id})));
+ $('#case-dataset-count').textContent=datasets.length;
+ $('#case-dataset-body').innerHTML=datasets.length?datasets.map(d=>`<tr><td>${esc(d.name||d.suite+' · '+(d.count===1?'单例验证':d.count+' 例案例集'))}<div class="subline">${esc(d.id)}</div></td><td>${esc(d.suite)}</td><td>${d.count}${d.rounds?' PR / '+d.rounds+' 轮':' 例'}</td><td>${d.id.startsWith('uploads/')?'网页导入':'内置'}</td><td><button class="text-button" data-case-suite="${esc(d.suiteId)}" data-case-dataset="${esc(d.id)}" ${state.access_role==='viewer'||(!!state.case_assets&&!state.case_assets.ready)||(!!state.active&&!state.queue_mode)?'disabled':''}>新建测评 →</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty-row">还没有可用案例集，请先导入案例 ZIP。</td></tr>';
  if(!assets)return;
  $('#case-upload-status').textContent=assets.message;
- $('#case-upload-form').hidden=assets.ready||state.access_role==='viewer';
- $('#case-upload-file').disabled=caseUploading;$('#case-upload-submit').disabled=caseUploading;
- if(!caseUploading&&assets.ready)$('#case-upload-feedback').textContent='已完成校验和 Git 历史准备；未调用模型。';
+ $('#case-upload-form').hidden=state.access_role==='viewer';
+ const file=$('#case-upload-file').files[0];
+ $('#case-upload-file').disabled=caseUploading;$('#case-upload-select').disabled=caseUploading;
+ $('#case-upload-submit').disabled=caseUploading||!file||file.size>caseUploadLimit()||!file.name.toLowerCase().endsWith('.zip');
+ $('#case-upload-submit').textContent=caseUploading?'正在导入…':'确认导入';
+ $('#case-upload-select').textContent=file?'更换文件':'选择 ZIP 文件';
+ $('#case-upload-filename').textContent=file?file.name:'尚未选择文件';
+ $('#case-upload-filehint').textContent=file?(file.size/1024/1024).toFixed(2)+' MiB · '+(caseUploading?'正在校验并准备案例':'待导入'):'支持 AACR、SWE-PRBench、CodeFuse 案例包，最大 '+caseUploadLimitLabel();
+ $('#case-upload-feedback').textContent=caseUploadFeedback;
  if(!assets.ready)$('#new-comparison').disabled=true;
 }
 async function uploadCases(event){
  event.preventDefault();const file=$('#case-upload-file').files[0];if(!file||caseUploading)return;
- if(file.size>32*1024*1024){$('#case-upload-feedback').textContent='案例 ZIP 上限为 32 MB';return;}
- const form=new FormData();form.append('archive',file);caseUploading=true;renderCaseUpload();
- $('#case-upload-feedback').textContent='正在上传、校验并准备案例，请稍候…';
+ if(file.size>caseUploadLimit()){caseUploadFeedback='案例 ZIP 上限为 '+caseUploadLimitLabel();renderCaseUpload();return;}
+ caseUploading=true;renderCaseUpload();
+ caseUploadFeedback='正在上传、校验并准备案例，请稍候…';renderCaseUpload();
  try{
-  const response=await fetch('/api/cases/upload',{method:'POST',headers:{'X-Dashboard-Token':token},body:form});
+  const response=await fetch('/api/cases/upload',{method:'POST',headers:{'X-Dashboard-Token':token,'Content-Type':'application/zip'},body:file});
   let result;try{result=await response.json()}catch{throw new Error('服务器返回了非 JSON 响应，请检查平台上传大小限制和超时配置')}
   if(!response.ok)throw new Error(result.error||'上传失败');
-  $('#case-upload-feedback').textContent=result.message;toast('AACR 案例已准备');await refresh();
- }catch(error){$('#case-upload-feedback').textContent=error.message}
+  caseUploadFeedback=result.message+' 可在下方列表点击“新建测评”。';$('#case-upload-file').value='';toast('案例集已导入');await refresh();
+ }catch(error){caseUploadFeedback=error.message}
  finally{caseUploading=false;renderCaseUpload()}
 }
 $('#case-upload-form').addEventListener('submit',uploadCases);
-function datasetLabel(d,suite){return (d.count===1?'流程验证':d.count<=5?'小规模对照':'案例测评')+' · '+d.count+(suite==='mcr'?' PR / '+d.rounds+' 轮':' 例')}
+$('#case-upload-select').addEventListener('click',()=>$('#case-upload-file').click());
+$('#case-upload-file').addEventListener('change',()=>{
+ const file=$('#case-upload-file').files[0];
+ caseUploadFeedback=!file?'选择文件后，点击“确认导入”。':!file.name.toLowerCase().endsWith('.zip')?'请选择 ZIP 格式的案例集包。':file.size>caseUploadLimit()?'文件超过 '+caseUploadLimitLabel()+'，请调整上传上限或选择较小的案例包。':'已选择文件，确认导入后将校验案例并准备仓库历史。';
+ renderCaseUpload();
+});
+$('#case-dataset-body').addEventListener('click',event=>{
+ const button=event.target.closest('[data-case-dataset]');if(!button||button.disabled)return;
+ newRun();if(!$('#create-dialog').open)return;
+ $('#create-suite').value=button.dataset.caseSuite;createFields(true);
+ $('#create-dataset').value=button.dataset.caseDataset;updatePlans();
+});
+function datasetLabel(d,suite){return d.name?`${d.name} · ${d.count} 例`:(d.count===1?'流程验证':d.count<=5?'小规模对照':'案例测评')+' · '+d.count+(suite==='mcr'?' PR / '+d.rounds+' 轮':' 例')}
 function newRun(){if(!state)return;if(state.case_assets&&!state.case_assets.ready){toast('请先上传并准备案例 ZIP');return;}$('#create-form').reset();$('#create-error').textContent='';options($('#create-suite'),state.catalog.map(c=>({value:c.id,label:c.name+' · '+c.role})),filter||'aacr');profileOptions($('#create-profile'),'model.local.json');judgeOptions();createFields(true);$('#create-dialog').showModal();}
-function createFields(rename=false){const id=$('#create-suite').value;const suite=state.catalog.find(c=>c.id===id);options($('#create-dataset'),suite.datasets.map(d=>({value:d.id,label:datasetLabel(d,id)})));options($('#create-reviewer'),id==='mcr'?[{value:'llm_direct',label:'直接模型（Defect Card）'},{value:'lcr',label:'LCR（可检视，暂不支持缺陷状态判断）'}]:[{value:'lcr',label:'LCR CLI'},...(id==='ccrab'?[]:[{value:'server_agent',label:'服务端 Agent（协议草案）'},...(id==='aacr'?[{value:'cline_skill',label:'Cline + Skill（Mac 单例试跑）'}]:[])])]);options($('#create-evaluator'),id==='ccrab'?[{value:'executable',label:'发布测试（DeepSeek 修复适配）'}]:id==='mcr'?[{value:'original',label:'MCR 一对一 + 状态'}]:[{value:'martian',label:'Martian 语义评分（调用裁判模型）'},...(id==='codefuse_cr'?[]:[{value:'original',label:'案例集原始大模型评分'}])]);$('#create-judge-field').hidden=id==='ccrab';$('#create-judge').disabled=id==='ccrab';$('#token-field').hidden=id!=='mcr';$('#timeout-field').hidden=['mcr','ccrab'].includes(id);if(rename){const date=new Date();const value=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('')+'-'+[date.getHours(),date.getMinutes(),date.getSeconds()].map(v=>String(v).padStart(2,'0')).join('');$('#create-name').value=(id==='swe_prbench_llm'?'swe':id)+'-'+value;}$('#create-note').textContent=id==='ccrab'?'单例实验：LCR 检视 → DeepSeek 修复 → 容器发布测试。固定检视时限 10 分钟；无意见则跳过修复。不使用语义裁判，不对比官方榜单。':id==='mcr'?'MCR 按轮次回放。直接模型与 LCR 分开报告；LCR 每轮沿用固定 10 分钟任务时限。':'案例顺序执行，先检查环境，再检视和评分。';$('#create-note').textContent+=' 点击“创建并开始”会调用模型；仅保存配置不会。';profileHint();updatePlans()}
+function createFields(rename=false){const id=$('#create-suite').value;const suite=state.catalog.find(c=>c.id===id);options($('#create-dataset'),suite.datasets.map(d=>({value:d.id,label:datasetLabel(d,id)})));options($('#create-reviewer'),id==='mcr'?[{value:'llm_direct',label:'直接模型（Defect Card）'},{value:'lcr',label:'LCR（可检视，暂不支持缺陷状态判断）'}]:[{value:'lcr',label:'LCR CLI'},...(id==='ccrab'?[]:[{value:'server_agent',label:'服务端 Agent（协议草案）'},...(id==='aacr'?[{value:'cline_skill',label:'Cline + Skill（Mac 单例试跑）'}]:[])])]);options($('#create-evaluator'),id==='ccrab'?[{value:'executable',label:'发布测试（DeepSeek 修复适配）'}]:id==='mcr'?[{value:'original',label:'MCR 一对一 + 状态'}]:[{value:'martian',label:'Martian 语义评分（调用裁判模型）'},...(id==='codefuse_cr'?[]:[{value:'original',label:'案例集原始大模型评分'}])]);$('#create-judge-field').hidden=id==='ccrab';$('#create-judge').disabled=id==='ccrab';$('#token-field').hidden=id!=='mcr';$('#timeout-field').hidden=['mcr','ccrab'].includes(id);$('#retry-field').hidden=id==='ccrab'||id==='mcr'||$('#create-reviewer').value!=='lcr';if(rename){const date=new Date();const value=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('')+'-'+[date.getHours(),date.getMinutes(),date.getSeconds()].map(v=>String(v).padStart(2,'0')).join('');$('#create-name').value=(id==='swe_prbench_llm'?'swe':id)+'-'+value;}$('#create-note').textContent=id==='ccrab'?'单例实验：LCR 检视 → DeepSeek 修复 → 容器发布测试。固定检视时限 10 分钟；无意见则跳过修复。不使用语义裁判，不对比官方榜单。':id==='mcr'?'MCR 按轮次回放。直接模型与 LCR 分开报告；LCR 每轮沿用固定 10 分钟任务时限。':'案例顺序执行，先检查环境，再检视和评分。';$('#create-note').textContent+=' 点击“创建并开始”会调用模型；仅保存配置不会。';profileHint();updatePlans()}
 function judgeOptions(wanted){
  const profiles=state.profiles.filter(p=>!p.internal&&availableModel(p));
  const choices=profiles.map(p=>({value:p.id,label:`${p.label} · ${p.review_model}`}));
@@ -105,7 +129,7 @@ function judgeOptions(wanted){
  options($('#create-judge'),choices,wanted||'model.local.json');
 }
 function profileHint(){const p=state.profiles.find(p=>p.id===$('#create-profile').value);$('#profile-hint').textContent=p&&$('#create-suite').value==='ccrab'?`检视与修复：${p.review_model} · 当前仅支持 DeepSeek，不需要裁判配置`:p?`负责代码检视${p.review_ready?'':' · 接口信息未齐全'}`:'';}
-async function createRun(event){event.preventDefault();const values=Object.fromEntries(new FormData(event.target));if(!updatePlans())return;values.action='create';values.start_after_create=event.submitter?.value==='start';delete values.intent;values.timeout_minutes=Number(values.timeout_minutes);values.max_tokens=Number(values.max_tokens);values.case_jobs=Number(values.case_jobs??1);$('#create-form').querySelectorAll('[type=submit]').forEach(b=>b.disabled=true);try{const result=await api('/api/jobs',values);$('#create-dialog').close();toast(values.start_after_create?'测评已提交，将先检查环境':'配置保存已提交，不调用模型');await refresh();openRun(result.key,result.job_id)}catch(e){$('#create-error').textContent=e.message}finally{$('#create-form').querySelectorAll('[type=submit]').forEach(b=>b.disabled=false)}}
+async function createRun(event){event.preventDefault();const values=Object.fromEntries(new FormData(event.target));if(!updatePlans())return;values.action='create';values.start_after_create=event.submitter?.value==='start';delete values.intent;values.timeout_minutes=Number(values.timeout_minutes);values.max_tokens=Number(values.max_tokens);values.case_jobs=Number(values.case_jobs??1);values.max_case_retries=Number(values.max_case_retries??0);if(values.reviewer!=='lcr')values.max_case_retries=0;$('#create-form').querySelectorAll('[type=submit]').forEach(b=>b.disabled=true);try{const result=await api('/api/jobs',values);$('#create-dialog').close();toast(values.start_after_create?'测评已提交，将先检查环境':'配置保存已提交，不调用模型');await refresh();openRun(result.key,result.job_id)}catch(e){$('#create-error').textContent=e.message}finally{$('#create-form').querySelectorAll('[type=submit]').forEach(b=>b.disabled=false)}}
 function openRun(key,job=''){if(state.comparisons?.some(c=>c.key===key)){openComparison(key);return;}closeForRoute($('#comparison-detail'));closeForRoute($('#evidence-dialog'));selected=key;selectedJob=job;tab=job?'log':'overview';reportText='';fileText='';$('#detail-case').innerHTML='<option value="">全部案例 / 轮次</option>';$('#detail-retry').checked=false;$('#detail-profile').innerHTML='';$('#report-select').innerHTML='';$('#file-select').innerHTML='';$('#log-select').innerHTML='';renderDetail();if(!$('#detail-dialog').open)$('#detail-dialog').showModal();writeRoute(viewAtLocation(),{run:key,tab,job:job||undefined});loadTab()}
 function renderDetail(){const r=state.runs.find(r=>r.key===selected);if(!r){$('#detail-name').textContent=selected?.split('/').pop()||'正在创建';$('#detail-eyebrow').textContent='BENCHMARK';$('#detail-meta').textContent='正在保存配置；排队时可在执行记录查看。';$('#detail-metrics').innerHTML='';$('#case-list').innerHTML='';$('#stage-actions').innerHTML='';}else{
  $('#detail-name').textContent=r.display_name||r.name;$('#detail-eyebrow').textContent=suiteName(r.suite)+' / '+(r.suite==='mcr'?'MULTI-ROUND':'CODE REVIEW');$('#detail-meta').textContent=`${r.reviewer==='llm_direct'?'直接模型':r.reviewer==='server_agent'?'服务端 Agent'+(r.simulation?'（模拟，不计分）':''):r.reviewer==='cline_skill'?'Cline + Skill':'LCR'} · ${r.model}　裁判：${r.judge_model} / ${r.evaluator}　${r.completed}/${r.total} ${r.suite==='mcr'?'轮':'例'}检视完成${r.reviewer==='lcr'&&!['mcr','ccrab'].includes(r.suite)?'　案例并发：'+(r.case_jobs??1):''}`;
@@ -159,13 +183,16 @@ let actionPending=false;
 async function startAction(action){
  if(!selected||actionPending)return;
  const key=selected, ccrab=key.startsWith('ccrab/');
+ const currentRun=state.runs.find(r=>r.key===key);
  const task=ccrab?undefined:$('#detail-case').value||undefined;
  if(action==='workflow'&&task){toast('一键流程请选全部案例；单例请使用“检视”按钮');return;}
  const data={action,key,profile:$('#detail-profile').value,task,retry:ccrab?false:$('#detail-retry').checked};
  actionPending=true;
  try{
   if(['review','eval','report','workflow','compare-martian'].includes(action)){
-   const confirmed=await confirmRun({title:'开始'+(ccrab?'单例检视、修复与测试':actions[action])+'？',scope:ccrab?'当前单例':task||'全部案例 / 轮次',profile:$('#detail-profile').selectedOptions[0]?.textContent||data.profile,description:'将使用所选模型配置，可能产生 API 费用。'+(ccrab?'每批次仅执行一次，失败后请新建批次。':'已完成答卷会跳过。')});
+   const scope=ccrab?'当前单例':action==='eval'?'所有校验完整的已保存答卷':task||'全部案例 / 轮次';
+   const description=action==='eval'?'只对校验完整的答卷调用裁判评分；未完成案例会排除并在报告中列明，不计零分。':action==='review'&&currentRun?.reviewer==='lcr'?`将使用所选模型配置，可能产生 API 费用。失败案例最多自动重试 ${currentRun.max_case_retries??1} 次；重试会重新运行该案例。已完成答卷会跳过。`:ccrab?'将使用所选模型配置，可能产生 API 费用。每批次仅执行一次，失败后请新建批次。':'将使用所选模型配置，可能产生 API 费用。已完成答卷会跳过。';
+   const confirmed=await confirmRun({title:'开始'+(ccrab?'单例检视、修复与测试':actions[action])+'？',scope,profile:$('#detail-profile').selectedOptions[0]?.textContent||data.profile,description});
    if(!confirmed)return;
   }
   if(selected!==key||(state.active&&!state.queue_mode)){toast('批次或任务状态已变化，请重新选择操作');return;}
@@ -177,7 +204,7 @@ function download(name,text){const a=document.createElement('a');const url=URL.c
 async function exportDownload(){try{const response=await fetch('/api/export?'+new URLSearchParams({key:selected}),{headers:{'X-Dashboard-Token':token}});if(!response.ok){const out=await response.json();throw Error(out.error)}const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=selected.split('/').pop()+'-results.tar.gz';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}
 document.addEventListener('click',event=>{const el=event.target.closest('button');if(!el)return;if(el.dataset.view)showView(el.dataset.view);if(el.dataset.suite){filter=filter===el.dataset.suite?'':el.dataset.suite;render()}if(el.dataset.open)openRun(el.dataset.open);if(el.dataset.job){const j=state.jobs.find(j=>j.id===el.dataset.job);if(j)openRun(j.key,j.id)}if(el.dataset.stop)stopJob(el.dataset.stop);if(el.dataset.action)startAction(el.dataset.action);if(el.dataset.tab)switchTab(el.dataset.tab);if(el.classList.contains('close-create'))$('#create-dialog').close()});
 $('#primary-action').addEventListener('click',()=>{const button=$('#primary-action');if(button.dataset.nextAction)startAction(button.dataset.nextAction);else if(button.dataset.nextView)switchTab(button.dataset.nextView);});
-$('#new-run').addEventListener('click',newRun);$('#refresh').addEventListener('click',refresh);$('#search').addEventListener('input',renderRuns);$('#create-suite').addEventListener('change',()=>createFields(true));$('#create-profile').addEventListener('change',profileHint);$('#create-form').addEventListener('submit',createRun);$('#close-detail').addEventListener('click',()=>{$('#detail-dialog').close()});$('#detail-dialog').addEventListener('close',()=>{if(consumeRouteClose($('#detail-dialog')))return;selected=null;writeRoute(viewAtLocation())});$('#detail-stop').addEventListener('click',()=>stopJob(state.active));$('#log-select').addEventListener('change',()=>{selectedJob=$('#log-select').value;writeRoute(viewAtLocation(),{run:selected,tab,job:selectedJob});loadLog()});$('#report-select').addEventListener('change',()=>loadArtifact('report'));$('#file-select').addEventListener('change',()=>loadArtifact('file'));$('#download-log').addEventListener('click',()=>download('execution.log',$('#log-content').textContent));$('#save-report').addEventListener('click',()=>download($('#report-select').value.split('/').pop()||'report.md',reportText));$('#save-file').addEventListener('click',()=>download($('#file-select').value.split('/').pop()||'result.txt',fileText));$('#download-export').addEventListener('click',exportDownload);
+$('#new-run').addEventListener('click',newRun);$('#refresh').addEventListener('click',refresh);$('#search').addEventListener('input',renderRuns);$('#create-suite').addEventListener('change',()=>createFields(true));$('#create-reviewer').addEventListener('change',()=>{$('#retry-field').hidden=$('#create-suite').value==='ccrab'||$('#create-suite').value==='mcr'||$('#create-reviewer').value!=='lcr'});$('#create-profile').addEventListener('change',profileHint);$('#create-form').addEventListener('submit',createRun);$('#close-detail').addEventListener('click',()=>{$('#detail-dialog').close()});$('#detail-dialog').addEventListener('close',()=>{if(consumeRouteClose($('#detail-dialog')))return;selected=null;writeRoute(viewAtLocation())});$('#detail-stop').addEventListener('click',()=>stopJob(state.active));$('#log-select').addEventListener('change',()=>{selectedJob=$('#log-select').value;writeRoute(viewAtLocation(),{run:selected,tab,job:selectedJob});loadLog()});$('#report-select').addEventListener('change',()=>loadArtifact('report'));$('#file-select').addEventListener('change',()=>loadArtifact('file'));$('#download-log').addEventListener('click',()=>download('execution.log',$('#log-content').textContent));$('#save-report').addEventListener('click',()=>download($('#report-select').value.split('/').pop()||'report.md',reportText));$('#save-file').addEventListener('click',()=>download($('#file-select').value.split('/').pop()||'result.txt',fileText));$('#download-export').addEventListener('click',exportDownload);
 
 
 // Keep native selects as the form data source; render a consistent, keyboard-accessible picker.

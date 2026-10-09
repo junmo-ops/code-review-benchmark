@@ -1,0 +1,26 @@
+{
+  "datasets": [
+    {
+      "id": "uploads/aacr/22e1b44a7f1b276b.jsonl",
+      "suite": "aacr",
+      "name": "AACR 官方五例",
+      "count": 5,
+      "dataset_sha256": "22e1b44a7f1b276bb671985d6c199be6edb6d9bba2f7d7c8bbc78fc413ed698d",
+      "file": "case-datasets/aacr/22e1b44a7f1b276b/dataset.jsonl",
+      "repositories": [
+        "cline__cline"
+      ]
+    },
+    {
+      "id": "uploads/swe_prbench_llm/322f7876dc2a7fd4.jsonl",
+      "suite": "swe_prbench_llm",
+      "name": "SWE-PRBench Stylelint 五例",
+      "count": 5,
+      "dataset_sha256": "322f7876dc2a7fd477c729dad4c85ec3335bc553dcad403d8b74230e9450df23",
+      "file": "case-datasets/swe_prbench_llm/322f7876dc2a7fd4/dataset.jsonl",
+      "repositories": [
+        "stylelint__stylelint"
+      ]
+    }
+  ]
+}

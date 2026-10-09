@@ -154,8 +154,10 @@ async def generate_report(run, offline=False):
     if audit.get("mock"):
         lines += ["> 本次使用模拟裁判，分数只能用于流程调试。", ""]
     if scope and scope.get("excluded"):
+        excluded_ids = [row.get("instance_id", "未知案例") if isinstance(row, dict) else row
+                        for row in scope["excluded"]]
         lines += [f"> 本次仅对 {len(scope['included'])} 个案例评分。排除案例："
-                  + "、".join(f"`{i}`" for i in scope["excluded"])
+                  + "、".join(f"`{i}`" for i in excluded_ids)
                   + "。被排除案例不计零分，也不进入平均值；此结果不能代表原定全部案例。", ""]
     attempts = sorted((run / "attempts").glob("*/attempt.json"))
     if attempts:

@@ -9,6 +9,7 @@ import json
 import os
 import platform
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -16,6 +17,7 @@ import sys
 
 from runner.storage import ROOT, save, safe_json, validate_answer
 from runner.process import capture_process
+from .session_logs import collect_session
 from .logs import parse_lcr_output, redact, write_summary
 
 REPO = ROOT / "repos"
@@ -26,6 +28,7 @@ CASE_REPOS = {}
 WORKER = threading.local()
 
 LCR_TIMEOUT_MINUTES = 10
+MAX_CASE_RETRIES = 1
 PROCESS_TIMEOUT_POLICY = "changed_files * 600 + 120 seconds"
 
 
@@ -56,6 +59,11 @@ def process_timeout(item):
     # Count every changed file conservatively, including files LCR may exclude.
     count = len([path for path in diff.stdout.split("\0") if path])
     return max(1, count) * LCR_TIMEOUT_MINUTES * 60 + 120
+
+
+def case_execution_timeout(item):
+    backoff = sum(min(5 * attempt, 15) for attempt in range(1, MAX_CASE_RETRIES + 1))
+    return process_timeout(item) * (MAX_CASE_RETRIES + 1) + backoff
 
 
 def convert(item, result):
@@ -124,7 +132,11 @@ def recover_answer(item, run):
         if (command.count(flag) != 1 or command.index(flag) + 1 >= len(command)
                 or command[command.index(flag) + 1] != expected):
             raise ValueError(f"执行记录 {flag} 与案例或正式 JSON 检视不符")
-    answer = convert(item, parse_lcr_output(stdout_path.read_text(encoding="utf-8")))
+    raw = parse_lcr_output(stdout_path.read_text(encoding="utf-8-sig"))
+    failures = case_session_failures(item, run, raw)
+    if failures:
+        raise ValueError("原始 LCR 会话含失败条目，不能恢复成完整答卷")
+    answer = convert(item, raw)
     answer["duration_seconds"] = execution.get("elapsed_seconds")
     answer["recovery"] = {
         "mode": "adapt_saved_success_no_model_calls",
@@ -173,7 +185,10 @@ def run_lcr(item, preview, run, diagnostic=False):
                                 cancellation_requested=cancellation_requested, redact=redact,
                                 stdout_suffix=".stdout.txt" if diagnostic else ".stdout.json")
     if completed.returncode:
-        raise ValueError(f"LCR 退出码 {completed.returncode}；参见 {folder}")
+        detail = (completed.stderr or completed.stdout or "").strip()
+        detail = redact(detail[-4000:]) if detail else ""
+        suffix = ("；错误摘要：" + detail) if detail else ""
+        raise ValueError(f"LCR 退出码 {completed.returncode}{suffix}；参见 {folder}")
     if diagnostic:
         return {"status": "diagnostic_exited", "note": "诊断输出不计入正式答卷"}
     if preview:
@@ -198,33 +213,78 @@ def stage_review(instances, run, preview):
 def review_case(item, run, preview, stop):
     WORKER.stop = stop
     WORKER.stop_file = run / "stop-request.json"
+    retries = []
     try:
         if REPOS_ROOT is not None:
             WORKER.repo = CASE_REPOS.get(item.safe_id, Path(REPOS_ROOT) / item.repo.replace("/", "__"))
         if cancellation_requested():
             return item.instance_id
         out = run / "results" / (item.safe_id + ".json")
-        if not preview and out.exists():
-            validate_answer(item, out)
-            print("跳过已有完整答卷：", item.instance_id)
+        if _skip_or_archive_existing_answer(item, run, out, preview):
             return None
-        raw = run_lcr(item, preview, run)
-        if preview:
-            print("预览完成：", item.instance_id, "状态", raw.get("status"))
-        else:
-            answer = convert(item, raw)
-            execution = json.loads((run / "raw" / (item.safe_id + ".execution.json")).read_text(encoding="utf-8"))
-            answer["duration_seconds"] = execution["elapsed_seconds"]
-            save(out, answer)
-            print("检视完成：", item.instance_id)
+        for attempt in range(1, (1 if preview else MAX_CASE_RETRIES + 1) + 1):
+            raw = None
+            try:
+                raw = _run_case_attempt(item, run, out, preview, attempt, retries)
+                return None
+            except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+                raw = getattr(error, "raw_output", raw)
+                can_retry = attempt <= MAX_CASE_RETRIES and retryable_case_error(error, raw)
+                if not can_retry:
+                    raise
+                retries.append({"attempt": attempt, "error": redact(f"{type(error).__name__}: {error}")})
+                print(f"案例失败，将在短暂等待后自动重试（{attempt}/{MAX_CASE_RETRIES}）：",
+                      item.instance_id, redact(error), file=sys.stderr, flush=True)
+                if stop.wait(min(5 * attempt, 15)):
+                    raise CancelledError("自动重试等待期间收到停止请求")
         return None
     except (ValueError, OSError, subprocess.TimeoutExpired, CancelledError) as error:
         print("案例未完成：", item.instance_id, type(error).__name__, error, file=sys.stderr)
         save(run / ("preview" if preview else "raw") / (item.safe_id + ".outcome.json"),
-             {"error": redact(f"{type(error).__name__}: {error}")})
+             {"error": redact(f"{type(error).__name__}: {error}"),
+              "attempt_count": len(retries) + 1, "retry_history": retries})
         return item.instance_id
     finally:
         WORKER.__dict__.clear()
+
+
+def _skip_or_archive_existing_answer(item, run, out, preview):
+    if preview or not out.exists():
+        return False
+    existing = validate_answer(item, out)
+    if not answer_session_failures(item, run, existing):
+        print("跳过已有完整答卷：", item.instance_id)
+        return True
+    archive = run / "raw" / "rejected-answers"
+    archive.mkdir(parents=True, exist_ok=True)
+    archived = archive / f"{item.safe_id}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.json"
+    shutil.copy2(out, archived)
+    out.unlink()
+    print("已有答卷对应的 LCR 会话含失败项，保留旧答卷并自动重跑：", item.instance_id)
+    return False
+
+
+def _run_case_attempt(item, run, out, preview, attempt, retries):
+    raw = run_lcr(item, preview, run)
+    try:
+        if preview:
+            print("预览完成：", item.instance_id, "状态", raw.get("status"))
+            return raw
+        failures = case_session_failures(item, run, raw)
+        if failures:
+            raise ValueError("review_item_failed: " + json.dumps(failures, ensure_ascii=False))
+        answer = convert(item, raw)
+        execution = json.loads((run / "raw" / (item.safe_id + ".execution.json")).read_text(encoding="utf-8"))
+        answer["duration_seconds"] = execution["elapsed_seconds"]
+        save(out, answer)
+        if retries:
+            save(run / "raw" / (item.safe_id + ".outcome.json"),
+                 {"status": "recovered_after_retry", "attempt_count": attempt, "retry_history": retries})
+        print("检视完成：", item.instance_id, f"（自动重试 {len(retries)} 次）" if retries else "")
+        return raw
+    except (ValueError, OSError) as error:
+        error.raw_output = raw
+        raise
 
 
 def _stage_review(instances, run, preview):
@@ -375,12 +435,105 @@ def tool_identity():
 
 
 
+def retryable_case_error(error, raw=None):
+    if isinstance(error, subprocess.TimeoutExpired):
+        return True
+    text = "\n".join([str(error), *_structured_error_details(raw)]).lower()
+    if (re.search(r"\b(?:401|403)\b", text)
+            or any(marker in text for marker in ("unauthorized", "forbidden", "not found", "no such file",
+                "file_read failed", "git returned", "invalid configuration", "missing required", "permission denied"))):
+        return False
+    if isinstance(raw, dict) and raw.get("status") in ("failed", "error", "completed_with_errors", "completed_with_warnings"):
+        return True
+    if isinstance(raw, dict):
+        # The CLI returned structured output, but adaptation rejected it. A
+        # fresh review can correct malformed or incomplete model output.
+        return True
+    return bool(re.search(r"\b(?:504|502|503|429)\b", text)) or any(marker in text for marker in (
+        "gateway timeout", "timed out", "timeout", "deadline exceeded", "connection reset",
+        "connection refused", "context canceled", "review_item_failed", "llm_error",
+        "completed_with_errors", "subtask_error", "lcr 退出码", "未返回唯一、完整的结果 json",
+        "lcr 输出顶层不是对象", "comments 数组", "意见的位置或描述无效"))
+
+
+def _structured_error_details(raw):
+    if not isinstance(raw, dict):
+        return []
+    details = []
+    warnings = raw.get("warnings")
+    if isinstance(warnings, list):
+        for warning in warnings:
+            if isinstance(warning, dict):
+                details.extend(str(warning[key]) for key in ("message", "error", "detail") if warning.get(key))
+    for key in ("error", "errors", "failure", "failures"):
+        value = raw.get(key)
+        if isinstance(value, str):
+            details.append(value)
+        elif isinstance(value, list):
+            details.extend(json.dumps(entry, ensure_ascii=False) for entry in value)
+    return details
+
+
+def _session_errors(item, run, execution, session_id):
+    evidence = collect_session(item, run, execution, session_id, redact)
+    if evidence.get('match') != 'matched':
+        return []
+    return evidence.get('errors') or []
+
+
+def case_session_failures(item, run, raw=None):
+    folder = run / 'raw'
+    try:
+        execution = safe_json((folder / (item.safe_id + '.execution.json')).read_text(encoding='utf-8'), '执行记录')
+        if raw is None:
+            raw = parse_lcr_output((folder / (item.safe_id + '.stdout.json')).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return []
+    return _session_errors(item, run, execution, raw.get('session_id'))
+
+
+def answer_session_failures(item, run, answer):
+    review = answer.get('review') if isinstance(answer, dict) else None
+    if not isinstance(review, dict) or answer.get('reviewer') != 'lcr':
+        return []
+    session_id = review.get('session_id')
+    stored = saved_session_failures(item, run, session_id)
+    if stored:
+        return stored
+    try:
+        execution = safe_json((run / 'raw' / (item.safe_id + '.execution.json')).read_text(encoding='utf-8'), '执行记录')
+        raw = parse_lcr_output((run / 'raw' / (item.safe_id + '.stdout.json')).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return []
+    if session_id and raw.get('session_id') != session_id:
+        return []
+    return _session_errors(item, run, execution, session_id or raw.get('session_id'))
+
+
+def saved_session_failures(item, run, session_id=None):
+    # Historical diagnostics let a resumed run identify hidden per-item errors
+    # without rescanning the full session directory on every dashboard refresh.
+    path = run / 'diagnostics' / (item.safe_id + '.json')
+    try:
+        data = safe_json(path.read_text(encoding='utf-8'), '案例诊断记录')
+    except (OSError, ValueError):
+        return []
+    evidence = data.get('session_evidence') or {}
+    if session_id and evidence.get('session_id') != session_id:
+        return []
+    return evidence.get('errors') or []
+
+
 def configure(cfg, run):
-    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT
+    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT, MAX_CASE_RETRIES
     case_jobs = cfg.get('case_jobs', 1)
     if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
         raise ValueError('案例并发必须为 1–16 的整数')
     CASE_JOBS = case_jobs
+    retries = cfg.get('max_case_retries', 1)
+    if type(retries) is not int or not 0 <= retries <= 2:
+        raise ValueError('失败案例自动重试次数必须为 0–2')
+    MAX_CASE_RETRIES = retries
     FILE_CONCURRENCY = 1
     REPOS_ROOT = Path(cfg.get('repos_root', ROOT/'repos'))
     LCR_TIMEOUT_MINUTES = cfg['timeout_minutes']

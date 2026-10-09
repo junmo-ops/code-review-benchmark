@@ -25,7 +25,7 @@ def create(app, data):
     signatures=[(c['LCR_LLM_MODEL'],c['LCR_LLM_BASE_URL']) for c in configs]
     if len(set(signatures))!=len(signatures):raise ValueError('所选配置包含相同模型与接口，不能作为两个对照组')
     profiles={p['id']:p for p in app.profiles()};suite=get_suite(suite_id)
-    source=app.root/'data'/dataset;cases=suite.load_cases(source)
+    source=app.dataset_path(dataset);cases=suite.load_cases(source)
     if not cases or len({c.instance_id for c in cases})!=len(cases):raise ValueError('案例为空或 ID 重复')
     key='compare-'+name;folder=app.run_dir(key)
     with app.lock:

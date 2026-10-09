@@ -222,7 +222,9 @@ class Dashboard:
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
                     status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else 'scored' if summary and completed == total else 'reviewed' if completed == total else 'partial' if completed else 'failed' if any(c['status'] != 'pending' for c in cases) else 'pending',
                     completed=completed, total=total, cases=cases, metrics=summary, artifacts=reports,
-                    timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1), profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+                    timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1),
+                    max_case_retries=cfg.get('max_case_retries', 1 if cfg.get('reviewer', 'lcr') == 'lcr' else 0),
+                    profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
 
     def artifacts(self, key):
         root = self.run_dir(key)
@@ -263,8 +265,32 @@ class Dashboard:
                     with path.open(encoding='utf-8') as f:
                         rows = [json.loads(line) for line in f if line.strip()]
                     item['datasets'].append(dict(id=filename, count=len(rows), rounds=sum(len(r.get('rounds', [])) for r in rows)))
+            from .case_assets import registered_datasets
+            for upload in registered_datasets(self.data):
+                if upload.get('suite') == entry['id']:
+                    item['datasets'].append(dict(id=upload['id'], name=upload['name'],
+                                                 count=upload['count'], rounds=0))
             result.append(item)
         return result
+
+    def dataset_path(self, dataset_id):
+        from .case_assets import _registry
+        if isinstance(dataset_id, str) and dataset_id.startswith('uploads/'):
+            upload = next((row for row in _registry(self.data)['datasets']
+                           if row.get('id') == dataset_id), None)
+            if upload is None:
+                raise ValueError('上传的案例集不存在')
+            base = (self.data / 'case-datasets').resolve()
+            original = self.data / upload['file']
+            path = original.resolve()
+            if not path.is_relative_to(base) or not path.is_file() or original.is_symlink():
+                raise ValueError('上传的案例集文件不可用')
+            return path
+        base = (self.root / 'data').resolve()
+        path = (base / dataset_id).resolve()
+        if not path.is_relative_to(base) or not path.is_file():
+            raise ValueError('案例集文件不可用')
+        return path
 
     def snapshot(self):
         runs = []
@@ -293,6 +319,10 @@ class Dashboard:
             if os.environ.get('BENCH_CASE_UPLOAD') == '1':
                 from .case_assets import status
                 case_assets = status(self.root, self.data)
+                if not os.environ.get('BENCH_SERVER_MODE'):
+                    case_assets['ready'] = True
+                    if not case_assets['datasets']:
+                        case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
             return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
                         active=self.active, case_assets=case_assets, storage_mode=os.environ.get('BENCH_STORAGE_MODE', 'persistent'), runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
@@ -309,7 +339,7 @@ class Dashboard:
             args=[stage,'--run-id',run_id,'--runs-root',str(self.data/'runs')]
             limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
             if init is not None:
-                args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.root/'data'/init['dataset']),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
+                args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
             if task:args+=['--instance',task]
             if stage=='review':args+=['--external-timeout-seconds',str(limit)]
             return [sys.executable,str(self.root/'cloud.py')]+args,env,limit
@@ -335,7 +365,9 @@ class Dashboard:
         else:
             entry = 'local.py'
             if init is not None:
-                args += ['--dataset', 'data/'+init['dataset'], '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
+                args += ['--dataset', str(self.dataset_path(init['dataset'])), '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
+                if init['reviewer'] == 'lcr':
+                    args += ['--max-case-retries', str(init.get('max_case_retries', 1))]
             if task:
                 args += ['--instance', task]
             if stage == 'review':
@@ -345,12 +377,18 @@ class Dashboard:
                 if task:
                     items = [i for i in items if i.instance_id == task]
                 limits=[]
+                attempts = cfg.get('max_case_retries', 1) + 1
+                backoff = sum(min(5 * retry, 15) for retry in range(1, attempts))
                 for item in items:
                     repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
                     base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
                     files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-                    limits.append(max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 240)
-                limit = max(limits, default=900) + 60*len(items)
+                    one_attempt = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 120
+                    limits.append(one_attempt * attempts + backoff)
+                case_jobs = max(1, cfg.get('case_jobs', 1))
+                batch_budget = sum(max(limits[offset:offset + case_jobs])
+                                   for offset in range(0, len(limits), case_jobs))
+                limit = batch_budget + 60 * len(items) * attempts
             if retry:
                 args.append('--retry')
         command = [sys.executable, str(self.root/entry), '--timeout-seconds', str(limit)]
@@ -365,10 +403,10 @@ class Dashboard:
         return command+args, env, limit
 
     def submit(self, request):
-        if os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
+        if os.environ.get('BENCH_SERVER_MODE') and os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
             from .case_assets import status
             if not status(self.root, self.data)['ready']:
-                raise ValueError('请先在网页上传并准备 AACR 案例包')
+                raise ValueError('请先在网页上传并准备至少一份案例 ZIP')
         action = request.get('action')
         request = dict(request)
         role_config = None
@@ -378,11 +416,11 @@ class Dashboard:
             raise ValueError('开始选项必须为布尔值')
         if action == 'create':
             suite = request.get('suite')
-            entry = next((s for s in CATALOG if s['id'] == suite), None)
+            entry = next((s for s in self.catalog() if s['id'] == suite), None)
             enabled = os.environ.get('BENCH_ENABLED_SUITES', '')
             if enabled and suite not in enabled.split(','):
                 raise ValueError('本部署未启用该案例集')
-            if not entry or request.get('dataset') not in entry['datasets']:
+            if not entry or request.get('dataset') not in [dataset['id'] for dataset in entry['datasets']]:
                 raise ValueError('案例集与数据清单不匹配')
             run_id = request.get('name')
             if not isinstance(run_id, str) or not NAME.fullmatch(run_id):
@@ -418,7 +456,12 @@ class Dashboard:
                 raise ValueError('案例并发必须为 1–16 的整数')
             if (suite in {'mcr','ccrab'} or reviewer != 'lcr') and case_jobs != 1:
                 raise ValueError('案例并发仅适用于单轮 LCR 测评')
-            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens, case_jobs=case_jobs)
+            max_case_retries = request.get('max_case_retries', 1 if reviewer == 'lcr' else 0)
+            if type(max_case_retries) is not int or not 0 <= max_case_retries <= 2:
+                raise ValueError('失败案例自动重试次数必须为 0–2')
+            if reviewer != 'lcr' and max_case_retries:
+                raise ValueError('失败案例自动重试当前仅支持 LCR')
+            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens, case_jobs=case_jobs, max_case_retries=max_case_retries)
         else:
             key = request.get('key')
             self.config(key)

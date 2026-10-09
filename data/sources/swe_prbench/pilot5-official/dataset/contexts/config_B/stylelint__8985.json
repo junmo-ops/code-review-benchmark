@@ -1,0 +1,10 @@
+{
+  "pr_number": 8985,
+  "repo": "stylelint/stylelint",
+  "task_id": "stylelint__8985",
+  "config_name": "config_B",
+  "pipeline_version": "v0.4.1",
+  "total_tokens": 408,
+  "was_truncated": false,
+  "rendered": "## Layer 0 - Task + Focus\nYou are reviewing a pull request.\n\nFocus:\n- Identify real issues in the changes.\n- Prioritize correctness and logic.\n- Use surrounding code only if required.\n\nDo not speculate.\n\n---\n\n## Layer 1 - Key Changes Summary\nKey Changes:\n- `lib/rules/hue-degree-notation/index.mjs`: 11 changed lines, 0 function/branch hunks, logic markers=4.\n- `lib/rules/hue-degree-notation/__tests__/index.mjs`: 101 changed lines, 0 function/branch hunks, logic markers=0.\n- PR profile: type=bug_fix, difficulty=Type2_Contextual, language=JavaScript, files_changed=3.\n\n---\n\n## Layer 2 - Diff (Core)\n\n### lib/rules/hue-degree-notation/index.mjs\n```diff\ndiff --git a/lib/rules/hue-degree-notation/index.mjs b/lib/rules/hue-degree-notation/index.mjs\nindex 42a1bc454b..9bca1f83e9 100644\n--- a/lib/rules/hue-degree-notation/index.mjs\n+++ b/lib/rules/hue-degree-notation/index.mjs\n@@ -100,12 +100,17 @@ function findHue(node) {\n \tconst args = node.nodes.filter(({ type }) => type === 'word' || type === 'function');\n \tconst value = node.value.toLowerCase();\n \n+\t// If using relative color syntax, for instance `oklch(from red l c h)`, the\n+\t// channels start from the 2nd value.\n+\tconst isRelativeColor = args[0]?.value.toLowerCase() === 'from';\n+\tconst offset = isRelativeColor ? 2 : 0;\n+\n \tif (HUE_FIRST_ARG_FUNCS.includes(value)) {\n-\t\treturn args[0];\n+\t\treturn args[0 + offset];\n \t}\n \n \tif (HUE_THIRD_ARG_FUNCS.includes(value)) {\n-\t\treturn args[2];\n+\t\treturn args[2 + offset];\n \t}\n \n \treturn undefined;\n\n```\n\n---\n\n## Layer 3 - Execution Context\n\n---\n\n## Layer 4 - Behavior Mapping\n\n---\n\n## Layer 6 - Minimal Metadata\n- Language: JavaScript\n- Files changed: 3\n- PR type: bug_fix"
+}

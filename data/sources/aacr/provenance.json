@@ -30,6 +30,261 @@
       "instance_ids": [
         "cline__cline@419534c"
       ]
+    },
+    {
+      "path": "data/pilot30.jsonl",
+      "sha256": "f060e330707e2400ccaf8e2acc85b6dea3c7f3872bfc88c366b0a4d7d964bc00",
+      "case_count": 30,
+      "instance_ids": [
+        "cline__cline@419534c",
+        "cline__cline@f098af0",
+        "cline__cline@7d18fb9",
+        "cline__cline@2195a68",
+        "cline__cline@cb4d5c9",
+        "electron__electron@100ad24",
+        "electron__electron@6084595",
+        "electron__electron@2cc5656",
+        "gofr-dev__gofr@dc0b3e6",
+        "gofr-dev__gofr@c1a26ad",
+        "gofr-dev__gofr@b9cdcbb",
+        "dotnet__aspnetcore@8ac940f",
+        "dotnet__aspnetcore@742f022",
+        "timescale__timescaledb@2568b01",
+        "timescale__timescaledb@5ab9b12",
+        "timescale__timescaledb@7148e5c",
+        "browser-use__browser-use@aab7b3b",
+        "browser-use__browser-use@72f1585",
+        "browser-use__browser-use@0b21e50",
+        "bluewave-labs__Checkmate@32b54dd",
+        "bluewave-labs__Checkmate@29e03a6",
+        "symfony__symfony@942f8fa",
+        "symfony__symfony@6478705",
+        "symfony__symfony@2b9721f",
+        "kestra-io__kestra@0ec45f0",
+        "kestra-io__kestra@3c2a276",
+        "kestra-io__kestra@06e7c6e",
+        "linera-io__linera-protocol@8fb32bb",
+        "linera-io__linera-protocol@3535ddb",
+        "linera-io__linera-protocol@024925d"
+      ],
+      "source": {
+        "status": "official_reproducible_subset",
+        "raw_file": "data/sources/aacr/pilot30.raw.json",
+        "raw_sha256": "e60acbbdc8b5c889b28768e173552fc808e31b6e565ddcd06d7b9e9dab52a0cc",
+        "upstream_url": "https://raw.githubusercontent.com/alibaba/aacr-bench/main/dataset/positive_samples.json",
+        "upstream_revision": "main; the retrieved bytes are pinned by upstream_sha256",
+        "upstream_sha256": "7a4a0e7046ffd1b8f41f951480bbb618d23d38d9f67364f38aabcda121a50be3",
+        "upstream_retrieved_at": "2026-10-08",
+        "upstream_record_count": 196,
+        "sampling_seed": 42,
+        "selection": "保留既有 pilot5 全部五例；从上游其余记录按语言和仓库分层补充 25 例。",
+        "language_counts": {
+          "TypeScript": 5,
+          "C++": 3,
+          "Go": 3,
+          "C#": 2,
+          "C": 3,
+          "Python": 3,
+          "JavaScript": 2,
+          "PHP": 3,
+          "Java": 3,
+          "Rust": 3
+        },
+        "repository_counts": {
+          "cline/cline": 5,
+          "electron/electron": 3,
+          "gofr-dev/gofr": 3,
+          "dotnet/aspnetcore": 2,
+          "timescale/timescaledb": 3,
+          "browser-use/browser-use": 3,
+          "bluewave-labs/Checkmate": 2,
+          "symfony/symfony": 3,
+          "kestra-io/kestra": 3,
+          "linera-io/linera-protocol": 3
+        },
+        "source_cases": [
+          {
+            "instance_id": "cline__cline@419534c",
+            "github_pr_url": "https://github.com/cline/cline/pull/5177",
+            "source_commit": "a1bf1f95a30ca95581d9811488636aec42dd2f80",
+            "target_commit": "419534ccd4241fc11827741eb0d76ba0c9d21277"
+          },
+          {
+            "instance_id": "cline__cline@f098af0",
+            "github_pr_url": "https://github.com/cline/cline/pull/5955",
+            "source_commit": "b3abbd886e7e693c48b31a0af8046035bf014118",
+            "target_commit": "f098af0f52bf1cdb7eb561c380caef5746b58d40"
+          },
+          {
+            "instance_id": "cline__cline@7d18fb9",
+            "github_pr_url": "https://github.com/cline/cline/pull/2347",
+            "source_commit": "07d20574868b2ebb51c95c30a7a81b3793f0f07e",
+            "target_commit": "7d18fb9df620c61420c6939df22fb6f7af836bb2"
+          },
+          {
+            "instance_id": "cline__cline@2195a68",
+            "github_pr_url": "https://github.com/cline/cline/pull/4786",
+            "source_commit": "398bc87a64800e021966868243be2f09be72e73c",
+            "target_commit": "2195a689b787a963bdacc35d348f4590c30a2692"
+          },
+          {
+            "instance_id": "cline__cline@cb4d5c9",
+            "github_pr_url": "https://github.com/cline/cline/pull/1808",
+            "source_commit": "4d8bdf29458db722a2bce1dfacc50771959b32fa",
+            "target_commit": "cb4d5c90460885942cbbae0298b95f4ee5682086"
+          },
+          {
+            "instance_id": "electron__electron@100ad24",
+            "github_pr_url": "https://github.com/electron/electron/pull/46660",
+            "source_commit": "7083419361385dfcd762656f0227581aedc4f514",
+            "target_commit": "100ad244b742d221ad129e96bef934e8128403a9"
+          },
+          {
+            "instance_id": "electron__electron@6084595",
+            "github_pr_url": "https://github.com/electron/electron/pull/47361",
+            "source_commit": "a42afaa8665b6d1b3a344918c60853184a97060e",
+            "target_commit": "6084595c5608226e961d251bfb5ec138de8022ca"
+          },
+          {
+            "instance_id": "electron__electron@2cc5656",
+            "github_pr_url": "https://github.com/electron/electron/pull/45671",
+            "source_commit": "d6f4982522efd5917b44d1ceed418e4a0ee7824e",
+            "target_commit": "2cc56562e22cd36c70f0b632c3297d62c3c58b06"
+          },
+          {
+            "instance_id": "gofr-dev__gofr@dc0b3e6",
+            "github_pr_url": "https://github.com/gofr-dev/gofr/pull/1355",
+            "source_commit": "44e3eeb2786ad4d333dc1f528fb104236693d060",
+            "target_commit": "dc0b3e630423b72cb9b2f273fdc18a5c11d12984"
+          },
+          {
+            "instance_id": "gofr-dev__gofr@c1a26ad",
+            "github_pr_url": "https://github.com/gofr-dev/gofr/pull/1681",
+            "source_commit": "d0300073f685bb1154f7437f3172799d31bfddbe",
+            "target_commit": "c1a26ade6db7da96622c9bdca7674ef7094c122f"
+          },
+          {
+            "instance_id": "gofr-dev__gofr@b9cdcbb",
+            "github_pr_url": "https://github.com/gofr-dev/gofr/pull/1325",
+            "source_commit": "7f1760b083ea23ffd95fdf83467bdfa21735df81",
+            "target_commit": "b9cdcbb2b9fc78499d15d51ffbb7c861592b0efe"
+          },
+          {
+            "instance_id": "dotnet__aspnetcore@8ac940f",
+            "github_pr_url": "https://github.com/dotnet/aspnetcore/pull/59322",
+            "source_commit": "7ba02e8ac71eeba562476953d5ff6030b8eda765",
+            "target_commit": "8ac940ff581aa344ab8f859874f6d4c0ecaec6b6"
+          },
+          {
+            "instance_id": "dotnet__aspnetcore@742f022",
+            "github_pr_url": "https://github.com/dotnet/aspnetcore/pull/62734",
+            "source_commit": "8bb2b2067815996d9a8224ee38aa80a79f797827",
+            "target_commit": "742f022e92563bd6fb87d1c752f25fd14e1b2a43"
+          },
+          {
+            "instance_id": "timescale__timescaledb@2568b01",
+            "github_pr_url": "https://github.com/timescale/timescaledb/pull/7935",
+            "source_commit": "17fb43d888dbe3b328da6b08b310bc83d3167d39",
+            "target_commit": "2568b018719e25f262255626c474a461da38fc21"
+          },
+          {
+            "instance_id": "timescale__timescaledb@5ab9b12",
+            "github_pr_url": "https://github.com/timescale/timescaledb/pull/7632",
+            "source_commit": "9382a90adac7a889c1df0d821a12ba1d29c8dcba",
+            "target_commit": "5ab9b1295e6bdce4834005e3738074b3a844eeb4"
+          },
+          {
+            "instance_id": "timescale__timescaledb@7148e5c",
+            "github_pr_url": "https://github.com/timescale/timescaledb/pull/7915",
+            "source_commit": "d0fe7370082dbc57d391d5168705909809bd880f",
+            "target_commit": "7148e5c7d90c9da819a8ca77b79664fac300ca60"
+          },
+          {
+            "instance_id": "browser-use__browser-use@aab7b3b",
+            "github_pr_url": "https://github.com/browser-use/browser-use/pull/857",
+            "source_commit": "515b94225aa86c40dc2c20034055ab8bcc88c6ae",
+            "target_commit": "aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52"
+          },
+          {
+            "instance_id": "browser-use__browser-use@72f1585",
+            "github_pr_url": "https://github.com/browser-use/browser-use/pull/3172",
+            "source_commit": "e85a547378b236c9788802d28e816f10940a7e53",
+            "target_commit": "72f1585f9add5b72e829eaee3b5bff684e0b08d3"
+          },
+          {
+            "instance_id": "browser-use__browser-use@0b21e50",
+            "github_pr_url": "https://github.com/browser-use/browser-use/pull/1482",
+            "source_commit": "fa461585f1fc2d4a430e68e6c115a12f4936fe73",
+            "target_commit": "0b21e50ca640581ecd46990475c8b223eaa05045"
+          },
+          {
+            "instance_id": "bluewave-labs__Checkmate@32b54dd",
+            "github_pr_url": "https://github.com/bluewave-labs/Checkmate/pull/2883",
+            "source_commit": "05dd5f7de27ae7f2139714f0bc577484642e2c77",
+            "target_commit": "32b54ddf11ea27b8ed85d2139fe38e0dcb7f3d43"
+          },
+          {
+            "instance_id": "bluewave-labs__Checkmate@29e03a6",
+            "github_pr_url": "https://github.com/bluewave-labs/Checkmate/pull/1897",
+            "source_commit": "7c369e84052aaee15a6dedf8928b5af4c869037b",
+            "target_commit": "29e03a6294edfe43b49eba20fe49099cef601d34"
+          },
+          {
+            "instance_id": "symfony__symfony@942f8fa",
+            "github_pr_url": "https://github.com/symfony/symfony/pull/61601",
+            "source_commit": "a57c946d3b8d477964da5303fa693a9b7c4e6227",
+            "target_commit": "942f8fa5384d34f2b5c9bd1b73a169d8fd049fd5"
+          },
+          {
+            "instance_id": "symfony__symfony@6478705",
+            "github_pr_url": "https://github.com/symfony/symfony/pull/60956",
+            "source_commit": "e06b10c4f0088e2966c510d335531f7daed61915",
+            "target_commit": "647870557cf275de666557e552e11e9a295b9d4a"
+          },
+          {
+            "instance_id": "symfony__symfony@2b9721f",
+            "github_pr_url": "https://github.com/symfony/symfony/pull/60342",
+            "source_commit": "0b4d21c3f91dd2cd2cc49739ab31a1457cf001ea",
+            "target_commit": "2b9721f04744fb213808f754ac98cd563384b3e5"
+          },
+          {
+            "instance_id": "kestra-io__kestra@0ec45f0",
+            "github_pr_url": "https://github.com/kestra-io/kestra/pull/7191",
+            "source_commit": "bfcfb2ac16dd8f198a99fef43072cb178f9a1d8e",
+            "target_commit": "0ec45f028467c99d8d1efeee6c201210d9433e6d"
+          },
+          {
+            "instance_id": "kestra-io__kestra@3c2a276",
+            "github_pr_url": "https://github.com/kestra-io/kestra/pull/7381",
+            "source_commit": "a716094a9d3c3522fb40ea988b3dab2763d7519c",
+            "target_commit": "3c2a2765fcd06d7fe127e362ddc9a706d4073047"
+          },
+          {
+            "instance_id": "kestra-io__kestra@06e7c6e",
+            "github_pr_url": "https://github.com/kestra-io/kestra/pull/6844",
+            "source_commit": "01a77aff0422884ed7b18ba8d00a0495d0bab88e",
+            "target_commit": "06e7c6e48e22420da5bb0bf3188bc00f73974c9a"
+          },
+          {
+            "instance_id": "linera-io__linera-protocol@8fb32bb",
+            "github_pr_url": "https://github.com/linera-io/linera-protocol/pull/3151",
+            "source_commit": "ad508025a9d05552a1c8ac1ba4e71a0062ebb556",
+            "target_commit": "8fb32bb8a463a3b19e291426f83833027739f868"
+          },
+          {
+            "instance_id": "linera-io__linera-protocol@3535ddb",
+            "github_pr_url": "https://github.com/linera-io/linera-protocol/pull/4639",
+            "source_commit": "c31634e52d719fdf60694f47812e2f007022ae26",
+            "target_commit": "3535ddb83de7dfae5db1732a7f1535031d31380a"
+          },
+          {
+            "instance_id": "linera-io__linera-protocol@024925d",
+            "github_pr_url": "https://github.com/linera-io/linera-protocol/pull/3075",
+            "source_commit": "c4a8ac301274ccdfc8d0fc87871d557534a8405f",
+            "target_commit": "024925dfbeff5daaecdd2cd733cda2825eff1bb7"
+          }
+        ]
+      }
     }
   ],
   "cases": [

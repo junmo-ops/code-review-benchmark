@@ -1,0 +1,50 @@
+{
+  "task_id": "stylelint__8985",
+  "pr_number": 8985,
+  "repo": "stylelint/stylelint",
+  "has_severity_annotations": false,
+  "has_requested_changes": false,
+  "total_comment_count": 1,
+  "substantive_comment_count": 1,
+  "changes_required": true,
+  "requested_change_count": 1,
+  "substantive_comment_ids": [
+    "c_1"
+  ],
+  "requested_changes": [
+    {
+      "comment_id": "c_1",
+      "body": "```suggestion\n\t\t{\n\t\t\tcode: 'a { color: hsl(FROM lch(0 0 10) 0 s l) }',\n\t\t\tfixed: 'a { color: hsl(FROM lch(0 0 10deg) 0deg s l) }',\n\t\t\twarnings: [\n\t\t\t\t{\n\t\t\t\t\tmessage: messages.expected('0', '0deg'),\n\t\t\t\t\tcolumn: 33,\n\t\t\t\t\tendLine: 1,\n\t\t\t\t\tendColumn: 34,\n\t\t\t\t\tfix: {\n\t\t\t\t\t\trange: [32, 33],\n\t\t\t\t\t\ttext: '0deg',\n\t\t\t\t\t},\n\t\t\t\t},\n\t\t\t\t{\n\t\t\t\t\tmessage: messages.expected('10', '10deg'),\n\t\t\t\t\tline: 1,\n\t\t\t\t\tcolumn: 29,\n\t\t\t\t\tendLine: 1,\n\t\t\t\t\tendColumn: 31,\n\t\t\t\t},\n\t\t\t],\n\t\t},\n```\n\nSince relative colour syntax allows nested colours, let's update this test to confirm they are fixed as well.\n\n(And testing for case insensitivity.)\n\n[Demo](https://stylelint.io/demo/#N4Igxg9gJgpiBcICGACYLIBsICd4oAsBnTACgDEAlAeQFkVMwDSAGFNgRhYEp2UiGvAL4gANCABmAS0wwAckgC2cRDAAeSgA6yAdGCJEx4CADtpAcwQh1m3ABcUsCUgCumB8AA6JlChxuYInwvH18UTxACFxgAWlhzHBhYkwg7JDspUwj8CKQTc1kI718hbyEAbm8jSDMpc3JcRXSrIjsAT1lMKRM7PVMLHUUAK0NxWE1DRBDfCNaOmC6e7PDIuzsJ+AB6Tc0Aa3MdTRwdExgAd025zu67AAEANgBme4AWAE4wCQjRYpWrhZuMRqFhirTyUCQOCgywimHSgTsRRMIiEQA).\n",
+      "file": "lib/rules/hue-degree-notation/__tests__/index.mjs",
+      "line": 196,
+      "diff_hunk": "@@ -130,6 +145,45 @@ testRule({\n \t\t\tendLine: 1,\n \t\t\tendColumn: 33,\n \t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: oklch(from red l c 10) }',\n+\t\t\tfixed: 'a { color: oklch(from red l c 10deg) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [31, 32],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 31,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 33,\n+\t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: hsl(from red 10 s l) }',\n+\t\t\tfixed: 'a { color: hsl(from red 10deg s l) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [25, 26],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 25,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 27,\n+\t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: hsl(from hsl(10 60% 50%) h s l) }',\n+\t\t\tfixed: 'a { color: hsl(from hsl(10deg 60% 50%) h s l) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [25, 26],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 25,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 27,\n+\t\t},",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "jeddy3",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": false,
+      "thread_resolved": null
+    }
+  ],
+  "comments": [
+    {
+      "comment_id": "c_1",
+      "body": "```suggestion\n\t\t{\n\t\t\tcode: 'a { color: hsl(FROM lch(0 0 10) 0 s l) }',\n\t\t\tfixed: 'a { color: hsl(FROM lch(0 0 10deg) 0deg s l) }',\n\t\t\twarnings: [\n\t\t\t\t{\n\t\t\t\t\tmessage: messages.expected('0', '0deg'),\n\t\t\t\t\tcolumn: 33,\n\t\t\t\t\tendLine: 1,\n\t\t\t\t\tendColumn: 34,\n\t\t\t\t\tfix: {\n\t\t\t\t\t\trange: [32, 33],\n\t\t\t\t\t\ttext: '0deg',\n\t\t\t\t\t},\n\t\t\t\t},\n\t\t\t\t{\n\t\t\t\t\tmessage: messages.expected('10', '10deg'),\n\t\t\t\t\tline: 1,\n\t\t\t\t\tcolumn: 29,\n\t\t\t\t\tendLine: 1,\n\t\t\t\t\tendColumn: 31,\n\t\t\t\t},\n\t\t\t],\n\t\t},\n```\n\nSince relative colour syntax allows nested colours, let's update this test to confirm they are fixed as well.\n\n(And testing for case insensitivity.)\n\n[Demo](https://stylelint.io/demo/#N4Igxg9gJgpiBcICGACYLIBsICd4oAsBnTACgDEAlAeQFkVMwDSAGFNgRhYEp2UiGvAL4gANCABmAS0wwAckgC2cRDAAeSgA6yAdGCJEx4CADtpAcwQh1m3ABcUsCUgCumB8AA6JlChxuYInwvH18UTxACFxgAWlhzHBhYkwg7JDspUwj8CKQTc1kI718hbyEAbm8jSDMpc3JcRXSrIjsAT1lMKRM7PVMLHUUAK0NxWE1DRBDfCNaOmC6e7PDIuzsJ+AB6Tc0Aa3MdTRwdExgAd025zu67AAEANgBme4AWAE4wCQjRYpWrhZuMRqFhirTyUCQOCgywimHSgTsRRMIiEQA).\n",
+      "file": "lib/rules/hue-degree-notation/__tests__/index.mjs",
+      "line": 196,
+      "diff_hunk": "@@ -130,6 +145,45 @@ testRule({\n \t\t\tendLine: 1,\n \t\t\tendColumn: 33,\n \t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: oklch(from red l c 10) }',\n+\t\t\tfixed: 'a { color: oklch(from red l c 10deg) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [31, 32],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 31,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 33,\n+\t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: hsl(from red 10 s l) }',\n+\t\t\tfixed: 'a { color: hsl(from red 10deg s l) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [25, 26],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 25,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 27,\n+\t\t},\n+\t\t{\n+\t\t\tcode: 'a { color: hsl(from hsl(10 60% 50%) h s l) }',\n+\t\t\tfixed: 'a { color: hsl(from hsl(10deg 60% 50%) h s l) }',\n+\t\t\tfix: {\n+\t\t\t\trange: [25, 26],\n+\t\t\t\ttext: '0deg',\n+\t\t\t},\n+\t\t\tmessage: messages.expected('10', '10deg'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 25,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 27,\n+\t\t},",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "jeddy3",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": false,
+      "thread_resolved": null
+    }
+  ]
+}

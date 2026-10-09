@@ -1,0 +1,67 @@
+{
+  "task_id": "stylelint__9062",
+  "pr_number": 9062,
+  "repo": "stylelint/stylelint",
+  "has_severity_annotations": false,
+  "has_requested_changes": false,
+  "total_comment_count": 6,
+  "substantive_comment_count": 2,
+  "changes_required": true,
+  "requested_change_count": 1,
+  "substantive_comment_ids": [
+    "c_1",
+    "c_2"
+  ],
+  "requested_changes": [
+    {
+      "comment_id": "c_2",
+      "body": "[suggestion] Sorry that this suggestion is out of the scope of this PR.\n\nI think that `context.lexer` should be put in a more proper place, e.g., `result.stylelint.lexer`, because `context.lexer` is an internal property and should always be present.\n\nCurrently, it's in the `context` argument called by the public API [`checkAgainstRule()`](https://stylelint.io/developer-guide/plugins/#stylelintutilscheckagainstrule):\nhttps://github.com/stylelint/stylelint/blob/d750a6aeafb09973289f6a930a720d497720e8f0/lib/utils/checkAgainstRule.mjs#L16\n\nThen, we have to consider a case where the `context` might be absent, since users might pass an arbitrary `context`.\n\nIf we had `result.stylelint.lexer`, we could make some code unnecessary, e.g.,\n\n```ts\nimport type { Lexer as CSSTreeLexer } from 'css-tree';\n\n// ...\n\n/** @internal */\nexport type StylelintPostcssResult = {\n  // ...\n  lexer: CSSTreeLexer;\n};\n```\n\nIf anyone is concerned, I'll create a PR to implement the refactoring suggestion.",
+      "file": "lib/rules/declaration-property-value-no-unknown/index.mjs",
+      "line": 146,
+      "diff_hunk": "@@ -129,14 +130,20 @@ const rule = (primary, secondaryOptions) => {\n \t\t\t}\n \t\t});\n \n-\t\tconst languageOptions = result.stylelint.config?.languageOptions;\n-\t\tconst forkedLexer = fork(\n-\t\t\tmergeSyntaxDefinitions(\n-\t\t\t\tsyntaxPatches,\n-\t\t\t\t{ ...languageOptions?.syntax, atrules: languageOptions?.syntax?.atRules },\n-\t\t\t\t{ properties: propertiesSyntax, types: typesSyntax },\n-\t\t\t),\n-\t\t).lexer;\n+\t\tconst hasExtraSyntax =\n+\t\t\tObject.keys(propertiesSyntax).length > 0 || Object.keys(typesSyntax).length > 0;\n+\n+\t\tconst lexer = hasExtraSyntax\n+\t\t\t? fork(\n+\t\t\t\t\tmergeSyntaxDefinitions(\n+\t\t\t\t\t\tsyntaxPatches,\n+\t\t\t\t\t\t{\n+\t\t\t\t\t\t\t...result.stylelint.config?.languageOptions?.syntax,\n+\t\t\t\t\t\t},\n+\t\t\t\t\t\t{ properties: propertiesSyntax, types: typesSyntax },\n+\t\t\t\t\t),\n+\t\t\t\t).lexer\n+\t\t\t: getLexer(context);",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "ybiquitous",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": true,
+      "thread_resolved": null
+    }
+  ],
+  "comments": [
+    {
+      "comment_id": "c_1",
+      "body": "[question] `atrules: languageOptions?.syntax?.atRules` seems to be removed, but no problem?",
+      "file": "lib/rules/declaration-property-value-no-unknown/index.mjs",
+      "line": 141,
+      "diff_hunk": "@@ -129,14 +130,20 @@ const rule = (primary, secondaryOptions) => {\n \t\t\t}\n \t\t});\n \n-\t\tconst languageOptions = result.stylelint.config?.languageOptions;\n-\t\tconst forkedLexer = fork(\n-\t\t\tmergeSyntaxDefinitions(\n-\t\t\t\tsyntaxPatches,\n-\t\t\t\t{ ...languageOptions?.syntax, atrules: languageOptions?.syntax?.atRules },\n-\t\t\t\t{ properties: propertiesSyntax, types: typesSyntax },\n-\t\t\t),\n-\t\t).lexer;\n+\t\tconst hasExtraSyntax =\n+\t\t\tObject.keys(propertiesSyntax).length > 0 || Object.keys(typesSyntax).length > 0;\n+\n+\t\tconst lexer = hasExtraSyntax\n+\t\t\t? fork(\n+\t\t\t\t\tmergeSyntaxDefinitions(\n+\t\t\t\t\t\tsyntaxPatches,\n+\t\t\t\t\t\t{\n+\t\t\t\t\t\t\t...result.stylelint.config?.languageOptions?.syntax,",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "ybiquitous",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": false,
+      "is_in_diff": true,
+      "thread_resolved": null
+    },
+    {
+      "comment_id": "c_2",
+      "body": "[suggestion] Sorry that this suggestion is out of the scope of this PR.\n\nI think that `context.lexer` should be put in a more proper place, e.g., `result.stylelint.lexer`, because `context.lexer` is an internal property and should always be present.\n\nCurrently, it's in the `context` argument called by the public API [`checkAgainstRule()`](https://stylelint.io/developer-guide/plugins/#stylelintutilscheckagainstrule):\nhttps://github.com/stylelint/stylelint/blob/d750a6aeafb09973289f6a930a720d497720e8f0/lib/utils/checkAgainstRule.mjs#L16\n\nThen, we have to consider a case where the `context` might be absent, since users might pass an arbitrary `context`.\n\nIf we had `result.stylelint.lexer`, we could make some code unnecessary, e.g.,\n\n```ts\nimport type { Lexer as CSSTreeLexer } from 'css-tree';\n\n// ...\n\n/** @internal */\nexport type StylelintPostcssResult = {\n  // ...\n  lexer: CSSTreeLexer;\n};\n```\n\nIf anyone is concerned, I'll create a PR to implement the refactoring suggestion.",
+      "file": "lib/rules/declaration-property-value-no-unknown/index.mjs",
+      "line": 146,
+      "diff_hunk": "@@ -129,14 +130,20 @@ const rule = (primary, secondaryOptions) => {\n \t\t\t}\n \t\t});\n \n-\t\tconst languageOptions = result.stylelint.config?.languageOptions;\n-\t\tconst forkedLexer = fork(\n-\t\t\tmergeSyntaxDefinitions(\n-\t\t\t\tsyntaxPatches,\n-\t\t\t\t{ ...languageOptions?.syntax, atrules: languageOptions?.syntax?.atRules },\n-\t\t\t\t{ properties: propertiesSyntax, types: typesSyntax },\n-\t\t\t),\n-\t\t).lexer;\n+\t\tconst hasExtraSyntax =\n+\t\t\tObject.keys(propertiesSyntax).length > 0 || Object.keys(typesSyntax).length > 0;\n+\n+\t\tconst lexer = hasExtraSyntax\n+\t\t\t? fork(\n+\t\t\t\t\tmergeSyntaxDefinitions(\n+\t\t\t\t\t\tsyntaxPatches,\n+\t\t\t\t\t\t{\n+\t\t\t\t\t\t\t...result.stylelint.config?.languageOptions?.syntax,\n+\t\t\t\t\t\t},\n+\t\t\t\t\t\t{ properties: propertiesSyntax, types: typesSyntax },\n+\t\t\t\t\t),\n+\t\t\t\t).lexer\n+\t\t\t: getLexer(context);",
+      "severity": null,
+      "is_blocking": null,
+      "reviewer": "ybiquitous",
+      "is_initiating_comment": true,
+      "is_reply": false,
+      "reply_to": null,
+      "requires_change": true,
+      "is_in_diff": true,
+      "thread_resolved": null
+    }
+  ]
+}

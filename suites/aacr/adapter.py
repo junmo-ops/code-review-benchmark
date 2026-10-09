@@ -34,10 +34,12 @@ class AACRSuite:
         digest = hashlib.sha256(Path(dataset).read_bytes()).hexdigest()
         known = next((d for d in manifest["datasets"] if d["sha256"] == digest), None)
         if known:
-            raw_file = ROOT / manifest["raw_file"]
-            if hashlib.sha256(raw_file.read_bytes()).hexdigest() != manifest["raw_sha256"]:
+            source = known.get("source", {})
+            raw_file = ROOT / source.get("raw_file", manifest["raw_file"])
+            expected_raw_sha = source.get("raw_sha256", manifest["raw_sha256"])
+            if hashlib.sha256(raw_file.read_bytes()).hexdigest() != expected_raw_sha:
                 raise ValueError("AACR 原始数据与来源清单哈希不一致")
-            return {"status": "retained_pilot_source", "manifest": manifest,
+            return {"status": source.get("status", "retained_pilot_source"), "manifest": manifest,
                     "selected_dataset": known}
         return {"status": "unverified_custom_dataset", "dataset_sha256": digest,
                 "note": "仅验证 AACR 输入格式，未自动认定此清单来自官方数据；需另行记录来源。"}

@@ -79,8 +79,12 @@ def states(items, run):
         state = 'pending'
         if answer.exists():
             try:
-                adapter.validate_answer(item, answer)
-                state = 'complete'
+                saved = adapter.validate_answer(item, answer)
+                failure_check = getattr(adapter, 'saved_session_failures', None)
+                session_id = (saved.get('review') or {}).get('session_id')
+                state = ('answer_with_item_failures'
+                         if failure_check and failure_check(item, run, session_id)
+                         else 'complete')
             except ValueError:
                 state = 'invalid_answer'
         elif execution.exists():
@@ -118,6 +122,13 @@ def init_run(args, run):
         raise ValueError('案例并发必须为 1–16 的整数')
     if reviewer_id != 'lcr' and case_jobs != 1:
         raise ValueError('案例并发仅适用于 LCR')
+    max_case_retries = getattr(args, 'max_case_retries', None)
+    if max_case_retries is None:
+        max_case_retries = 1 if reviewer_id == 'lcr' else 0
+    if type(max_case_retries) is not int or not 0 <= max_case_retries <= 2:
+        raise ValueError('失败案例自动重试次数必须为 0–2')
+    if reviewer_id != 'lcr' and max_case_retries:
+        raise ValueError('失败案例自动重试当前仅支持 LCR')
     repo_root = Path(args.repos_root or data_root(ROOT)/'repos').resolve()
     cfg = {'schema_version':2, 'reviewer_id':reviewer_id,
            'evaluator':evaluators.freeze(getattr(args,'evaluator','original'),suite),
@@ -128,9 +139,10 @@ def init_run(args, run):
            'judge_endpoint_sha256':hashlib.sha256(os.environ['JUDGE_BASE_URL'].encode()).hexdigest() if os.getenv('JUDGE_BASE_URL') else None,
            'review_endpoint_sha256':hashlib.sha256(os.environ['LCR_LLM_BASE_URL'].encode()).hexdigest() if os.getenv('LCR_LLM_BASE_URL') else None,
            'repos_root':str(repo_root), 'case_jobs':case_jobs,'concurrency':1,
+           'max_case_retries':max_case_retries,
            'timeout_minutes':args.timeout_minutes, 'max_tools':50,'workspace_isolation':True,
            'repository_mode':'per_case_git_worktrees',
-           'process_timeout_policy':'changed_files * timeout_minutes * 60 + 120',
+           'process_timeout_policy':'(changed_files * timeout_minutes * 60 + 120) per attempt; total includes max_case_retries and backoff',
            'execution_platform':platform.system(), 'execution_architecture':platform.machine(),
            'python_version':platform.python_version(),
            'runtime_mode':'server' if os.getenv('BENCH_SERVER_MODE') else 'windows_local' if platform.system()=='Windows' and (ROOT/'local-runtime.json').exists() else 'mac_cloud_simulation' if (ROOT/'local-runtime.json').exists() else 'linux_cloud',
@@ -164,6 +176,7 @@ def main():
     p.add_argument('--model')
     p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效，默认30分钟')
     p.add_argument('--case-jobs',type=int,default=None,help='仅 init 指定，LCR 案例并发 1–16，默认1')
+    p.add_argument('--max-case-retries',type=int,default=None,help='仅 init 指定，失败案例自动重试 0–2 次，默认1')
     p.add_argument('--instance',help='preview/recover 必填；review 不指定时调度所有未完成案例')
     p.add_argument('--external-timeout-seconds',type=int,help='实际为本次工具命令设置的时限；review 必填')
     p.add_argument('--retry',action='store_true',help='确认上次任务已终止后，显式重跑失败案例')
@@ -172,8 +185,8 @@ def main():
         p.error('案例集和检视工具已冻结；调整时请新建批次')
     if args.stage!='init' and args.timeout_minutes is not None:
         p.error('超时已在 init 冻结；调整时请新建批次')
-    if args.stage!='init' and args.case_jobs is not None:
-        p.error('案例并发已在 init 冻结；调整时请新建批次')
+    if args.stage!='init' and (args.case_jobs is not None or args.max_case_retries is not None):
+        p.error('案例并发和自动重试次数已在 init 冻结；调整时请新建批次')
     if args.evaluator is None: args.evaluator='martian'
     if args.timeout_minutes is None: args.timeout_minutes=30
     if not re.fullmatch(r'[A-Za-z0-9_-]+',args.run_id) or args.timeout_minutes<1:
@@ -192,10 +205,11 @@ def main():
             print('历史批次按 AACR 兼容读取；当时未冻结评分器版本。',file=sys.stderr)
         items=checked_instances(run/'dataset.jsonl',suite.id)
         configure(cfg,run)
+        if cfg.get('reviewer_id', 'lcr') == 'lcr' and args.stage in ('status','review','eval','report'):
+            adapter.write_summary(items,run)
         snapshot=states(items,run)
         if args.stage=='status':
             save(run/'cloud-status.json',snapshot)
-            adapter.write_summary(items,run)
             print(json.dumps(snapshot,ensure_ascii=False,indent=2));return
         if args.stage=='export':
             destination=run.parent/(args.run_id+'-results.tar.gz')
@@ -215,7 +229,7 @@ def main():
                 adapter.check_repos([item])
                 if cfg.get("reviewer_id")!="server_agent" and hasattr(suite,"check_repository"):
                     suite.check_repository(item,adapter.REPO,run/"dataset.jsonl")
-                limit=adapter.process_timeout(item)
+                limit=adapter.case_execution_timeout(item) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(item)
                 print(f"{item.instance_id}：{'仓库映射就绪（远端提交待验证）' if cfg.get('reviewer_id')=='server_agent' else '提交就绪'}，检视外层上限 {limit} 秒；平台命令至少 {limit+60} 秒")
             return
         if args.stage in ('eval','report'):
@@ -223,39 +237,7 @@ def main():
             evaluators.execute(args.stage,suite,items,run,cfg)
             return
         if args.stage == 'review' and not args.instance and cfg.get('reviewer_id', 'lcr') == 'lcr':
-            if tool_identity()!=cfg['tool_hashes']:
-                raise ValueError('本轮检视工具或适配配置已改变，请新建批次')
-            require_model(cfg)
-            pending=[]
-            for item in items:
-                row=next(r for r in snapshot if r['instance_id']==item.instance_id)
-                if row['status']=='complete':
-                    adapter.validate_answer(item,run/'results'/(item.safe_id+'.json'))
-                    print('跳过已有完整答卷：',item.instance_id)
-                elif row['status']=='pending' or args.retry:
-                    pending.append(item)
-                else:
-                    raise ValueError('案例已有执行记录：先 status/recover 检查；确认旧任务已停止后才允许 --retry：'+item.instance_id)
-            if not args.external_timeout_seconds:
-                raise ValueError('平台命令时限未声明')
-            for item in pending:
-                adapter.REPO=repo_path(cfg['repos_root'],item)
-                adapter.check_repos([item])
-                if hasattr(suite,'check_repository'):
-                    suite.check_repository(item,adapter.REPO,run/'dataset.jsonl')
-            limits=[]
-            for item in pending:
-                adapter.REPO=repo_path(cfg['repos_root'],item)
-                limits.append(adapter.process_timeout(item)+60)
-            required=max(limits,default=60)
-            if args.external_timeout_seconds < required:
-                raise ValueError(f'平台命令时限不足：至少 {required} 秒')
-            try:
-                if pending:
-                    adapter._stage_review(pending,run,False)
-            finally:
-                adapter.write_summary(items,run)
-                save(run/'cloud-status.json',states(items,run))
+            _review_all_lcr_cases(args, cfg, suite, items, snapshot, run)
             return
         if not args.instance:
             p.error('preview/review/recover 必须指定 --instance')
@@ -270,7 +252,11 @@ def main():
             return
         if args.stage=='review' and (run/'results'/(selected.safe_id+'.json')).exists():
             adapter.validate_answer(selected,run/'results'/(selected.safe_id+'.json'))
-            print('跳过已有完整答卷：',selected.instance_id);return
+            row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
+            if row['status']=='complete':
+                print('跳过已有完整答卷：',selected.instance_id);return
+            if row['status']!='answer_with_item_failures':
+                raise ValueError('已有答卷但状态不完整或诊断异常，请先运行 status 检查：'+selected.instance_id)
         if tool_identity()!=cfg['tool_hashes']:
             raise ValueError('本轮检视工具或适配配置已改变，请新建批次')
         adapter.check_repos([selected])
@@ -279,9 +265,10 @@ def main():
         if args.stage=='review':
             require_model(cfg)
             row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
-            if row['status']!='pending' and not args.retry:
-                raise ValueError('已有执行记录：先 status/recover 检查；确认旧任务已停止后才允许 --retry')
-            required=adapter.process_timeout(selected)+60
+            auto_retry = row['status'] in ('failed','exited','timed_out','answer_with_item_failures') and cfg.get('max_case_retries',1)>0
+            if row['status']!='pending' and not auto_retry and not args.retry:
+                raise ValueError('已有未完成执行记录；先检查进程状态，或在确认安全后显式允许重跑')
+            required=(adapter.case_execution_timeout(selected) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(selected))+60
             if not args.external_timeout_seconds or args.external_timeout_seconds<required:
                 raise ValueError(f'平台命令时限不足或未声明：至少 {required} 秒。须同时设置工具 timeout，参数本身不会延长平台时限')
         try:
@@ -290,6 +277,81 @@ def main():
             if args.stage=='review':
                 adapter.write_summary(items,run)
                 save(run/'cloud-status.json',states(items,run))
+
+
+def _review_all_lcr_cases(args, cfg, suite, items, snapshot, run):
+    if tool_identity() != cfg['tool_hashes']:
+        raise ValueError('本轮检视工具或适配配置已改变，请新建批次')
+    require_model(cfg)
+    pending = _pending_review_items(args, cfg, items, snapshot, run)
+    _check_pending_repositories(pending, cfg, suite, run)
+    _check_review_deadline(args, cfg, pending)
+    try:
+        if pending:
+            adapter._stage_review(pending, run, False)
+    finally:
+        adapter.write_summary(items, run)
+        save(run / 'cloud-status.json', states(items, run))
+
+
+def _pending_review_items(args, cfg, items, snapshot, run):
+    pending = []
+    rows = {row['instance_id']: row for row in snapshot}
+    for item in items:
+        status = rows[item.instance_id]['status']
+        if status == 'complete':
+            adapter.validate_answer(item, run / 'results' / (item.safe_id + '.json'))
+            print('跳过已有完整答卷：', item.instance_id)
+        elif status == 'answer_with_item_failures' and cfg.get('max_case_retries', 1) > 0:
+            pending.append(item)
+            print('答卷的 LCR 会话有失败项，将保留旧答卷并自动重跑：', item.instance_id)
+        elif status == 'recoverable_check_required':
+            _recover_or_queue(item, args, cfg, run, pending)
+        elif _can_start_again(status, args, cfg):
+            pending.append(item)
+        else:
+            raise ValueError('案例已有未完成执行记录，需先检查进程状态；确认安全后可显式允许重跑：' + item.instance_id)
+    return pending
+
+
+def _recover_or_queue(item, args, cfg, run, pending):
+    try:
+        adapter.recover_answer(item, run)
+        print('从已有输出恢复完整答卷，未重新调用模型：', item.instance_id)
+    except (ValueError, OSError) as error:
+        print('已有输出无法恢复，将按失败案例策略处理：', item.instance_id, error, file=sys.stderr)
+        if cfg.get('max_case_retries', 1) > 0 or args.retry:
+            pending.append(item)
+        else:
+            raise
+
+
+def _can_start_again(status, args, cfg):
+    retryable = status in ('failed', 'exited', 'timed_out') and cfg.get('max_case_retries', 1) > 0
+    return status == 'pending' or retryable or args.retry
+
+
+def _check_pending_repositories(pending, cfg, suite, run):
+    for item in pending:
+        adapter.REPO = repo_path(cfg['repos_root'], item)
+        adapter.check_repos([item])
+        if hasattr(suite, 'check_repository'):
+            suite.check_repository(item, adapter.REPO, run / 'dataset.jsonl')
+
+
+def _check_review_deadline(args, cfg, pending):
+    if not args.external_timeout_seconds:
+        raise ValueError('平台命令时限未声明')
+    limits = []
+    for item in pending:
+        adapter.REPO = repo_path(cfg['repos_root'], item)
+        limit = adapter.case_execution_timeout(item) if hasattr(adapter, 'case_execution_timeout') else adapter.process_timeout(item)
+        limits.append(limit)
+    jobs = max(1, getattr(adapter, 'CASE_JOBS', 1))
+    required = sum(max(limits[offset:offset + jobs]) for offset in range(0, len(limits), jobs)) + 60 * len(limits)
+    required = max(required, 60)
+    if args.external_timeout_seconds < required:
+        raise ValueError(f'平台命令时限不足：至少 {required} 秒')
 
 
 if __name__=='__main__':

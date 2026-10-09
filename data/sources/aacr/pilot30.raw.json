@@ -1,0 +1,2128 @@
+[
+  {
+    "change_line_count": 33,
+    "project_main_language": "TypeScript",
+    "source_commit": "a1bf1f95a30ca95581d9811488636aec42dd2f80",
+    "target_commit": "419534ccd4241fc11827741eb0d76ba0c9d21277",
+    "githubPrUrl": "https://github.com/cline/cline/pull/5177",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The checkpoint process comment is overly verbose and difficult to parse; restructure it using bullet points or shorter comments for clarity.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1320,
+        "to_line": 1320,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Missing error handling for the asynchronous checkpoint commit operation may cause unhandled promise rejections and leave checkpoint messages without commit hashes on failure.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1322,
+        "to_line": 1322,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 165,
+    "project_main_language": "TypeScript",
+    "source_commit": "b3abbd886e7e693c48b31a0af8046035bf014118",
+    "target_commit": "f098af0f52bf1cdb7eb561c380caef5746b58d40",
+    "githubPrUrl": "https://github.com/cline/cline/pull/5955",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The constant `BUFFER_STUCK_TIMEOUT_MS` is declared within method scope; move it to the class level or configuration file to enable reuse and configurability.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1495,
+        "to_line": 1496,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential timer leak: If flushBuffer() is called multiple times rapidly, a new bufferStuckTimer could be created before the previous one is cleared, leading to multiple timers running simultaneously. Consider clearing any existing timer before creating a new one:\n```typescript\nif (bufferStuckTimer) {\n    clearTimeout(bufferStuckTimer)\n}\nbufferStuckTimer = setTimeout(...)\n```\n",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 1511,
+        "to_line": 1515,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The COMPLETION_TIMEOUT_MS constant is unnecessarily scoped within a function; relocate it to class level or configuration for maintainability and configurability.",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1575,
+        "to_line": 1575,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider using a more robust timer management pattern. The current approach sets timers in multiple places without centralized cleanup. This could lead to memory leaks if timers aren't properly cleared in all execution paths.\n",
+        "path": "src/core/task/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 1608,
+        "to_line": 1612,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`TerminalOutputFailureReason.TIMEOUT` is likely misleading here. This branch triggers when `fullOutput` is empty after shell integration finished, which could be “no output / stream empty / parsing removed everything”, not necessarily a timeout. Consider introducing/using a more accurate reason (e.g., `EMPTY_OUTPUT` / `SHELL_INTEGRATION_EMPTY_OUTPUT`) to avoid skewing telemetry.\n\n```suggestion\n    telemetryService.captureTerminalOutputFailure(TerminalOutputFailureReason.EMPTY_OUTPUT) // or a more accurate enum value\n```",
+        "path": "src/integrations/terminal/TerminalProcess.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 195,
+        "to_line": 195,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Hardcoded string literals: The method parameter values (\"clipboard\", \"none\", \"shell_integration\") are hardcoded strings. While the JSDoc in TelemetryService.ts documents these values, there's no type-safe way to enforce them. Consider defining a union type or enum to ensure type safety and consistency.",
+        "path": "src/integrations/terminal/TerminalProcess.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 200,
+        "to_line": 200,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Parameter 'method' in captureTerminalExecution should be constrained to the specific string literals `'shell_integration' | 'clipboard' | 'none'` instead of a generic string type for compile-time validation.",
+        "path": "src/services/telemetry/TelemetryService.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 959,
+        "to_line": 959,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Re-exporting enums from \"./TelemetryService\" couples the public telemetry index to a runtime module. If TelemetryService has side effects (singleton init, provider wiring) or imports back from this index, this can create circular deps and unexpected load-order issues. Consider moving these enums to a dedicated types/enums file (or exporting them from TelemetryProviderFactory if appropriate) and re-export from there. Also ensure these are `export enum`/`export const enum`/`export type` as intended to avoid bundling extra runtime code.",
+        "path": "src/services/telemetry/index.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 13,
+        "to_line": 17,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 63,
+    "project_main_language": "TypeScript",
+    "source_commit": "07d20574868b2ebb51c95c30a7a81b3793f0f07e",
+    "target_commit": "7d18fb9df620c61420c6939df22fb6f7af836bb2",
+    "githubPrUrl": "https://github.com/cline/cline/pull/2347",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The encoding detection logic is complex and could benefit from a comment explaining why encoding detection is necessary (e.g., supporting non-UTF8 files) and the fallback behavior.\n\n```suggestion\n \t\tconst fileBuffer = await fs.readFile(absolutePath)\n \t\t// Detect file encoding to support non-UTF8 files (e.g., GBK, Shift-JIS)\n \t\t// Falls back to UTF8 if detection fails\n \t\tconst detected = chardet.detect(fileBuffer)\n \t\tthis.fileEncoding =\n```",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 49,
+        "to_line": 51,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling for file reading and encoding operations. If readFile fails or if encoding detection/decoding fails, it could cause unhandled exceptions. Consider wrapping in try/catch blocks and providing appropriate fallback behavior.\n",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 49,
+        "to_line": 57,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling for file writing operation. The writeFile operation should be wrapped in a try/catch block to handle potential errors during file encoding or disk I/O operations.\n",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 237,
+        "to_line": 240,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Remove the unnecessary double type cast (`as unknown as Uint8Array`) in the `fs.writeFile` call since `iconv.encode` returns a Buffer which is natively supported by the function.",
+        "path": "src/integrations/editor/DiffViewProvider.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 239,
+        "to_line": 239,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`getFileSizeInKB` is imported but no longer used in the code. It is recommended to use it to check the file size before `fs.readFile` to avoid reading large files into memory.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 7,
+        "to_line": 7,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Reading the entire file into memory before checking its size can lead to high memory consumption or crashes with large files. It is strictly recommended to check the file size using `fs.stat` (or `getFileSizeInKB`) before reading the file content.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 26,
+        "to_line": 29,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`extractTextFromIPYNB` now duplicates the encoding-detection + decode logic from the default branch. Consider extracting a small helper like `readTextFileWithEncodingDetection(filePath)` to reduce duplication and keep behavior consistent (size limit, binary check, confidence threshold, normalization, error handling).",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 59,
+        "to_line": 63,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "This nested ternary expression is difficult to read and violates the coding standard. Refactor to use if-else statements for better readability.\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 61,
+        "to_line": 62,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Using 'as any' weakens type safety. Prefer validating existence of '.encoding' before accessing it, e.g., 'if (detected && typeof detected === 'object' && 'encoding' in detected)'\n",
+        "path": "src/integrations/misc/extract-text.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 61,
+        "to_line": 62,
+        "category": "Code Defect",
+        "context": "File Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 69,
+    "project_main_language": "TypeScript",
+    "source_commit": "398bc87a64800e021966868243be2f09be72e73c",
+    "target_commit": "2195a689b787a963bdacc35d348f4590c30a2692",
+    "githubPrUrl": "https://github.com/cline/cline/pull/4786",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Remove async keyword as this method doesn't perform any asynchronous operations. This is misleading and unnecessary.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 460,
+        "to_line": 460,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential security issue: Nonce is not being cleared after validation. This could allow reuse of the same state parameter (replay attack). Consider restoring the call to `this.authService.resetAuthNonce()` upon successful validation.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 461,
+        "to_line": 461,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Security issue: Nonce should be single-use to prevent replay attacks. The current implementation uses a static readonly nonce that never changes, making it vulnerable to replay attacks. Consider generating a new nonce for each authentication request.\n",
+        "path": "src/core/controller/index.ts",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 461,
+        "to_line": 461,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "State validation logic is duplicated in the activation function; delegate the `authService.authNonce !== state` check to `controller.validateAuthState` to maintain a single source of truth.",
+        "path": "src/extension.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 312,
+        "to_line": 312,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Security Issue: Nonce Reuse Vulnerability**\n\nGenerating the nonce once at service construction creates a serious security vulnerability. The nonce should be unique for each authentication request to provide proper CSRF protection. Reusing the same nonce allows potential replay attacks.\n\n**Recommendation**: Generate a new nonce for each `createAuthRequest()` call. Consider:\n```typescript\nprivate _authNonce: string = ''\n\nasync createAuthRequest(): Promise<String> {\n    if (this._authenticated) {\n        this.sendAuthStatusUpdate()\n        return String.create({ value: \"Already authenticated\" })\n    }\n    \n    // Generate fresh nonce for each auth request\n    this._authNonce = crypto.randomBytes(32).toString(\"hex\")\n    \n    // ... rest of the code\n}\n```\n",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 33,
+        "to_line": 33,
+        "category": "Security Vulnerability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`createAuthRequest(): Promise<String>` uses the protobuf/SDK `String` type (from `@modelcontextprotocol/sdk/types`?) rather than native `string`. This is easy to confuse and can lead to wrong usage. Consider renaming the import (`import { String as RpcString } ...`) and/or changing the method return type to a native `string` if RPC wrapping is not required at this layer.",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 173,
+        "to_line": 173,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Throwing a raw Error here may surface as an unhandled exception depending on caller; checklist asks for user-friendly error handling in async flows. Consider catching at the boundary and showing `vscode.window.showErrorMessage(...)` or returning a structured error result for the controller layer to display.",
+        "path": "src/services/auth/AuthService.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 179,
+        "to_line": 181,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "Security Patches / Vulnerability Fixes"
+  },
+  {
+    "change_line_count": 11,
+    "project_main_language": "TypeScript",
+    "source_commit": "4d8bdf29458db722a2bce1dfacc50771959b32fa",
+    "target_commit": "cb4d5c90460885942cbbae0298b95f4ee5682086",
+    "githubPrUrl": "https://github.com/cline/cline/pull/1808",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The condition for Azure API shape detection was incorrectly modified to check the base URL for 'deepseek'; it should verify 'azure.com' in the base URL while excluding DeepSeek models via the model ID to prevent duplicated logic.",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "",
+        "from_line": 17,
+        "to_line": 17,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Duplicate code**: The condition `modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\")` is duplicated across multiple provider files (openai.ts, deepseek.ts, qwen.ts, together.ts, requesty.ts). Consider extracting this into a shared utility function to improve maintainability.\n\nExample:\n```typescript\n// In a shared utils file\nexport const isDeepSeekReasonerModel = (modelId: string): boolean => {\n  return modelId.includes(\"deepseek-reasoner\") || modelId.includes(\"deepseek-r1\");\n};\n```\n",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 39,
+        "to_line": 39,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Model checks using substring `includes` can create false positives (e.g., custom model names that contain these tokens). If model IDs are known, prefer exact match or a small set/regex anchored to expected patterns. Also consider normalizing case once (model IDs can sometimes be mixed-case).\n\n```suggestion\n\t\tconst normalizedModelId = modelId.toLowerCase()\n\t\tconst isDeepseekReasoner =\n\t\t\tnormalizedModelId === \"deepseek-reasoner\" || normalizedModelId === \"deepseek-r1\"\n```",
+        "path": "src/api/providers/openai.ts",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 39,
+        "to_line": 39,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 6,
+    "project_main_language": "C++",
+    "source_commit": "7083419361385dfcd762656f0227581aedc4f514",
+    "target_commit": "100ad244b742d221ad129e96bef934e8128403a9",
+    "githubPrUrl": "https://github.com/electron/electron/pull/46660",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Indentation/brace alignment looks off: `if (has_all_files_wildcard)` is indented as if nested under the `any_of` call, which can be misleading and may hide logic errors during future edits. Please align it with the surrounding `const bool` statement for readability.\n\nAlso note the behavioral change: `extension_description_overrides` is now only appended for non-\"*\" filters. If `include_all_files` is true, the description override for that filter is dropped. Confirm this matches SelectFileDialog expectations (e.g., UI label for \"All files\" / custom name). If you still want the label while also including all files, consider pushing the description override before the `if` (or handling the all-files case explicitly).\n\n```suggestion\n    const bool has_all_files_wildcard = std::ranges::any_of(\n        extension_group, [](const auto& ext) { return ext == \"*\"; });\n    \n    if (has_all_files_wildcard) {\n      // If needed, still set a description override for the all-files filter here.\n      file_type_info.include_all_files = true;\n    } else {\n      file_type_info.extension_description_overrides.push_back(\n          base::UTF8ToUTF16(name));\n      file_type_info.extensions.emplace_back(extension_group);\n    }\n```",
+        "path": "shell/browser/ui/file_dialog_linux.cc",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 47,
+        "to_line": 56,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "* The `if (has_all_files_wildcard)` statement is over-indented by one level relative to the surrounding code block.  \n* An unnecessary blank line was introduced after the lambda expression in the `std::ranges::any_of` call.",
+        "path": "shell/browser/ui/file_dialog_linux.cc",
+        "side": "right",
+        "source_model": "",
+        "from_line": 50,
+        "to_line": 50,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 64,
+    "project_main_language": "C++",
+    "source_commit": "a42afaa8665b6d1b3a344918c60853184a97060e",
+    "target_commit": "6084595c5608226e961d251bfb5ec138de8022ca",
+    "githubPrUrl": "https://github.com/electron/electron/pull/47361",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The documentation for ClearDataTask incorrectly omits the self-deletion mechanism after task completion, only mentioning the gin_helper::CleanedUpAtExit shutdown behavior. The comment should accurately reflect both lifetime management aspects: automatic deletion after operations complete and proper shutdown before node environment termination.",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "",
+        "from_line": 202,
+        "to_line": 203,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Using raw pointer for task allocation without immediate smart pointer ownership may lead to memory leaks if exceptions occur before the object is properly managed. Consider using std::unique_ptr for automatic cleanup even in error scenarios.\n",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 215,
+        "to_line": 215,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`OnOperationFinished(nullptr, std::nullopt)` is used as a bookkeeping fallback. Consider making this explicit via a dedicated method (e.g., `FinishBootstrapOperation()`), or at least avoid `nullptr` by overloading/using `std::optional<ClearDataOperation*>` to prevent accidental misuse and make intent clearer.",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 259,
+        "to_line": 259,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Critical: Use-after-free bug**\n\nThe `operation` raw pointer is used to find and erase the corresponding `unique_ptr` from the `operations_` vector (lines 321-328). However, once the operation is found and erased, the `unique_ptr` is destroyed, which deletes the `ClearDataOperation` object. At this point, the `operation` raw pointer becomes a dangling pointer.\n\nThe issue is that this code executes while we're still inside the `OnBrowsingDataRemoverDone` callback of that very `ClearDataOperation` object. After the erase completes and we return from `OnOperationFinished`, execution continues in `OnBrowsingDataRemoverDone` (line 283), attempting to return from a deleted object.\n\n**Fix**: The operation should be erased AFTER the callback completes, not during. One approach is to defer the cleanup:\n\n```cpp\nvoid OnOperationFinished(\n    ClearDataOperation* operation,\n    std::optional<BrowsingDataRemover::DataType> failed_data_types) {\n  DCHECK_GT(operations_running_, 0);\n  operations_running_ -= 1;\n\n  if (failed_data_types.has_value()) {\n    failed_data_types_ |= failed_data_types.value();\n  }\n\n  // Defer operation cleanup to avoid use-after-free\n  if (operation) {\n    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(\n        FROM_HERE,\n        base::BindOnce(&ClearDataTask::RemoveOperation,\n                       base::Unretained(this), operation));\n  }\n\n  // If this is the last operation, then the task is finished\n  if (operations_running_ == 0) {\n    OnTaskFinished();\n  }\n}\n\nvoid RemoveOperation(ClearDataOperation* operation) {\n  operations_.erase(\n      std::remove_if(\n          operations_.begin(), operations_.end(),\n          [operation](const std::unique_ptr<ClearDataOperation>& op) {\n            return op.get() == operation;\n          }),\n      operations_.end());\n}\n```\n\nOr simpler: use a weak callback pattern where the operation doesn't delete itself immediately but marks itself for deletion.",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 321,
+        "to_line": 321,
+        "category": "Security Vulnerability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`OnOperationFinished` does an O(n) erase with `remove_if` for each completion. If many data types are cleared, this becomes O(n^2). Consider storing operations in a container with O(1) erase by pointer (e.g., `std::vector<std::unique_ptr<...>>` + swap-erase with index tracking, or `base::flat_set<std::unique_ptr<...>, ...>` / `std::unordered_set` with custom hash on raw pointer).",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 322,
+        "to_line": 328,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Direct deletion of 'this' bypasses normal destruction semantics and can complicate debugging. Since ClearDataTask inherits from CleanedUpAtExit, consider leveraging that mechanism for proper cleanup instead of manual deletion.\n",
+        "path": "shell/browser/api/electron_api_session.cc",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 359,
+        "to_line": 359,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 82,
+    "project_main_language": "C++",
+    "source_commit": "d6f4982522efd5917b44d1ceed418e4a0ee7824e",
+    "target_commit": "2cc56562e22cd36c70f0b632c3297d62c3c58b06",
+    "githubPrUrl": "https://github.com/electron/electron/pull/45671",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling for the Bluetooth adapter retrieval failure case. Consider adding a timeout or error callback mechanism.\n",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 153,
+        "to_line": 156,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`GetDevices()` dereferences `chooser_context_` without a null-check. Since `GetDevices()` is posted as a task in the ctor and can also be triggered by Bluetooth events, it may run after `OnSerialChooserContextShutdown()`/`OnPortManagerConnectionError()` resets observation and the weak `chooser_context_` becomes null. Add a guard to avoid a potential crash.\n\n```suggestion\n  if (!chooser_context_)\n    return;\n\n  chooser_context_->GetPortManager()->GetDevices(base::BindOnce(\n      &SerialChooserController::OnGetDevices, weak_factory_.GetWeakPtr()));\n```",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 161,
+        "to_line": 162,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "AdapterPoweredChanged only refreshes when `powered` becomes true. If the adapter is powered off, the chooser may keep showing stale Bluetooth-backed ports until another refresh happens. Consider refreshing on both transitions (or explicitly clearing Bluetooth ports on power-off) to keep UI consistent.\n\n```suggestion\nvoid SerialChooserController::AdapterPoweredChanged(BluetoothAdapter* adapter,\n                                                    bool powered) {\n  // Refresh on any power state change to keep the chooser list in sync.\n  GetDevices();\n}\n```",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 165,
+        "to_line": 170,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The callback parameter should be passed as an rvalue reference (base::OnceClosure&&) instead of by value to avoid unnecessary copies and improve efficiency.\n",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 268,
+        "to_line": 270,
+        "category": "Performance",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The adapter_ member is a scoped_refptr which is good for reference counting, but ensure proper initialization and cleanup in constructor/destructor.\n",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 272,
+        "to_line": 272,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Method `IsWirelessSerialPortOnly()` should be marked `const` as it's a state-checking method that doesn't modify object state. The current implementation lacks the required `const` qualifier for proper C++ semantics.",
+        "path": "shell/browser/serial/serial_chooser_controller.cc",
+        "side": "right",
+        "source_model": "",
+        "from_line": 277,
+        "to_line": 277,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The `IsWirelessSerialPortOnly` method should be marked `const` as it does not modify object state.",
+        "path": "shell/browser/serial/serial_chooser_controller.h",
+        "side": "right",
+        "source_model": "",
+        "from_line": 74,
+        "to_line": 74,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "Code Refactoring / Architectural Improvement"
+  },
+  {
+    "change_line_count": 309,
+    "project_main_language": "Go",
+    "source_commit": "44e3eeb2786ad4d333dc1f528fb104236693d060",
+    "target_commit": "dc0b3e630423b72cb9b2f273fdc18a5c11d12984",
+    "githubPrUrl": "https://github.com/gofr-dev/gofr/pull/1355",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The `errIncorrectURI` error message should use \"MongoDB\" instead of \"mongo\" for consistency with the official product name.",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "",
+        "from_line": 46,
+        "to_line": 46,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The error log message for MongoDB URI generation uses the abbreviated term \"mongo\" instead of the official product name \"MongoDB\". Update the string to \"error generating MongoDB URI: %v\" for naming consistency.",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "",
+        "from_line": 94,
+        "to_line": 94,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "When config.URI is provided (not empty), c.config.Host will be empty since it wasn't set. The debug log message will print an empty string instead of the actual host. Use the `host` variable returned from generateMongoURI() instead.\n",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 98,
+        "to_line": 98,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The error log message uses inconsistent capitalization \"mongoDB\" instead of the standard \"MongoDB\" product name.  \nUpdate the log string to use correct \"MongoDB\" capitalization for consistency and professionalism.",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "",
+        "from_line": 116,
+        "to_line": 116,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Double encoding issue: `url.UserPassword()` already handles URL encoding internally. Using `url.QueryEscape()` before passing credentials will cause double encoding. For example, if password contains '@', it becomes '%40', then url.UserPassword encodes '%' to '%25', resulting in '%2540'. Remove the QueryEscape calls.\n",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 155,
+        "to_line": 157,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "getDBHost(): this rejects valid MongoDB connection strings like `mongodb+srv://...` and also doesn’t handle multiple hosts in `Host` (replica sets) beyond returning the first hostname. Consider accepting both `mongodb` and `mongodb+srv` schemes and/or parsing host list explicitly (e.g., split parsedURL.Host on \",\" and take the first, or keep the full host list for logging).",
+        "path": "pkg/gofr/datasource/mongo/mongo.go",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 172,
+        "to_line": 180,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Security Patches / Vulnerability Fixes"
+  },
+  {
+    "change_line_count": 217,
+    "project_main_language": "Go",
+    "source_commit": "d0300073f685bb1154f7437f3172799d31bfddbe",
+    "target_commit": "c1a26ade6db7da96622c9bdca7674ef7094c122f",
+    "githubPrUrl": "https://github.com/gofr-dev/gofr/pull/1681",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The `LogDisableProbes` field in `MiddlewareConfig` should be a boolean instead of a string to enforce valid true/false values and eliminate unnecessary string comparisons.",
+        "path": "pkg/gofr/http/middleware/config.go",
+        "side": "right",
+        "source_model": "",
+        "from_line": 14,
+        "to_line": 14,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "There is a potential naming logic issue here. The config key `LOG_DISABLE_PROBES` defaults to `false`, and when set to `true`, it applies `LoggingWithoutProbes` middleware which skips logging for health check endpoints. The naming `LOG_DISABLE_PROBES` is confusing because it implies disabling the probe endpoints themselves, not just skipping logging for them. Consider renaming to `LOG_SKIP_PROBES` or `EXCLUDE_PROBES_FROM_LOGS` for clarity.",
+        "path": "pkg/gofr/http/middleware/config.go",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 36,
+        "to_line": 36,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consistent with the suggestion to change `LogDisableProbes` to `bool`, you should parse the configuration value here. For example:\n```go\nval := c.GetOrDefault(\"LOG_DISABLE_PROBES\", \"false\")\nmiddlewareConfigs.LogDisableProbes, _ = strconv.ParseBool(val)\n```\nNote: You will need to import \"strconv\".\n",
+        "path": "pkg/gofr/http/middleware/config.go",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 36,
+        "to_line": 36,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The middleware order has been changed such that `Logging` is now applied after `CORS` and `Metrics`. This means that if the `CORS` middleware handles a request (e.g., OPTIONS preflight) or rejects it (e.g., invalid origin), the `Logging` middleware will not be executed, and these events will not be logged. \n\nIt is recommended to register the `Logging` middleware before `CORS` and `Metrics` to ensure all requests are logged, including those terminated by subsequent middleware.\n",
+        "path": "pkg/gofr/http_server.go",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 42,
+        "to_line": 46,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential logic/config issue: `LogDisableProbes` is compared to the literal string \"true\". If this config is ever represented as a boolean, or uses other truthy values (\"1\", \"TRUE\"), the condition will silently fail and probes will be logged unexpectedly. Consider making `LogDisableProbes` a bool in `MiddlewareConfig` (or normalizing/parsing the string via strconv.ParseBool) to avoid inverted/fragile behavior.\n\n```suggestion\n // Prefer: LogDisableProbes as bool in MiddlewareConfig\n if middlewareConfigs.LogDisableProbes {\n \tr.Use(middleware.LoggingWithoutProbes(c.Logger))\n } else {\n \tr.Use(middleware.Logging(c.Logger))\n }\n \n // If it must remain string:\n // disable, _ := strconv.ParseBool(middlewareConfigs.LogDisableProbes)\n // if disable { ... }\n```",
+        "path": "pkg/gofr/http_server.go",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 42,
+        "to_line": 46,
+        "category": "Code Defect",
+        "context": "File Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 215,
+    "project_main_language": "Go",
+    "source_commit": "7f1760b083ea23ffd95fdf83467bdfa21735df81",
+    "target_commit": "b9cdcbb2b9fc78499d15d51ffbb7c861592b0efe",
+    "githubPrUrl": "https://github.com/gofr-dev/gofr/pull/1325",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The `resTypes.Response` type has a `Headers` field and a `SetCustomHeaders()` method to apply custom HTTP response headers. However, this code doesn't call `v.SetCustomHeaders(r.w)`, which means any custom headers specified in the `Response` object will be ignored. You should add `v.SetCustomHeaders(r.w)` before setting the Content-Type header to ensure custom headers are properly applied.",
+        "path": "pkg/gofr/http/responder.go",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 31,
+        "to_line": 32,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential inconsistency in metadata handling. When v.Metadata is nil, this will result in omitting the metadata field due to json:\"metadata,omitempty\" in the response struct. However, tests expect \"metadata\":null when metadata is not provided. Consider initializing Metadata appropriately to match expected behavior.\n",
+        "path": "pkg/gofr/http/responder.go",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 31,
+        "to_line": 32,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 226,
+    "project_main_language": "C#",
+    "source_commit": "7ba02e8ac71eeba562476953d5ff6030b8eda765",
+    "target_commit": "8ac940ff581aa344ab8f859874f6d4c0ecaec6b6",
+    "githubPrUrl": "https://github.com/dotnet/aspnetcore/pull/59322",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "- `BitOperations.LeadingZeroCount` is unsupported in netstandard2.0 and .NET Framework; implement a cross-TFM fallback using a loop or math-based alternative.  \n- The span-based `Encoding.GetBytes` overload lacks compatibility with lower TFMs; replace with the array-indexed overload (`GetBytes(char[], int, int, byte[], int)`).",
+        "path": "src/DataProtection/DataProtection/src/KeyManagement/KeyRingBasedDataProtector.cs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 356,
+        "to_line": 356,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing null validation: The constructor doesn't validate if the `purposes` parameter or its elements are null. This could lead to NullReferenceException when calling `GetByteCount` or `GetBytes`. Consider adding validation at the beginning of the constructor:\n\n```csharp\nArgumentNullException.ThrowIfNull(purposes);\nfor (int i = 0; i < purposes.Length; i++)\n{\n    ArgumentNullException.ThrowIfNull(purposes[i], $\"purposes[{i}]\");\n}\n```\n\nOr at minimum, add Debug.Assert statements similar to the original implementation.\n",
+        "path": "src/DataProtection/DataProtection/src/KeyManagement/KeyRingBasedDataProtector.cs",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 357,
+        "to_line": 363,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential integer overflow: totalPurposeLen is int and accumulates user-controlled purpose lengths. Consider checked arithmetic (as in the old code) when adding lengths and when allocating the byte[] to avoid silent overflow leading to undersized buffer and out-of-range writes.\n\n```suggestion\n            int totalPurposeLen = checked(4 + keySize + 4);\n\n            var purposeLengthsPool = ArrayPool<int>.Shared.Rent(purposes.Length);\n```",
+        "path": "src/DataProtection/DataProtection/src/KeyManagement/KeyRingBasedDataProtector.cs",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 363,
+        "to_line": 365,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The current implementation unconditionally rents an array from `ArrayPool` for purpose length calculations despite expecting few purposes, introducing unnecessary overhead; replace with stack allocation for arrays ≤32 elements using `stackalloc` with `ArrayPool` fallback for larger arrays.",
+        "path": "src/DataProtection/DataProtection/src/KeyManagement/KeyRingBasedDataProtector.cs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 365,
+        "to_line": 365,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider wrapping the logic that uses the rented array pool in a try-finally block to ensure the array is always returned to the pool, even if an exception occurs during processing. This prevents potential resource leaks.\n",
+        "path": "src/DataProtection/DataProtection/src/KeyManagement/KeyRingBasedDataProtector.cs",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 365,
+        "to_line": 397,
+        "category": "Performance",
+        "context": "File Level"
+      }
+    ],
+    "category": "Performance Optimizations"
+  },
+  {
+    "change_line_count": 6,
+    "project_main_language": "C#",
+    "source_commit": "8bb2b2067815996d9a8224ee38aa80a79f797827",
+    "target_commit": "742f022e92563bd6fb87d1c752f25fd14e1b2a43",
+    "githubPrUrl": "https://github.com/dotnet/aspnetcore/pull/62734",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Adding an upper bound to saltLength is a good DoS hardening. Two follow-ups to consider:\n1) Compatibility: if any existing stored hashes (or other implementations) might legitimately have salts > 8KiB, this change will start rejecting them. If this is a library, consider documenting the limit or basing it on an existing spec/versioned header.\n2) Placement/consistency: there are other length reads in this format (e.g., subkey length). Consider applying similar upper bounds there too, so an attacker can’t shift the allocation pressure to a different field.\n\nIf possible, reuse a shared constant (e.g., a private const at class scope) to keep limits consistent across methods/versions.\n\n```suggestion\n        // Consider promoting to a class-level constant (and adding similar bounds for other length fields)\n        private const int MaxSaltSize = 8 * 1024; // 8 KiB\n        \n        // ...\n        // in method:\n        // (remove the local const)\n```",
+        "path": "src/Identity/Extensions.Core/src/PasswordHasher.cs",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 252,
+        "to_line": 255,
+        "category": "Security Vulnerability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The manual bounds check for salt extraction should be replaced with span-based slicing (`AsSpan(13, saltLength)`) to leverage runtime bounds validation and eliminate error-prone manual length checks.",
+        "path": "src/Identity/Extensions.Core/src/PasswordHasher.cs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 260,
+        "to_line": 260,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The salt length upper bound validation is a good security improvement to prevent DoS attacks. However, consider adding a validation to ensure the hashedPassword array has sufficient bytes to contain the declared saltLength before allocating the salt array. This would prevent unnecessary memory allocation and potential exception handling overhead for malformed payloads. Suggestion: Add a check `if (hashedPassword.Length < 13 + saltLength) { return false; }` before the salt allocation.\n\n```suggestion\n            // Read the salt: must be >= 128 bits\n            if (saltLength < 128 / 8 || saltLength > MaxSaltSize)\n            {\n                return false;\n            }\n            // Verify the payload has enough bytes for the declared salt length\n            if (hashedPassword.Length < 13 + saltLength)\n            {\n                return false;\n            }\n            byte[] salt = new byte[saltLength];\n            Buffer.BlockCopy(hashedPassword, 13, salt, 0, salt.Length);\n```",
+        "path": "src/Identity/Extensions.Core/src/PasswordHasher.cs",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 264,
+        "to_line": 270,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Replace the magic number `128 / 8` for minimum salt size validation with a named constant (e.g., `MinSaltSize`) to improve code clarity and maintainability.",
+        "path": "src/Identity/Extensions.Core/src/PasswordHasher.cs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 265,
+        "to_line": 265,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Security Patches / Vulnerability Fixes"
+  },
+  {
+    "change_line_count": 188,
+    "project_main_language": "C",
+    "source_commit": "17fb43d888dbe3b328da6b08b310bc83d3167d39",
+    "target_commit": "2568b018719e25f262255626c474a461da38fc21",
+    "githubPrUrl": "https://github.com/timescale/timescaledb/pull/7935",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The function accepts a `mode` parameter but always uses `AccessShareLock` when calling `table_open()`. This means callers passing `RowExclusiveLock`, `RowShareLock`, or `AccessExclusiveLock` will not get the intended lock level, which could lead to concurrency issues or deadlocks.\n\nSuggestion: Pass the `mode` parameter to `table_open()` instead of hardcoding `AccessShareLock`:\n\n```suggestion\nstatic Relation\nhypercore_open_compressed(Relation relation, LOCKMODE mode)\n{\n\tHypercoreInfo *hcinfo = RelationGetHypercoreInfo(relation);\n\treturn table_open(hcinfo->compressed_relid, mode);\n}\n```",
+        "path": "tsl/src/hypercore/hypercore_handler.c",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 105,
+        "to_line": 110,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Local variable `hinfo` shadows the function parameter and is only used once; inline `RelationGetHypercoreInfo(rel)` directly at its call site to resolve shadowing and reduce scope.",
+        "path": "tsl/src/hypercore/hypercore_handler.c",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1751,
+        "to_line": 1751,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential cache invalidation/use-after-free: `hinfo` is fetched *after* `state` allocation, which is fine, but `RelationGetHypercoreInfo(rel)` result must not be assumed valid across PostgreSQL calls that may do invalidation. This function performs several catalog/heap operations after fetching `hinfo`; safer pattern is to copy out only the needed scalar fields from `hinfo` immediately (e.g., `segmentby_attno`, `nattrs`, etc.) into `state` and avoid holding a raw pointer long-term.",
+        "path": "tsl/src/hypercore/hypercore_handler.c",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 1751,
+        "to_line": 1752,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Local variable `hsinfo` shadows the function parameter of the same name. Rename it to `hcinfo` to avoid scope collision and maintain clarity.",
+        "path": "tsl/src/hypercore/hypercore_handler.c",
+        "side": "right",
+        "source_model": "",
+        "from_line": 3899,
+        "to_line": 3899,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Performance/robustness: `RelationGetHypercoreInfo(rel)` is called inside the inner loop for every attribute. If the function is non-trivial (cache lookup) this is avoidable overhead, and repeated calls increase chances of hitting invalidation edge cases. Fetch once per `IndexOptInfo` (outside the `for (i...)` loop), and if you need to be resilient to invalidation, extract just the `columns[]` flags you need into locals before further planner calls.",
+        "path": "tsl/src/hypercore/hypercore_handler.c",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 3899,
+        "to_line": 3899,
+        "category": "Performance",
+        "context": "File Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 695,
+    "project_main_language": "C",
+    "source_commit": "9382a90adac7a889c1df0d821a12ba1d29c8dcba",
+    "target_commit": "5ab9b1295e6bdce4834005e3738074b3a844eeb4",
+    "githubPrUrl": "https://github.com/timescale/timescaledb/pull/7632",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The log message inaccurately states \"using non-segmentby index for recompression\" when the system is actually using the primary time index; replace the fixed string with dynamic logging of the specific index name to provide accurate debug information.",
+        "path": "tsl/src/compression/recompress.c",
+        "side": "right",
+        "source_model": "",
+        "from_line": 173,
+        "to_line": 173,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Trailing whitespace detected before semicolon. Consider removing for cleaner code.\n",
+        "path": "tsl/src/compression/recompress.c",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 173,
+        "to_line": 173,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Performance Optimizations"
+  },
+  {
+    "change_line_count": 297,
+    "project_main_language": "C",
+    "source_commit": "d0fe7370082dbc57d391d5168705909809bd880f",
+    "target_commit": "7148e5c7d90c9da819a8ca77b79664fac300ca60",
+    "githubPrUrl": "https://github.com/timescale/timescaledb/pull/7915",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Upgrade robustness: `DROP FUNCTION` without `IF EXISTS` can fail the migration if the old signature isn’t present (e.g., fresh install path, already-upgraded DB, or partial upgrade). Consider using `DROP FUNCTION IF EXISTS ...` (and same in reverse script) to make the update idempotent/safe across states.\n\n```suggestion\nDROP FUNCTION IF EXISTS @extschema@.add_continuous_aggregate_policy(\n    continuous_aggregate REGCLASS,\n    start_offset \"any\",\n    end_offset \"any\",\n    schedule_interval INTERVAL,\n    if_not_exists BOOL,\n    initial_start TIMESTAMPTZ,\n    timezone TEXT,\n    include_tiered_data BOOL,\n    buckets_per_batch INTEGER,\n    max_batches_per_execution INTEGER\n);\n```",
+        "path": "sql/updates/latest-dev.sql",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 2,
+        "to_line": 13,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Issue: Incorrect C function name in migration script**\n\nThe migration script is using `ts_update_placeholder` as the C function name, but it should be `ts_policy_refresh_cagg_add` to match the actual implementation in `sql/policy_api.sql`.\n\nThe line should be:\n```sql\nAS '@MODULE_PATHNAME@', 'ts_policy_refresh_cagg_add'\n```\n\nInstead of:\n```sql\nAS '@MODULE_PATHNAME@', 'ts_update_placeholder'\n```\n\nThis will cause the function to fail at runtime when called during upgrades, as it will reference a non-existent or incorrect C function.\n\nReference: See the correct function name in sql/policy_api.sql line 97",
+        "path": "sql/updates/latest-dev.sql",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 29,
+        "to_line": 29,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Issue: Incorrect C function name in reverse migration script**\n\nThe reverse migration script is using `ts_update_placeholder` as the C function name, but it should be `ts_policy_refresh_cagg_add` to match the actual implementation in `sql/policy_api.sql`.\n\nThe line should be:\n```sql\nAS '@MODULE_PATHNAME@', 'ts_policy_refresh_cagg_add'\n```\n\nInstead of:\n```sql\nAS '@MODULE_PATHNAME@', 'ts_update_placeholder'\n```\n\nThis will cause the function to fail at runtime when called during downgrades, as it will reference a non-existent or incorrect C function.\n\nReference: See the correct function name in sql/policy_api.sql line 97",
+        "path": "sql/updates/reverse-dev.sql",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 29,
+        "to_line": 29,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential robustness issue: this helper assumes `config` is non-NULL. If callers can pass NULL (e.g., missing config), `ts_jsonb_get_bool_field` may dereference it and crash. Consider either (1) asserting non-NULL, or (2) treating NULL as “not found” and returning the default (true) explicitly.\n\nAlso, if `ts_jsonb_get_bool_field` can error on malformed types, consider whether you want to propagate/raise or fall back to default; currently only the “field missing” case falls back.\n",
+        "path": "tsl/src/bgw_policy/continuous_aggregate_api.c",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 171,
+        "to_line": 181,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The assignment of `refresh_newest_first` should be moved inside the subsequent `if (policy_data)` block to prevent unnecessary execution when `policy_data` is undefined. This avoids redundant function calls outside the conditional scope where the variable is actually used.",
+        "path": "tsl/src/bgw_policy/job.c",
+        "side": "right",
+        "source_model": "",
+        "from_line": 508,
+        "to_line": 509,
+        "category": "Performance",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`psprintf()` allocates memory in the current memory context. If this function can be called repeatedly in a long-lived context (e.g., background worker loop), the per-call allocation may accumulate. Consider building the query string without heap allocation (e.g., keep two constant query strings for ASC/DESC), or ensure this runs in a short-lived context / explicitly reset the context around this call.",
+        "path": "tsl/src/continuous_aggs/refresh.c",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 1145,
+        "to_line": 1145,
+        "category": "Performance",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 95,
+    "project_main_language": "Python",
+    "source_commit": "515b94225aa86c40dc2c20034055ab8bcc88c6ae",
+    "target_commit": "aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52",
+    "githubPrUrl": "https://github.com/browser-use/browser-use/pull/857",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The hardcoding of `channel='chrome'` in the browser launch call is invalid for non-Chromium browsers (Firefox/WebKit), as the `channel` parameter is exclusively supported by Chromium-based browsers and will cause runtime errors if used with other browser types.",
+        "path": "browser_use/browser/browser.py",
+        "side": "right",
+        "source_model": "",
+        "from_line": 283,
+        "to_line": 283,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Documentation inconsistency: The import statement has been updated to use `patchright.async_api`, but the surrounding documentation text still references 'Playwright' (e.g., line 91 mentions 'A Playwright browser context' and lines 120-121 link to Playwright documentation). Consider updating these references to 'Patchright' for consistency, or add a note explaining that Patchright is a Playwright-compatible library being used in the codebase.\n",
+        "path": "docs/customize/agent-settings.mdx",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 95,
+        "to_line": 95,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 324,
+    "project_main_language": "Python",
+    "source_commit": "e85a547378b236c9788802d28e816f10940a7e53",
+    "target_commit": "72f1585f9add5b72e829eaee3b5bff684e0b08d3",
+    "githubPrUrl": "https://github.com/browser-use/browser-use/pull/3172",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "Hardcoded thinking_budget value of -1 overrides user-provided values, preventing users from controlling the thinking budget parameter as intended.",
+        "path": "browser_use/llm/google/chat.py",
+        "side": "right",
+        "source_model": "",
+        "from_line": 202,
+        "to_line": 202,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Critical Issue**: Removed retry logic without replacement\n\nThe manual retry loop was removed (lines with `for attempt in range(10):`), but the comment says \"Let Google client handle retries internally\". However:\n\n1. **No evidence the Google client has automatic retries** for all error types that were previously handled\n2. The old code had explicit retry logic for rate limits, server errors, and connection issues\n3. **Breaking change**: This could cause failures for users experiencing transient network issues or rate limits that would have previously been handled\n\n**Required verification**:\n- Does the Google Generative AI client (`google-genai`) actually retry on rate limits (429), server errors (500/502/503), and connection timeouts?\n- If not, this is a **regression** that will break existing functionality\n\n**Recommendation**: Either:\n1. Verify and document that the Google client handles these retries, OR\n2. Keep the retry logic but optimize the backoff strategy (which seems to be the actual performance issue)",
+        "path": "browser_use/llm/google/chat.py",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 376,
+        "to_line": 376,
+        "category": "Code Defect",
+        "context": "File Level"
+      }
+    ],
+    "category": "Performance Optimizations"
+  },
+  {
+    "change_line_count": 133,
+    "project_main_language": "Python",
+    "source_commit": "fa461585f1fc2d4a430e68e6c115a12f4936fe73",
+    "target_commit": "0b21e50ca640581ecd46990475c8b223eaa05045",
+    "githubPrUrl": "https://github.com/browser-use/browser-use/pull/1482",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Typo: \"use to when\" should be \"use when\".\n",
+        "path": "browser_use/browser/browser.py",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 82,
+        "to_line": 83,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`self.config.chrome_remote_debugging_port` is typed as `int | None`. If it is `None`, `socket.connect_ex` will raise a `TypeError` because it expects an integer port. Suggest adding a check for `None` or ensuring it is a valid integer before using it here.\n",
+        "path": "browser_use/browser/browser.py",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 290,
+        "to_line": 292,
+        "category": "Code Defect",
+        "context": "File Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 847,
+    "project_main_language": "JavaScript",
+    "source_commit": "05dd5f7de27ae7f2139714f0bc577484642e2c77",
+    "target_commit": "32b54ddf11ea27b8ed85d2139fe38e0dcb7f3d43",
+    "githubPrUrl": "https://github.com/bluewave-labs/Checkmate/pull/2883",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Avoid `Math.random()` for React keys. If `row.id/_id` is missing, this key changes every render, causing Tooltip/TableRow to remount and hurting performance. Prefer requiring a stable id, or use a deterministic fallback (e.g., index) with known caveats.\n\n```suggestion\n       // Prefer stable IDs; avoid Math.random() as a React key\n       const key = row.id ?? row._id; // ensure callers provide a stable id\n       // If you must fallback, use a deterministic value (e.g., index) rather than Math.random().\n```",
+        "path": "client/src/Components/Table/index.jsx",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 104,
+        "to_line": 104,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Component naming convention: Since GetTooltip uses React hooks (useTheme), it's a React component and should follow PascalCase naming convention (e.g., TooltipContent) to clearly indicate it's a component, not a utility function.\n",
+        "path": "client/src/Pages/Incidents/Components/IncidentTable/index.jsx",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 27,
+        "to_line": 28,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "GetTooltip function uses useTheme() hook but is not defined as a React component. This violates React's rules of hooks. Convert it to a proper React component or move the hook usage to a parent component.\n",
+        "path": "client/src/Pages/Incidents/Components/IncidentTable/index.jsx",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 27,
+        "to_line": 29,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Hard-coded strings should be internationalized. The file already uses i18n (useTranslation hook), so these strings should be extracted to the translation files for consistency and localization support.\n",
+        "path": "client/src/Pages/Incidents/Components/IncidentTable/index.jsx",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 42,
+        "to_line": 49,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential stability issue: `Object.keys(phases)?.map(...)` assumes `phases` is a plain object. If `phases` can be null/array, mapping keys may be unexpected. Since you already guard with `phases &&`, consider ensuring it’s an object (`typeof phases === 'object'`) or defaulting to `{}` to avoid runtime surprises.",
+        "path": "client/src/Pages/Incidents/Components/IncidentTable/index.jsx",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 61,
+        "to_line": 61,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The translation key `queuePage.jobTable.intervalHeader` is missing in `client/src/locales/en.json`. Please add it to the locale file to ensure the header displays correctly.\n",
+        "path": "client/src/Pages/Logs/Queue/components/JobTable/index.jsx",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 51,
+        "to_line": 51,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing null check for monitorInterval. When the value is null or undefined, it will display 'null ms' or 'undefined ms'. Consider adding a fallback value similar to the lastRunAt field pattern (e.g., `row.monitorInterval ? `${row.monitorInterval} ms` : '-'`)\n",
+        "path": "client/src/Pages/Logs/Queue/components/JobTable/index.jsx",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 52,
+        "to_line": 52,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The new regex allows leading slashes (`(\\/+)?) which may unintentionally accept invalid inputs. Consider if absolute paths should be allowed here, as it might conflict with expected input formats. Also, `[a-f0-9]{12,64}` overlaps partially with SHA-256 hash lengths (64 chars) but starts from 12, potentially allowing shorter unintended hashes.\n",
+        "path": "client/src/Validation/validation.js",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 133,
+        "to_line": 135,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Code quality issue: Using `var` is prohibited. Please use `let` or `const` instead according to the coding standards.\n\n```suggestion\n    const urlRegex = new RegExp(\n```",
+        "path": "client/src/Validation/validation.js",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 145,
+        "to_line": 145,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential compatibility/runtime risk: this change assumes `this.db.statusPageModule` always exists and exposes `deleteStatusPage`. If `this.db` is sometimes a direct module (as before) or initialization differs across environments/tests, this will throw (cannot read property 'deleteStatusPage' of undefined). Consider adding a null-safe guard with a clear error, or keep backward compatibility by falling back to `this.db.deleteStatusPage` when `statusPageModule` is absent. Also consider validating `req.params.url` is present/expected format before passing to DB layer.\n\n```suggestion\n   const { url } = req.params;\n   if (!url) {\n     return res.badRequest({ msg: 'Missing status page url' });\n   }\n   const mod = this.db.statusPageModule ?? this.db;\n   if (typeof mod.deleteStatusPage !== 'function') {\n     throw new Error('deleteStatusPage is not available on db module');\n   }\n   await mod.deleteStatusPage(url);\n```",
+        "path": "server/src/controllers/statusPageController.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 98,
+        "to_line": 98,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`runMigrations()` is executed *after* `logger.info('Connected...')`. If migrations fail, logs will still claim successful readiness, which can mislead operators and health checks. Consider running migrations before emitting the success log, or log a separate \"Migrations completed\" message after success (and/or \"Starting migrations\" before).\n\n```suggestion\n\t\t\tthis.logger.info({\n\t\t\t\tmessage: \"Connected to MongoDB, starting migrations\",\n\t\t\t\tservice: this.SERVICE_NAME,\n\t\t\t\tmethod: \"connect\",\n\t\t\t});\n\n\t\t\tawait runMigrations();\n\n\t\t\tthis.logger.info({\n\t\t\t\tmessage: \"MongoDB migrations completed\",\n\t\t\t\tservice: this.SERVICE_NAME,\n\t\t\t\tmethod: \"connect\",\n\t\t\t});\n```",
+        "path": "server/src/db/mongo/MongoDB.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 63,
+        "to_line": 69,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Running migrations on every database connection may not be intended behavior. Consider moving this to application startup or making it conditional to prevent unnecessary executions.\n",
+        "path": "server/src/db/mongo/MongoDB.js",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 69,
+        "to_line": 69,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "For improved performance with larger datasets, consider collecting promises from monitor.save() calls then resolving them concurrently using Promise.all(). This avoids sequential awaits which can slow migrations significantly.\n",
+        "path": "server/src/db/mongo/migration/0001_migrateStatusWindowThreshold.js",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 5,
+        "to_line": 9,
+        "category": "Performance",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Issue: Using console.log in production code**\n\nReplace `console.log` with proper logging using the logger instance. Console logs are not ideal for production environments as they:\n- Cannot be controlled via log levels\n- Are harder to aggregate and monitor\n- Don't follow the application's logging standards\n\nConsider passing a logger instance to the migration function or importing the logger used elsewhere in the application.",
+        "path": "server/src/db/mongo/migration/0001_migrateStatusWindowThreshold.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 8,
+        "to_line": 8,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The `runMigrations` function is an async function but lacks error handling. According to the async processing guidelines, async functions must include appropriate error handling. If `migrateStatusWindowThreshold()` throws an unhandled error, it could result in an unhandled promise rejection. Consider adding try-catch to handle errors gracefully.\n\n```suggestion\nconst runMigrations = async () => {\n\ttry {\n\t\tawait migrateStatusWindowThreshold();\n\t} catch (err) {\n\t\tconsole.error('Migration failed:', err);\n\t\tthrow err; // Re-throw if the caller needs to know about the failure\n\t}\n};\n```",
+        "path": "server/src/db/mongo/migration/index.js",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 3,
+        "to_line": 5,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing error handling and null checks. It is recommended to add:\n1. Null check for the monitor parameter to avoid null pointer exceptions\n2. Add try-catch error handling, consistent with the pauseJob and resumeJob methods\n3. Add debug log recording to facilitate troubleshooting\n\n```suggestion\n updateJob = async (monitor) => {\n \t\tif (!monitor) {\n \t\t\tthrow new Error(\"Monitor parameter is required\");\n \t\t}\n \t\ttry {\n \t\t\tconst result = this.scheduler.updateJob(monitor._id.toString(), { repeat: monitor.interval, data: monitor.toObject() });\n \t\t\tif (result === false) {\n \t\t\t\tthrow new Error(\"Failed to update monitor\");\n \t\t\t}\n \t\t\tthis.logger.debug({\n \t\t\t\tmessage: `Updated monitor ${monitor._id}`,\n \t\t\t\tservice: SERVICE_NAME,\n \t\t\t\tmethod: \"updateJob\",\n \t\t\t});\n \t\t} catch (error) {\n \t\t\tthis.logger.error({\n \t\t\t\tmessage: \"Failed to update monitor\",\n \t\t\t\tservice: SERVICE_NAME,\n \t\t\t\tmethod: \"updateJob\",\n \t\t\t\tdetails: error,\n \t\t\t});\n \t\t\tthrow error;\n \t\t}\n \t};\n```",
+        "path": "server/src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 90,
+        "to_line": 92,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`updateJob` is `async` but the scheduler call isn’t awaited. If `scheduler.updateJob` is async (likely, if it persists job state), errors won’t be caught/propagated and callers may proceed assuming the update is done. Suggest `await` and optionally a try/catch with logging to avoid silent schedule drift.\n\n```suggestion\n\tupdateJob = async (monitor) => {\n\t\tawait this.scheduler.updateJob(monitor._id.toString(), {\n\t\t\trepeat: monitor.interval,\n\t\t\tdata: monitor.toObject(),\n\t\t});\n\t};\n```",
+        "path": "server/src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 90,
+        "to_line": 92,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Passing the entire MongoDB document via `monitor.toObject()` creates tight coupling with schema structure and risks invalid historical job data if monitor fields change. Explicitly pass only required fields (url, type, interval) in the data object instead.",
+        "path": "server/src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 91,
+        "to_line": 91,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Breaking change: API compatibility issue**\n\nThis change modifies the signature of `updateJob` to pass an object with `repeat` and `data` properties instead of just the interval. This suggests you've upgraded `super-simple-scheduler` from 1.3.0 to 1.4.0.\n\n**Concerns:**\n1. Ensure all callers of `updateJob` have been updated to work with the new API\n2. Verify that the library version 1.4.0 is backwards compatible or that you've tested all affected code paths\n3. Consider adding error handling in case the scheduler rejects the new format",
+        "path": "server/src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 91,
+        "to_line": 91,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`monitorInterval` reads from `job?.data?.interval`. For existing jobs created before this change (or if `data.interval` isn’t set), this will be null. Consider a fallback to the job’s repeat setting (depending on scheduler schema) or ensure all jobs are updated/migrated so `data.interval` is always present.",
+        "path": "server/src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 144,
+        "to_line": 144,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The `match` function is imported from 'assert' but is never used in the code. Please remove this unused import to keep the code clean.",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 1,
+        "to_line": 1,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider simplifying the conditional structure here. The outer condition checks '!expectedValue && !jsonPath', which means neither is present, so we return early. However, inside the 'if (expectedValue)' block, you're doing specific matching logic. What happens if jsonPath is present but expectedValue isn't? That scenario doesn't appear to be handled directly after the early return. Perhaps restructure to handle each case clearly: 1) Neither present -> return success, 2) Expected value present -> validate, 3) JsonPath present -> validate.\n",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 152,
+        "to_line": 156,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Issue: Missing logging for expected value matching**\n\nThe logging statement for expected value matching was removed (lines 157-162 in the old code). Consider adding logging back for debugging purposes when the match fails:\n\n```javascript\nif (!ok) {\n  this.logger.warn({\n    service: this.SERVICE_NAME,\n    method: \"requestHttp\",\n    message: `Expected value match failed for job [${name}](${_id})`,\n    details: { expectedValue, payload, matchMethod },\n  });\n}\n```\n\nThis will help diagnose issues when monitors fail due to content matching.",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 152,
+        "to_line": 152,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Matching failures overwrite non-200 HTTP status codes (e.g., 404) with 500, misclassifying client errors as server errors and triggering incorrect monitoring alerts.",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 156,
+        "to_line": 156,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing type check: The code calls `payload.includes(expectedValue)` without verifying that `payload` is a string. If `payload` is an object, number, or other non-string type, this will throw a runtime error. Consider adding a type check: `if (matchMethod === \"include\") ok = typeof payload === 'string' && payload.includes(expectedValue);`\n",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 159,
+        "to_line": 159,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing null check: The code calls `.replace()` and `.toLowerCase()` on `monitor.url` without verifying it's not null or undefined. This could cause a runtime error. Consider adding a null check: `const normalizedInput = (monitor.url || '').replace(/^/+/, \"\").toLowerCase();`\n",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 264,
+        "to_line": 264,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The docker container matching logic is complex and would benefit from comments explaining the priority system (exact ID > exact name > partial ID).\n",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 266,
+        "to_line": 279,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The ambiguous match check logic is flawed. Since `targetContainer` is already assigned using priority-based selection (`exactIdMatch || exactNameMatch || partialIdMatch`), only one match type can exist at a time. The `matchTypes.length > 1` condition will never be true. If you want to detect ambiguous matches, you need to count all matches before applying priority selection.\n\n```suggestion\n   // Check for ambiguous matches before priority selection\n   \t\tconst allExactIdMatches = containers.filter((c) => c.Id.toLowerCase() === normalizedInput);\n   \t\tconst allExactNameMatches = containers.filter((c) =>\n   \t\t\tc.Names.some((name) => {\n   \t\t\t\tconst cleanName = name.replace(/^\\/+/, \"\").toLowerCase();\n   \t\t\t\treturn cleanName === normalizedInput;\n   \t\t\t})\n   \t\t);\n   \t\tconst allPartialIdMatches = containers.filter((c) => c.Id.toLowerCase().startsWith(normalizedInput));\n   \n   \t\tconst matchTypes = [];\n   \t\tif (allExactIdMatches.length > 0) matchTypes.push(\"exact ID\");\n   \t\tif (allExactNameMatches.length > 0) matchTypes.push(\"exact name\");\n   \t\tif (allPartialIdMatches.length > 0) matchTypes.push(\"partial ID\");\n   \n   \t\t// Return negative response if ambiguous matches exist (multiple containers match)\n   \t\tconst totalMatches = allExactIdMatches.length + allExactNameMatches.length + allPartialIdMatches.length;\n   \t\tif (totalMatches > 1) {\n```",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 299,
+        "to_line": 305,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Duplicate assignment to `dockerResponse.status` overwrites the HTTP 404 response code with boolean false during ambiguous container matching, breaking the expected response structure for Docker monitoring.",
+        "path": "server/src/service/infrastructure/networkService.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 305,
+        "to_line": 305,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The change to a strict inequality (`<`) in the recovery condition prevents monitors from recovering when failure rate exactly matches the threshold (e.g., 60% with 60% threshold), creating a \"sticky\" down state inconsistent with the incident triggering logic that uses `>=`.",
+        "path": "server/src/service/infrastructure/statusService.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 161,
+        "to_line": 161,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Dependency Updates & Environment Compatibility"
+  },
+  {
+    "change_line_count": 224,
+    "project_main_language": "JavaScript",
+    "source_commit": "7c369e84052aaee15a6dedf8928b5af4c869037b",
+    "target_commit": "29e03a6294edfe43b49eba20fe49099cef601d34",
+    "githubPrUrl": "https://github.com/bluewave-labs/Checkmate/pull/1897",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "Missing global axios error interceptor prevents proper handling and logging of network failures. Without it, the application cannot differentiate or log critical error types like HTTP status errors, no response scenarios, or request configuration issues.",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1,
+        "to_line": 5,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Missing validation for required environment variables POEDITOR_API_TOKEN and POEDITOR_PROJECT_ID; add explicit checks to exit with error if unset.",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "",
+        "from_line": 10,
+        "to_line": 13,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`LANGUAGES` parsing should trim whitespace and drop empty entries (e.g. `\"tr, en,\"`). Otherwise you may request an empty/invalid language code.\n\n```suggestion\nconst LANGUAGES = (process.env.LANGUAGES || 'tr,en')\n  .split(',')\n  .map(s => s.trim())\n  .filter(Boolean);\n```",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 12,
+        "to_line": 12,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Default language mismatch: This script defaults to 'tr,en' but the workflow file `.github/workflows/poeditor-sync.yml` (line 58) defaults to 'tr,gb'. This inconsistency could cause unexpected behavior when the workflow runs on schedule without manual input.\n\n```suggestion\n-const LANGUAGES = (process.env.LANGUAGES || 'tr,en').split(',');\n+const LANGUAGES = (process.env.LANGUAGES || 'tr,gb').split(',');\n```",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 12,
+        "to_line": 12,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Missing null safety checks when accessing nested API response properties. If the API response structure is unexpected, accessing `exportResponse.data.response.status` or `exportResponse.data.result.url` could throw errors. Consider adding optional chaining or explicit null checks.\n",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 37,
+        "to_line": 41,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The file is missing a trailing newline (`\\ No newline at end of file`). Add one to satisfy POSIX/linters and avoid noisy diffs in future edits.\n\n```suggestion\nmain();\n```",
+        "path": ".github/scripts/download-translations.js",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 92,
+        "to_line": 92,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Documentation incorrectly specifies default languages as `tr` and `gb` when the workflow implementation uses `tr` and `en`, creating user confusion about which languages are actually downloaded by default.",
+        "path": ".github/workflows/README.md",
+        "side": "right",
+        "source_model": "",
+        "from_line": 25,
+        "to_line": 25,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Inconsistent default language codes: the workflow input defaults to 'tr,en' for manual runs, but the environment variable fallback uses 'tr,gb' for scheduled runs.",
+        "path": ".github/workflows/poeditor-sync.yml",
+        "side": "right",
+        "source_model": "",
+        "from_line": 60,
+        "to_line": 61,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The workflow uses `jq` command to validate JSON format in the 'Verify translation files' step, but `jq` is not installed. The ubuntu-latest runner does not include `jq` by default. You need to add a step to install `jq` before using it, otherwise this step will fail.",
+        "path": ".github/workflows/poeditor-sync.yml",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 76,
+        "to_line": 76,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Test Suite / CI Enhancements"
+  },
+  {
+    "change_line_count": 24,
+    "project_main_language": "PHP",
+    "source_commit": "a57c946d3b8d477964da5303fa693a9b7c4e6227",
+    "target_commit": "942f8fa5384d34f2b5c9bd1b73a169d8fd049fd5",
+    "githubPrUrl": "https://github.com/symfony/symfony/pull/61601",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Fixture is used to trigger a schema validation error message (\"This element is not expected\") with line/column info. Two suggestions to make this deterministic across XML parsers/environments:\n1) Use the conventional XML declaration `encoding=\"UTF-8\"` (Symfony fixtures typically use uppercase) to avoid any edge-case differences.\n2) Consider placing the bogus element on its own line with stable indentation (already mostly done) and avoid self-closing if some validators report slightly different column numbers for `<bogusTag/>` vs `<bogusTag />`.\nIf tests assert line/column via regex only, this is mostly fine; just ensure the loader runs with XSD validation enabled so the message is consistently schema-related (as opposed to loader-level unknown tag handling).\n\n```suggestion\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<container xmlns=\"http://symfony.com/schema/dic/services\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://symfony.com/schema/dic/services https://symfony.com/schema/dic/services/services-1.0.xsd\">\n    <services>\n        <service id=\"invalid_service\" class=\"App\\Foo\">\n            <bogusTag/>\n        </service>\n    </services>\n</container>\n```",
+        "path": "src/Symfony/Component/DependencyInjection/Tests/Fixtures/xml/services31.xml",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 1,
+        "to_line": 8,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Minor style/readability: consider renaming to $invalidXmlFileName (Xml) to match common PHP/Symfony camelCase conventions; also the extra assertion messages are usually redundant in PHPUnit and can be removed unless they add unique context.",
+        "path": "src/Symfony/Component/DependencyInjection/Tests/Loader/XmlFileLoaderTest.php",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 1298,
+        "to_line": 1298,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The test `testXmlParseExceptionIncludesFilenameAndPosition` uses a try-catch block for exception testing, reducing readability and introducing potential instability; replace with PHPUnit's `expectException` and related methods for clearer, more maintainable assertions.",
+        "path": "src/Symfony/Component/DependencyInjection/Tests/Loader/XmlFileLoaderTest.php",
+        "side": "right",
+        "source_model": "",
+        "from_line": 1300,
+        "to_line": 1309,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Test Suite / CI Enhancements"
+  },
+  {
+    "change_line_count": 5,
+    "project_main_language": "PHP",
+    "source_commit": "e06b10c4f0088e2966c510d335531f7daed61915",
+    "target_commit": "647870557cf275de666557e552e11e9a295b9d4a",
+    "githubPrUrl": "https://github.com/symfony/symfony/pull/60956",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "Potential performance impact from `is_subclass_of` call in enum detection, which must execute for every object and cannot be moved lower without breaking enum handling logic.",
+        "path": "src/Symfony/Component/TypeInfo/TypeFactoryTrait.php",
+        "side": "right",
+        "source_model": "",
+        "from_line": 415,
+        "to_line": 415,
+        "category": "Performance",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 32,
+    "project_main_language": "PHP",
+    "source_commit": "0b4d21c3f91dd2cd2cc49739ab31a1457cf001ea",
+    "target_commit": "2b9721f04744fb213808f754ac98cd563384b3e5",
+    "githubPrUrl": "https://github.com/symfony/symfony/pull/60342",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The array-shape type is very broad for `actions?: array`. If this is intended to model the Web Notification API, consider specifying the element shape (e.g., `list<array{action?: string,title?: string,icon?: string}>`) or at least `list<array>` to avoid `array` meaning `array<string|int, mixed>` which defeats static analysis.",
+        "path": "src/Symfony/Component/Notifier/Bridge/Mercure/MercureOptions.php",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 25,
+        "to_line": 27,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The `vibrate` option's type annotation is incorrect; it should be `int|list<int>` instead of `int[]` to properly support both single integers and integer arrays as defined by the Vibration API specification.",
+        "path": "src/Symfony/Component/Notifier/Bridge/Mercure/MercureOptions.php",
+        "side": "right",
+        "source_model": "",
+        "from_line": 39,
+        "to_line": 39,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The docblock duplicates the same array-shape in both `@param $content` and `@return`. Consider extracting to a `@phpstan-type`/`@psalm-type` alias (if the project uses them) to keep the shapes in sync and reduce maintenance risk.",
+        "path": "src/Symfony/Component/Notifier/Bridge/Mercure/MercureOptions.php",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 82,
+        "to_line": 84,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Minor formatting inconsistency: There's an extra space before the closing brace in the return type annotation. The line shows `*  }|null` (two spaces) instead of `* }|null` (one space), which is inconsistent with the constructor's PHPDoc formatting above.\n",
+        "path": "src/Symfony/Component/Notifier/Bridge/Mercure/MercureOptions.php",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 97,
+        "to_line": 99,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      }
+    ],
+    "category": "Documentation Update"
+  },
+  {
+    "change_line_count": 458,
+    "project_main_language": "Java",
+    "source_commit": "bfcfb2ac16dd8f198a99fef43072cb178f9a1d8e",
+    "target_commit": "0ec45f028467c99d8d1efeee6c201210d9433e6d",
+    "githubPrUrl": "https://github.com/kestra-io/kestra/pull/7191",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "`fileExistsFunction` and `fileEmptyFunction` are registered unconditionally. While they are `@Singleton`, this still assumes the beans are always present and that `Extension` is always DI-managed. For consistency with `render*` and `errorLogs`, consider either:\n- Fail fast with a clear message if injection somehow results in null (e.g., `Objects.requireNonNull(fileExistsFunction, \"...\")`), or\n- Mark them `@Nullable` and register conditionally.\n\nThis prevents a hard-to-debug NPE during template engine initialization if wiring/classpath changes in some distributions.\n\n```suggestion\n        functions.put(\"randomInt\", new RandomIntFunction());\n        functions.put(\"randomPort\", new RandomPortFunction());\n        functions.put(\"fileExists\", java.util.Objects.requireNonNull(fileExistsFunction, \"fileExistsFunction bean is missing\"));\n        functions.put(\"fileEmpty\", java.util.Objects.requireNonNull(fileEmptyFunction, \"fileEmptyFunction bean is missing\"));\n```",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/Extension.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 159,
+        "to_line": 162,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "**Unused import**: The `Slugify` import is used but there's also an unused `@Value` import from Micronaut (line 5) that should be removed.",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileEmptyFunction.java",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 4,
+        "to_line": 4,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The ERROR_MESSAGE constant in FileEmptyFunction incorrectly references \"read\" as the function name instead of \"fileEmpty\".  \nThis misalignment in the error string could cause confusion during debugging or user interactions.",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileEmptyFunction.java",
+        "side": "right",
+        "source_model": "",
+        "from_line": 22,
+        "to_line": 22,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Authorization check appears to compute `isFileFromCurrentExecution` but then reads using `flow` tenantId/namespace even when the file is authorized only via the *parent trigger* (in `checkIfFileFromParentExecution`). If the parent execution belongs to another tenant/namespace, this will try to read from the wrong location. Consider selecting tenantId/namespace consistently with the authorized source (current vs trigger) or ensure tenant/namespace are guaranteed identical.\n\n```suggestion\n        String tenantId = flow.get(\"tenantId\");\n        String namespace = flow.get(\"namespace\");\n        if (!isFileFromCurrentExecution) {\n            Map<String, String> trigger = (Map<String, String>) context.getVariable(TRIGGER);\n            // optionally override namespace/tenantId if trigger can differ\n        }\n        try (InputStream inputStream = storageInterface.get(tenantId, namespace, path)) {\n```",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileEmptyFunction.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 71,
+        "to_line": 74,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Inconsistent exception type: template function failures elsewhere use `PebbleException`, but here `IllegalArgumentException` is thrown, which may bypass Pebble's line/template reporting and be harder to debug. Prefer throwing `PebbleException` with lineNumber/self (pass them into this method) for consistent error handling.\n\n```suggestion\n                throw new PebbleException(null, \"Unable to read the file '\" + path + \"' as it doesn't belong to the current execution\", lineNumber, self.getName());\n```",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileEmptyFunction.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 85,
+        "to_line": 85,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "- The `ERROR_MESSAGE` constant incorrectly references 'fileSize' instead of 'fileExists' for the file existence function.  \n- Path validation should use a blank check (not empty) for whitespace handling, and existence checks must not read file content since empty files still exist.",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileExistsFunction.java",
+        "side": "right",
+        "source_model": "",
+        "from_line": 19,
+        "to_line": 19,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential NPE/ClassCast risk: `context.getVariable(\"flow\")` / `execution` are unchecked casts and then dereferenced (`flow.get(...)`). If those variables are absent or not `Map<String,String>`, this will throw at runtime with a less actionable error. Consider validating presence/type and throwing a `PebbleException` with a clear message.",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileExistsFunction.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 63,
+        "to_line": 64,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Security/consistency: `isFileUriValid` only checks that the URI string starts with the authorized base path. Ensure the URI is normalized/canonical before comparison to avoid path trickery (e.g., encoded `..` segments or mixed casing/encoding). At minimum, consider comparing `path.normalize()` and building the base using `URI` path components rather than raw string concatenation.",
+        "path": "core/src/main/java/io/kestra/core/runners/pebble/functions/FileExistsFunction.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 96,
+        "to_line": 97,
+        "category": "Security Vulnerability",
+        "context": "File Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  },
+  {
+    "change_line_count": 200,
+    "project_main_language": "Java",
+    "source_commit": "a716094a9d3c3522fb40ea988b3dab2763d7519c",
+    "target_commit": "3c2a2765fcd06d7fe127e362ddc9a706d4073047",
+    "githubPrUrl": "https://github.com/kestra-io/kestra/pull/7381",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The new method is inconsistent with the existing `replaceInternalStorage(RunContext, Map<String, Object>, List<String>, boolean)` method (lines 83-91). The existing method renders each individual command with `additionalVars` before replacing internal storage: `runContext.render(c, additionalVars)`. However, this new method only renders the Property as a whole and then directly calls `replaceInternalStorage` on each command without re-rendering. If individual commands in the list contain template variables that need `additionalVars`, they won't be properly rendered. Consider refactoring to match the existing pattern: render each command individually before storage replacement.\n\n```suggestion\n    public static List<String> replaceInternalStorage(\n        RunContext runContext,\n        Map<String, Object> additionalVars,\n        Property<List<String>> commands,\n        boolean replaceWithRelativePath\n    ) throws IOException, IllegalVariableEvaluationException {\n        if (commands == null) {\n            return Collections.emptyList();\n        }\n        return runContext.render(commands).asList(String.class, additionalVars).stream()\n            .map(throwFunction(c -> runContext.render(c, additionalVars)))\n            .map(throwFunction(c -> ScriptService.replaceInternalStorage(runContext, c, replaceWithRelativePath)))\n            .toList();\n    }\n```",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/ScriptService.java",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 97,
+        "to_line": 107,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Potential NPE risk: this overload passes `additionalVars` directly into `asList(...)`. Unlike the List<String> overload (which uses `ListUtils.emptyOnNull(commands)` and then `runContext.render(c, additionalVars)`), there is no normalization for `additionalVars`. If any caller passes `null`, `asList` (or downstream rendering) may throw. Suggest normalizing `additionalVars` to `Collections.emptyMap()` in this method to make it safer and consistent with the other overloads.\n\nMinor consistency: other overloads treat null inputs explicitly (`command == null` returns null / empty string). Here `commands == null` returns empty list; ensure this matches intended semantics for a missing property vs empty property.\n\n```suggestion\n    public static List<String> replaceInternalStorage(\n        RunContext runContext,\n        Map<String, Object> additionalVars,\n        Property<List<String>> commands,\n        boolean replaceWithRelativePath\n    ) throws IOException, IllegalVariableEvaluationException {\n        if (commands == null) {\n            return Collections.emptyList();\n        }\n\n        Map<String, Object> vars = additionalVars == null ? Collections.emptyMap() : additionalVars;\n\n        return runContext.render(commands)\n            .asList(String.class, vars)\n            .stream()\n            .map(throwFunction(c -> ScriptService.replaceInternalStorage(runContext, c, replaceWithRelativePath)))\n            .toList();\n    }\n```",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/ScriptService.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 97,
+        "to_line": 107,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The import `lombok.With` appears to be unused in this interface. If it is not needed, please remove it to keep the code clean.\n",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/TaskCommands.java",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 4,
+        "to_line": 4,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Although ScriptService.replaceInternalStorage handles null inputs by returning empty lists, there's still a theoretical risk of NullPointerException if any of the rendered command lists become null between retrieval and streaming. Consider adding defensive null checking or ensuring that Stream.of() never receives null collections.\n",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/TaskRunner.java",
+        "side": "right",
+        "source_model": "Qwen-Coder-480B",
+        "from_line": 139,
+        "to_line": 140,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The method simply concatenates interpreter, beforeCommands, and commands lists without proper command formatting. This is inconsistent with `CommandsWrapper.run()` (line 172-177) which uses `ScriptService.scriptCommands()` to properly combine these elements.\n\n`ScriptService.scriptCommands()` handles OS-specific command formatting (via TargetOS parameter) to correctly structure shell commands. Simply concatenating the lists may produce malformed commands that won't execute correctly.\n\nIssue: This concatenation approach bypasses the proper command construction logic that accounts for:\n- Shell interpreter invocation\n- Command file creation\n- OS-specific formatting\n\nThis will cause `Process.run()` and `Docker.configure()` to receive improperly formatted commands when they call `this.renderCommands()`.\n\nThe fix requires determining the appropriate TargetOS and using ScriptService.scriptCommands() instead of simple concatenation, similar to CommandsWrapper.",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/TaskRunner.java",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 139,
+        "to_line": 139,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "`renderCommandsFromList` should be private as it is only used internally by `renderCommands`.",
+        "path": "core/src/main/java/io/kestra/core/models/tasks/runners/TaskRunner.java",
+        "side": "right",
+        "source_model": "",
+        "from_line": 143,
+        "to_line": 143,
+        "category": "Maintainability and Readability",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The added `renderCommands` call introduces redundant command rendering since `CommandsWrapper.getCommands()` already provides pre-rendered commands.",
+        "path": "core/src/main/java/io/kestra/plugin/core/runner/Process.java",
+        "side": "right",
+        "source_model": "",
+        "from_line": 140,
+        "to_line": 140,
+        "category": "Performance",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The renderCommands method may return an empty list if all command components are empty. This would cause process execution to fail. Consider adding validation to ensure at least one command is present before proceeding.\n",
+        "path": "core/src/main/java/io/kestra/plugin/core/runner/Process.java",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 140,
+        "to_line": 142,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider defensive handling around renderedCommands: if renderCommands can return null/empty, ProcessBuilder.command(renderedCommands) will throw or start an invalid process. Also, if renderCommands can throw variable/template evaluation exceptions, it may be better to catch and wrap with a TaskRunnerException/TaskException including the command context for easier troubleshooting.",
+        "path": "core/src/main/java/io/kestra/plugin/core/runner/Process.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 140,
+        "to_line": 142,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "`interpreter`, `beforeCommands`, and `commands` are not initialized in the default constructor, so they can be null here. Passing a null `Property<List<String>>` into `renderCommands`/`ScriptService.replaceInternalStorage(...)` is a likely NPE unless that method explicitly accepts null.\n\nSuggestion: normalize to empty properties before rendering, e.g. `Property.of(Collections.emptyList())` (or whatever “empty” idiom exists in this codebase) when the field is null.\n\nAdditionally, `taskRunnerRunContext` is created but rendering uses `runContext` + `this.runContext` inside `renderCommands`. If the intent is to render under the plugin context, use `taskRunnerRunContext` consistently (or remove the unused variable). Finally, mutating `this.commands` during `run()` makes the wrapper stateful; prefer keeping `finalCommands` local and passing it to downstream code if possible.",
+        "path": "script/src/main/java/io/kestra/plugin/scripts/exec/scripts/runners/CommandsWrapper.java",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 167,
+        "to_line": 179,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Logic error: Reassigning the combined commands to `this.commands` creates an inconsistent object state. After this assignment, `this.commands` contains the fully combined command structure (interpreter + beforeCommands + commands), but `this.interpreter` and `this.beforeCommands` still retain their original values. This inconsistency could cause issues if any downstream code (like TaskRunner) tries to access these individual fields, as they no longer accurately represent the command structure. Consider either: 1) Not reassigning to `this.commands` and passing the combined commands directly to the TaskRunner, or 2) Also clearing/nullifying `this.interpreter` and `this.beforeCommands` to reflect that they've been merged.\n",
+        "path": "script/src/main/java/io/kestra/plugin/scripts/exec/scripts/runners/CommandsWrapper.java",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 173,
+        "to_line": 179,
+        "category": "Code Defect",
+        "context": "File Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The `renderCommands` method is called here for logging, but it is also called inside the `configure` method (line 783) to set the container command. Since `renderCommands` involves `ScriptService.replaceInternalStorage`, which can be expensive (potentially involving I/O for internal storage), it is recommended to call `renderCommands` once in the `run` method before calling `configure`, and pass the rendered commands to `configure`. This avoids redundant execution.\n",
+        "path": "script/src/main/java/io/kestra/plugin/scripts/runner/docker/Docker.java",
+        "side": "right",
+        "source_model": "Gemini-3-Pro",
+        "from_line": 431,
+        "to_line": 431,
+        "category": "Performance",
+        "context": "Repo Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 235,
+    "project_main_language": "Java",
+    "source_commit": "01a77aff0422884ed7b18ba8d00a0495d0bab88e",
+    "target_commit": "06e7c6e48e22420da5bb0bf3188bc00f73974c9a",
+    "githubPrUrl": "https://github.com/kestra-io/kestra/pull/6844",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "Logical inconsistency: `isFalsy` returns `false` when condition is `null`, which means null values are treated as \"not falsy\". In the Assert context, this causes null assertions to incorrectly pass as \"successful\". Typically, null values should be considered falsy in assertion logic. Consider changing to `return condition == null || FALSE_VALUES.contains(condition);` to be consistent with common boolean semantics where null is falsy.\n\n```suggestion\n    public static boolean isFalsy(String condition) {\n        return condition == null || FALSE_VALUES.contains(condition);\n    }\n```",
+        "path": "core/src/main/java/io/kestra/core/utils/TruthUtils.java",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 12,
+        "to_line": 14,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Critical logic error: `TruthUtils.isFalsy()` returns `false` when condition is `null` (because `condition != null` check fails), meaning null values are incorrectly treated as truthy. In the Assert task context, if `runContext.render(s)` returns null, the assertion would incorrectly pass instead of failing. The method should return `true` when condition is null, or the calling code should explicitly handle null values.",
+        "path": "core/src/main/java/io/kestra/plugin/core/execution/Assert.java",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 94,
+        "to_line": 94,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "Invalid template syntax introduced: Replaced valid variable path `outputs.output_values.values.taskrun_data` with `outputs.output_values.²` containing a superscript 2 character, which will cause template rendering errors.",
+        "path": "core/src/main/java/io/kestra/plugin/core/output/OutputValues.java",
+        "side": "right",
+        "source_model": "",
+        "from_line": 54,
+        "to_line": 54,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Test Suite / CI Enhancements"
+  },
+  {
+    "change_line_count": 8,
+    "project_main_language": "Rust",
+    "source_commit": "ad508025a9d05552a1c8ac1ba4e71a0062ebb556",
+    "target_commit": "8fb32bb8a463a3b19e291426f83833027739f868",
+    "githubPrUrl": "https://github.com/linera-io/linera-protocol/pull/3151",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "The doc comment uses lowercase for \"prometheus\" and \"linera\"; capitalize as proper nouns since they refer to specific projects.",
+        "path": "linera-base/src/prometheus_util.rs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 25,
+        "to_line": 25,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Documentation Update"
+  },
+  {
+    "change_line_count": 40,
+    "project_main_language": "Rust",
+    "source_commit": "c31634e52d719fdf60694f47812e2f007022ae26",
+    "target_commit": "3535ddb83de7dfae5db1732a7f1535031d31380a",
+    "githubPrUrl": "https://github.com/linera-io/linera-protocol/pull/4639",
+    "comments": [
+      {
+        "is_ai_comment": false,
+        "note": "Doc comment should format `received_log` and `ChainInfo` as code identifiers using backticks.",
+        "path": "linera-core/src/chain_worker/state.rs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 51,
+        "to_line": 51,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Making this `pub` exposes a protocol/behavior constant outside the crate. If this limit is only an internal safeguard for responses, consider `pub(crate)` to avoid accidental external coupling. If it must be public, document whether it’s a hard API guarantee and whether changing it is a breaking change.\n\n```suggestion\npub(crate) const CHAIN_INFO_MAX_RECEIVED_LOG_ENTRIES: usize = 1000;\n```",
+        "path": "linera-core/src/chain_worker/state.rs",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 53,
+        "to_line": 53,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Consider adding validation to handle the case where `start >= chain.received_log.count()`. Currently, if start exceeds the log count, the range `start..end` could be invalid or empty. It might be better to return early with an empty result or an error to make the behavior explicit.\n",
+        "path": "linera-core/src/chain_worker/state.rs",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 1418,
+        "to_line": 1420,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The pagination loop condition might result in an extra unnecessary request when exactly CHAIN_INFO_MAX_RECEIVED_LOG_ENTRIES entries are returned. Consider using <= comparison to break when the number of received entries is less than or equal to the maximum.\n",
+        "path": "linera-core/src/chain_worker/state.rs",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 1418,
+        "to_line": 1419,
+        "category": "Performance",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The pagination loop lacks a safeguard against infinite iteration. If entries are being added to the `received_log` faster than the client paginates through it (e.g., during concurrent writes), the condition `received_entries < CHAIN_INFO_MAX_RECEIVED_LOG_ENTRIES` might never be met, potentially causing an infinite loop.\n\nConsider adding a maximum iteration limit or a timeout safeguard to prevent this edge case. For example:\n```rust\nlet mut iterations = 0;\nconst MAX_ITERATIONS: u32 = 1000;\nloop {\n    let query = ChainInfoQuery::new(chain_id).with_received_log_excluding_first_n(offset);\n    let info = remote_node.handle_chain_info_query(query).await?;\n    let received_entries = info.requested_received_log.len();\n    offset += received_entries as u64;\n    remote_log.extend(info.requested_received_log);\n    if received_entries < CHAIN_INFO_MAX_RECEIVED_LOG_ENTRIES {\n        break;\n    }\n    iterations += 1;\n    if iterations >= MAX_ITERATIONS {\n        warn!(\"Reached maximum iterations while paginating received log for chain {:?}\", chain_id);\n        break;\n    }\n}\n```",
+        "path": "linera-core/src/client/mod.rs",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 846,
+        "to_line": 857,
+        "category": "Code Defect",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The pagination loop will make an extra unnecessary query when the total number of entries is exactly a multiple of CHAIN_INFO_MAX_RECEIVED_LOG_ENTRIES (1000). For example, if there are exactly 2000 new entries, it will make 3 queries returning (1000, 1000, 0) instead of stopping after 2 queries. While this doesn't affect correctness, consider adding a check to avoid the extra query, such as tracking if we've reached the expected end or checking if the response is empty before extending the vector.\n",
+        "path": "linera-core/src/client/mod.rs",
+        "side": "right",
+        "source_model": "Claude-Code/Claude-4.5-Sonnet",
+        "from_line": 848,
+        "to_line": 857,
+        "category": "Performance",
+        "context": "Diff Level"
+      }
+    ],
+    "category": "Bug Fix"
+  },
+  {
+    "change_line_count": 72,
+    "project_main_language": "Rust",
+    "source_commit": "c4a8ac301274ccdfc8d0fc87871d557534a8405f",
+    "target_commit": "024925dfbeff5daaecdd2cd733cda2825eff1bb7",
+    "githubPrUrl": "https://github.com/linera-io/linera-protocol/pull/3075",
+    "comments": [
+      {
+        "is_ai_comment": true,
+        "note": "The typo 'Reponse' was correctly fixed to 'Response', but there is another typo 'ceritifcates' that should also be corrected to 'certificates'.\n\n```suggestion\n    #[error(\"Response doesn't contain requested certificates: {0:?}\")]\n```",
+        "path": "linera-core/src/node.rs",
+        "side": "right",
+        "source_model": "GLM-4.7",
+        "from_line": 205,
+        "to_line": 205,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": false,
+        "note": "The `grace_period` parameter should use `Option<f64>` instead of `impl Into<Option<f64>>` to maintain strong type checking and code normalization standards.",
+        "path": "linera-core/src/updater.rs",
+        "side": "right",
+        "source_model": "",
+        "from_line": 109,
+        "to_line": 109,
+        "category": "Maintainability and Readability",
+        "context": "Diff Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "Robustness: `grace_period` comes from callers and is used in `mul_f64`. If it’s negative/NaN/inf, `Duration::mul_f64` can panic or behave unexpectedly. Recommend validating/clamping before use (e.g., ensure finite and >= 0.0; optionally cap to a max like 1.0).\n\n```suggestion\n    let grace_period = grace_period.into().unwrap_or(DEFAULT_GRACE_PERIOD);\n    let grace_period = if grace_period.is_finite() && grace_period >= 0.0 {\n        grace_period\n    } else {\n        0.0\n    };\n```",
+        "path": "linera-core/src/updater.rs",
+        "side": "right",
+        "source_model": "GPT-5.2",
+        "from_line": 139,
+        "to_line": 139,
+        "category": "Code Defect",
+        "context": "Repo Level"
+      },
+      {
+        "is_ai_comment": true,
+        "note": "The loop label 'vote_wait is added but doesn't appear to be referenced by any break or continue statements. Consider removing the label if it's not actually used for control flow.\n",
+        "path": "linera-core/src/updater.rs",
+        "side": "right",
+        "source_model": "Deepseek-V3.2",
+        "from_line": 141,
+        "to_line": 141,
+        "category": "Maintainability and Readability",
+        "context": "File Level"
+      }
+    ],
+    "category": "New Feature Additions"
+  }
+]

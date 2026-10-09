@@ -1,0 +1,10 @@
+{
+  "pr_number": 9062,
+  "repo": "stylelint/stylelint",
+  "task_id": "stylelint__9062",
+  "config_name": "config_C",
+  "pipeline_version": "v0.4.1",
+  "total_tokens": 435,
+  "was_truncated": false,
+  "rendered": "## Layer 0 - Task + Focus\nYou are reviewing a pull request.\n\nFocus:\n- Identify real issues in the changes.\n- Prioritize correctness and logic.\n- Use surrounding code only if required.\n\nDo not speculate.\n\n---\n\n## Layer 1 - Key Changes Summary\nKey Changes:\n- `lib/rules/declaration-property-value-no-unknown/index.mjs`: 43 changed lines, 3 function/branch hunks, logic markers=2.\n- `lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs`: 33 changed lines, 0 function/branch hunks, logic markers=0.\n- PR profile: type=bug_fix, difficulty=Type2_Contextual, language=JavaScript, files_changed=3.\n\n---\n\n## Layer 2 - Diff (Core)\n\n### lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs\n```diff\ndiff --git a/lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs b/lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs\nindex cddc5222d6..6f054f7f4f 100644\n--- a/lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs\n+++ b/lib/rules/declaration-property-value-no-unknown/__tests__/index.mjs\n@@ -947,6 +947,37 @@ testRule({\n \t],\n });\n \n+testRule({\n+\truleName,\n+\tconfig: true,\n+\tlanguageOptions: {\n+\t\tsyntax: {\n+\t\t\tproperties: { top: '| <--foo()>' },\n+\t\t\ttypes: { '--foo()': '--foo( <length-percentage> )' },\n+\t\t},\n+\t},\n+\n+\taccept: [\n+\t\t{\n+\t\t\tcode: 'a { top: 10px; }',\n+\t\t},\n+\t\t{\n+\t\t\tcode: 'a { top: --foo(5px); }',\n+\t\t},\n+\t],\n+\n+\treject: [\n+\t\t{\n+\t\t\tcode: 'a { top: unknown; }',\n+\t\t\tmessage: messages.rejected('top', 'unknown'),\n+\t\t\tline: 1,\n+\t\t\tcolumn: 10,\n+\t\t\tendLine: 1,\n+\t\t\tendColumn: 17,\n+\t\t},\n+\t],\n+});\n+\n testRule({\n \truleName,\n \tconfig: true,\n```\n\n---\n\n## Layer 3 - Execution Context\n\n---\n\n## Layer 4 - Behavior Mapping\n\n---\n\n## Layer 6 - Minimal Metadata\n- Language: JavaScript\n- Files changed: 3\n- PR type: bug_fix"
+}

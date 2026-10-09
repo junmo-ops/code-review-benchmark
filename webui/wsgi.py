@@ -56,7 +56,8 @@ def create_app(dashboard=None):
                 return jsonify(error='需要有效用户与角色'),403
             g.bench_user, g.bench_role = user, role
         if request.path == '/api/cases/upload':
-            request.max_content_length = 32 * 1024 * 1024
+            from .case_upload import limits
+            request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
         origin=request.headers.get('Origin')
         if origin and origin!=public:return jsonify(error='不接受跨站请求'),403
         if request.method=='POST':
@@ -77,31 +78,31 @@ def create_app(dashboard=None):
     def unavailable(exc):return jsonify(error='文件或参数不可用，请检查记录'),400
     @app.errorhandler(413)
     def too_large(exc):
-        message = '上传文件过大，案例 ZIP 上限为 32 MB' if request.path == '/api/cases/upload' else '请求过大，JSON 请求上限为 16 KB'
+        from .case_upload import limits
+        message = '案例 ZIP 上限为 ' + limits()['upload_max_label'] if request.path == '/api/cases/upload' else '请求过大，JSON 请求上限为 16 KB'
         return jsonify(error=message),413
     @app.post('/api/cases/upload')
     def upload_cases():
         if os.environ.get('BENCH_CASE_UPLOAD') != '1':
             return jsonify(error='当前部署未启用网页案例上传'),404
-        if request.mimetype != 'multipart/form-data':
+        from .case_upload import receive_archive
+        if request.mimetype == 'application/zip':
+            stream, length = request.stream, request.content_length
+        elif request.mimetype == 'multipart/form-data':
+            upload = request.files.get('archive')
+            if upload is None or not upload.filename or not upload.filename.lower().endswith('.zip'):
+                raise ValueError('请选择 ZIP 格式的案例集包')
+            stream, length = upload.stream, None
+        else:
             raise ValueError('请选择 ZIP 文件上传')
-        upload = request.files.get('archive')
-        if upload is None or not upload.filename or not upload.filename.lower().endswith('.zip'):
-            raise ValueError('请选择 aacr-pilot5-cases.zip')
         from .case_assets import install
         with tempfile.TemporaryDirectory(prefix='case-upload-', dir=dashboard.data) as folder:
             archive = Path(folder) / 'cases.zip'
-            with archive.open('wb') as output:
-                size = 0
-                while chunk := upload.stream.read(1024 * 1024):
-                    size += len(chunk)
-                    if size > 32 * 1024 * 1024:
-                        raise ValueError('案例 ZIP 上限为 32 MB')
-                    output.write(chunk)
+            receive_archive(stream, archive, length)
             try:
                 return jsonify(install(dashboard, archive))
             except (zipfile.BadZipFile, RuntimeError):
-                raise ValueError('ZIP 无效或需要解密，请使用提供的普通案例 ZIP') from None
+                raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
             except subprocess.CalledProcessError:
                 raise ValueError('案例 Git 历史准备失败，请查看服务器日志；可以重新上传') from None
     @app.get('/healthz')

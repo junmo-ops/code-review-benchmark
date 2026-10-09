@@ -6,10 +6,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import secrets
+import subprocess
+import tempfile
 import signal
 import threading
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
+import zipfile
 from .service import Dashboard, ROOT
 
 STATIC = Path(__file__).parent/'static'
@@ -89,6 +92,27 @@ def handler_for(app, token):
                 return
             try:
                 length = int(self.headers.get('Content-Length','0'))
+                if self.path == '/api/cases/upload':
+                    if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+                        return self.send(404, {'error':'当前工作台未启用案例上传'})
+                    from .case_upload import limits, receive_archive
+                    config = limits()
+                    if not 0 < length <= config['upload_max_bytes']:
+                        self.close_connection = True
+                        return self.send(413, {'error':'案例 ZIP 上限为 ' + config['upload_max_label']})
+                    if self.headers.get('Content-Type', '').split(';')[0] != 'application/zip':
+                        self.close_connection = True
+                        raise ValueError('请选择 ZIP 文件上传')
+                    from .case_assets import install
+                    with tempfile.TemporaryDirectory(prefix='case-upload-', dir=app.data) as folder:
+                        archive = Path(folder) / 'cases.zip'
+                        receive_archive(self.rfile, archive, length)
+                        try:
+                            return self.send(200, install(app, archive))
+                        except (zipfile.BadZipFile, RuntimeError):
+                            raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
+                        except subprocess.CalledProcessError:
+                            raise ValueError('案例 Git 历史准备失败，请查看服务终端；可以重新上传') from None
                 if not 0 < length <= 16384:
                     raise ValueError('请求大小不合法')
                 if self.headers.get('Content-Type','').split(';')[0] != 'application/json':
@@ -123,9 +147,17 @@ def main():
     parser=argparse.ArgumentParser(description='本地测评工作台，默认仅监听 127.0.0.1')
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--no-open',action='store_true')
+    upload=parser.add_mutually_exclusive_group()
+    upload.add_argument('--case-upload',dest='case_upload',action='store_true',help='启用与行内工作台相同的案例 ZIP 上传功能（默认）')
+    upload.add_argument('--no-case-upload',dest='case_upload',action='store_false',help='关闭案例 ZIP 上传入口')
+    parser.set_defaults(case_upload=None)
     args=parser.parse_args()
     if os.getenv("BENCH_SERVER_MODE"):
         parser.error("服务器模式请使用部署文档中的 Gunicorn 与独立 Worker，不使用 ui.py")
+    if args.case_upload is not None:
+        os.environ['BENCH_CASE_UPLOAD']='1' if args.case_upload else '0'
+    else:
+        os.environ.setdefault('BENCH_CASE_UPLOAD', '1')
     if not 1<=args.port<=65535:
         parser.error('端口应为 1–65535')
     state=ROOT/'ui-state';state.mkdir(exist_ok=True)

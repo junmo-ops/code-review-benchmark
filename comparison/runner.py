@@ -27,7 +27,7 @@ def execute(command,env,limit,path):
 def run(app,folder):
     m=json.loads((folder/'experiment.json').read_text());suite=get_suite(m['suite'])
     if m['protocol']!=PROTOCOL or m['parameters']!=PARAMETERS or m['code_identity']!=identity() or m['suite_identity']!=suite.identity() or m['tool_identity']!=get_reviewer('lcr').tool_identity():raise ValueError('排队期间协议、案例适配或工具发生变化；请新建实验')
-    source=app.root/'data'/m['dataset']
+    source=app.dataset_path(m['dataset'])
     if any(hashlib.sha256(p.read_bytes()).hexdigest()!=m['dataset_sha256'] for p in (source,folder/'dataset.jsonl')):raise ValueError('案例清单发生变化')
     for g in m['groups']:
         if hashlib.sha256((app.configs/g['profile']).read_bytes()).hexdigest()!=g['config_sha256']:raise ValueError('实验模型配置发生变化')

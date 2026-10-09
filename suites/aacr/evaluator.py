@@ -2,6 +2,7 @@
 import asyncio,hashlib,json,os,sys
 from types import SimpleNamespace
 from runner.storage import ROOT,save,safe_json,validate_answer
+from reviewers.lcr.adapter import answer_session_failures
 from .upstream import activate
 activate()
 from schema import load_instances
@@ -28,13 +29,29 @@ def load_judge_config():
 
 
 def stage_eval(instances, run, config):
-    # Use the suite-owned references, never the runner input handed to LCR.
-    instances = load_instances(run / "dataset.jsonl")
+    # Use suite-owned references, never the runner input handed to LCR. Score
+    # every structurally complete saved answer and retain an explicit scope for
+    # the report; unfinished cases are excluded rather than treated as zero.
+    all_instances = load_instances(run / "dataset.jsonl")
+    instances = []
+    excluded = []
+    for item in all_instances:
+        answer_path = run / "results" / (item.safe_id + ".json")
+        try:
+            answer = validate_answer(item, answer_path)
+        except (OSError, ValueError) as error:
+            excluded.append({"instance_id": item.instance_id,
+                             "reason": ("缺少完整答卷" if isinstance(error, FileNotFoundError)
+                                        else "答卷无法读取或未通过完整性校验")})
+        else:
+            if answer_session_failures(item, run, answer):
+                excluded.append({"instance_id": item.instance_id,
+                                 "reason": "LCR 会话记录了失败条目"})
+                continue
+            instances.append(item)
+    if not instances:
+        raise SystemExit("没有可评分的完整答卷；请先完成至少一个案例。")
     load_judge_config()
-    for item in instances:
-        if not (run / "results" / (item.safe_id + ".json")).exists():
-            raise SystemExit("缺少完整答卷：" + item.instance_id)
-        validate_answer(item, run / "results" / (item.safe_id + ".json"))
     for name in ("JUDGE_BASE_URL", "JUDGE_API_KEY", "JUDGE_MODEL"):
         if not os.getenv(name):
             raise SystemExit(f"缺少环境变量 {name}")
@@ -53,8 +70,9 @@ def stage_eval(instances, run, config):
          "eval_rounds":config.get("eval_rounds",3), "line_k":config.get("line_k",1)})
     included = [i.instance_id for i in instances]
     save(run / "evaluation-scope.json", {"included": included,
-        "excluded": [i.instance_id for i in load_instances(run / "dataset.jsonl") if i.instance_id not in included],
-        "note": (f"本轮冻结清单共 {len(included)} 例，全部纳入评分；结论仅适用于本轮范围。")})
+        "excluded": excluded,
+        "note": (f"本轮共 {len(all_instances)} 例，其中 {len(included)} 例有完整答卷并纳入评分；"
+                 "其余案例不计零分，结论仅适用于纳入评分的案例。")})
     import judge  # noqa: E402
     import pipeline  # noqa: E402
     if judge.USE_MOCK_LLM:
@@ -123,4 +141,3 @@ def stage_report(run, config):
     os.environ.setdefault("REPORT_MODEL", os.environ["JUDGE_MODEL"])
     from .report import generate_report
     print("中文报告：", asyncio.run(generate_report(run)))
-

@@ -113,6 +113,11 @@ def inspect_case(item, run):
         errors.append({"kind": error_kind(match[2]), "file": match[1], "message": redact(match[2])})
     for match in re.finditer(r"(?m)^\[lcr\]\s+Error: (.+)$", log_text):
         errors.append({"kind": error_kind(match[1]), "file": None, "message": redact(match[1])})
+    retry_history = outcome.get("retry_history") or []
+    for retry in retry_history:
+        message = redact(retry.get("error", "自动重试前的失败未提供详情"))
+        errors.append({"kind": "自动重试后恢复：" + error_kind(message),
+                       "file": None, "message": message})
     if outcome.get("error"):
         errors.append({"kind": "适配器记录", "file": None, "message": redact(outcome["error"])})
     # Deduplicate warnings that are also emitted to stderr.
@@ -147,6 +152,8 @@ def inspect_case(item, run):
         status = "部分完成"
     elif execution.get("exit_code") not in (None, 0):
         status = "LCR 失败"
+    elif session.get("errors"):
+        status = "部分完成（答卷已保存但会话有失败项）" if valid_answer else "部分完成（会话有失败项）"
     elif valid_answer:
         status = "完整成功"
     elif lcr_status in ("success", "completed") and execution.get("exit_code") == 0:
@@ -177,6 +184,7 @@ def inspect_case(item, run):
         session_id=session.get("session_id") or session_id, session_evidence=session,
         manual_stop=manual,
         comments=len(result["comments"]) if isinstance(result.get("comments"), list) else None,
+        automatic_retries=len(retry_history),
         tokens=summary.get("total_tokens"), tool_calls=result.get("tool_calls"), errors=errors,
         tool_errors=tool_errors, evidence_prefix=f"raw/{item.safe_id}",
         previous_attempts=len(list((folder / "attempts").glob(item.safe_id + "-*"))))
@@ -189,6 +197,7 @@ def write_summary(instances, run):
     data = dict(generated_at=datetime.now(timezone.utc).isoformat(), run_id=run.name,
                 repository_mode=config.get("repository_mode", "isolated" if config.get("workspace_isolation") else "shared"),
                 case_jobs=config.get("case_jobs", 1), file_concurrency=config.get("concurrency", 1),
+                max_case_retries=config.get("max_case_retries", 1),
                 total=len(rows), complete=counts["完整成功"], completion_rate=counts["完整成功"] / len(rows) if rows else 0,
                 counts=dict(counts), cases=rows)
     for row in rows:
@@ -203,13 +212,13 @@ def write_summary(instances, run):
         return str(value if value is not None else "未提供").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
     budgets = sorted({str(r["timeout_minutes_actual"]) for r in rows if r["timeout_minutes_actual"] is not None})
     lines = ["# LCR 运行汇总", "", f"轮次：`{run.name}`", "",
-             f"案例并发配置：{data['case_jobs']}；每案例文件并发：{data['file_concurrency']}。", "",
+             f"案例并发配置：{data['case_jobs']}；每案例文件并发：{data['file_concurrency']}；失败案例最多自动重试：{data['max_case_retries']} 次。", "",
              f"完整成功：{data['complete']}/{len(rows)}（{data['completion_rate']:.1%}）。这不是质量得分。", "",
              "实际任务超时配置：" + ("、".join(budgets) + " 分钟。" if budgets else "日志未提供。") + "以执行命令为准，不按轮次名称推断。", "",
-             "| 案例 | 状态 | 耗时（秒） | 意见数 | 明确错误 |", "|---|---|---:|---:|---|"]
+             "| 案例 | 状态 | 自动重试 | 耗时（秒） | 意见数 | 明确错误 |", "|---|---|---:|---:|---:|---|"]
     for row in rows:
         kinds = "；".join(dict.fromkeys(e["kind"] for e in row["errors"])) or "无已记录错误"
-        lines.append("| " + " | ".join(cell(v) for v in [row["instance_id"], row["status"], row["elapsed_seconds"], row["comments"], kinds]) + " |")
+        lines.append("| " + " | ".join(cell(v) for v in [row["instance_id"], row["status"], row["automatic_retries"], row["elapsed_seconds"], row["comments"], kinds]) + " |")
     lines += ["", "耗时未提供时不使用最后一次心跳冒充最终耗时。部分意见保留，但不作为完整答卷评分。", ""]
     for row in rows:
         lines += [f"## {row['instance_id']}", "", f"状态：{row['status']}；LCR 状态：{cell(row['lcr_status'])}；退出码：{cell(row['exit_code'])}。", "",
