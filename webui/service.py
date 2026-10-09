@@ -84,6 +84,10 @@ class Dashboard:
     def environment(self, profile):
         from local import ALLOWED
         env = dict(os.environ)
+        # COS credentials are used only by the workbench service. Do not pass
+        # them to LCR, evaluators, or other per-job child processes.
+        for name in ('BENCH_CASE_S3_ACCESS_KEY_ID', 'BENCH_CASE_S3_SECRET_ACCESS_KEY', 'BENCH_CASE_S3_SESSION_TOKEN'):
+            env.pop(name, None)
         if profile != 'environment':
             if profile not in {p['id'] for p in self.profiles()}:
                 raise ValueError('模型配置不存在')
@@ -96,7 +100,9 @@ class Dashboard:
 
     def redact(self, text):
         # Both console logs and browsed artifacts are filtered. Never return config contents.
-        secrets = [os.getenv(name) for name in ('BENCH_AGENT_TOKEN', 'BENCH_BASIC_PASSWORD', 'BENCH_PROXY_TOKEN', 'BENCH_CSRF_TOKEN')]
+        secrets = [os.getenv(name) for name in ('BENCH_AGENT_TOKEN', 'BENCH_BASIC_PASSWORD', 'BENCH_PROXY_TOKEN',
+                                                'BENCH_CSRF_TOKEN', 'BENCH_CASE_S3_ACCESS_KEY_ID',
+                                                'BENCH_CASE_S3_SECRET_ACCESS_KEY', 'BENCH_CASE_S3_SESSION_TOKEN')]
         try:
             from reviewers.server_agent.adapter import load_config
             secrets.append(os.getenv(load_config().get('token_env','BENCH_AGENT_TOKEN')))

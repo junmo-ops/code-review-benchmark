@@ -21,6 +21,8 @@ judge.local.json
 # Mac 上模拟云端时的运行时、配置和外层日志
 local-runtime.json
 local-command-logs/
+retry-rehearsals/
+.codespot/
 model.local.json
 
 # 本地构建来源及历史测评证据

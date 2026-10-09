@@ -32,7 +32,9 @@ def prepare():
     from runner.runtime import data_root, config_root
     for path in (data_root(ROOT), config_root(ROOT), Path(os.environ['HOME'])):
         path.mkdir(parents=True, exist_ok=True)
-    print('工作台运行目录已准备；案例包请部署后在网页上传，未调用模型。', flush=True)
+    from webui.case_storage import restore_case_archives
+    restore_case_archives(ROOT)
+    print('工作台运行目录已准备；案例包可在网页上传，未调用模型。', flush=True)
 
 
 def main():

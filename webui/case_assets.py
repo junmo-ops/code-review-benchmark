@@ -270,11 +270,14 @@ def _install_custom(dashboard, archive):
         manifest, suite_id, cases, dataset, slugs = _extract_custom(archive, folder)
         digest = hashlib.sha256(dataset.read_bytes()).hexdigest()
         registry = _registry(dashboard.data)
+        # Always merge the bundle into the local cache. On a clean container
+        # restart the same dataset can already be registered while its Git
+        # repository still needs to be restored from the archive.
+        _prepare_repositories(cases, folder / 'bundles', dashboard.data / 'repos')
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite_id and row.get('dataset_sha256') == digest), None)
         if existing:
             return dict(status(dashboard.root, dashboard.data), message=f"案例集“{existing['name']}”已导入，可直接选择使用。")
-        _prepare_repositories(cases, folder / 'bundles', dashboard.data / 'repos')
         identifier = digest[:16]
         upload_rel = f'case-datasets/{suite_id}/{identifier}/dataset.jsonl'
         destination = dashboard.data / upload_rel
@@ -288,7 +291,7 @@ def _install_custom(dashboard, archive):
     return status(dashboard.root, dashboard.data)
 
 
-def install(dashboard, archive):
+def install(dashboard, archive, persist=True):
     from runner.locking import acquire
     with (dashboard.state / 'case-upload.lock').open('a+b') as lock:
         try:
@@ -296,7 +299,14 @@ def install(dashboard, archive):
         except BlockingIOError:
             raise ValueError('已有案例上传正在处理，请稍后刷新') from None
         with dashboard.lock:
-            return _install_locked(dashboard, archive)
+            result = _install_locked(dashboard, archive)
+            if persist:
+                from .case_storage import persist_uploaded_archive
+                try:
+                    persist_uploaded_archive(dashboard.data, archive)
+                except RuntimeError as error:
+                    raise ValueError(str(error)) from None
+            return result
 
 
 def _install_locked(dashboard, archive):

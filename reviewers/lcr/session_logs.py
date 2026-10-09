@@ -109,6 +109,11 @@ def collect_session(item, run, execution, session_id, redact, session_root=None)
     return {'match':'matched','session_id':session,'source_file':str(path),'last_event_at':last,
             'event_counts':dict(counts),'llm_recorded_duration_ms':total_ms,'slowest_requests':slow,
             'pending_requests':list(requests.values())[-5:], 'errors':failures,
-            'llm_errors':llm_errors,
+            'llm_errors':llm_errors, 'completed_review_items': _completed_count(checkpoints),
             'session_end':end_record,'recent_events':list(recent),'unparsed_lines':invalid,
             'note':'仅摘录元数据；没有保存提示词、代码或完整模型响应。未结束请求只表示尚无对应返回记录。'}
+
+
+def _completed_count(checkpoints):
+    return sum(record.get('type') in {'review_item_done', 'review_item_reused'}
+               for record in checkpoints.values())

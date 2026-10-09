@@ -12,7 +12,7 @@ WORKDIR /opt/deployments
 ENV TZ=Asia/Shanghai PYTHONUTF8=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     BENCH_SERVER_MODE=1 BENCH_DATA_ROOT=/opt/deployments/runtime \
     BENCH_CONFIG_ROOT=/opt/deployments/runtime/models \
-    BENCH_STORAGE_MODE=ephemeral BENCH_ENABLED_SUITES=aacr BENCH_CASE_UPLOAD=1 \
+    BENCH_STORAGE_MODE=ephemeral BENCH_CASE_STORAGE_MODE=cos BENCH_ENABLED_SUITES=aacr BENCH_CASE_UPLOAD=1 \
     BENCH_AUTH_MODE=basic BENCH_CONTAINER_ROLE=all \
     HOME=/opt/deployments/runtime/home \
     NPM_CONFIG_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/ \

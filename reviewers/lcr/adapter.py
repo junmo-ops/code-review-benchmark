@@ -161,11 +161,14 @@ def cancellation_requested():
     return (stop is not None and stop.is_set()) or (marker is not None and marker.exists())
 
 
-def run_lcr(item, preview, run, diagnostic=False, resume_session_id=None):
-    repo = getattr(WORKER, "repo", REPO)
+def _lcr_executable():
     executable = shutil.which("lcr.cmd") if os.name == "nt" else shutil.which("lcr")
     if not executable:
         raise ValueError("找不到 LCR 启动器；请在同一 PowerShell 窗口运行 Get-Command lcr 检查 PATH")
+    return executable
+
+
+def _lcr_review_command(executable, repo, item, preview, diagnostic, resume_session_id):
     command = [executable, "review", "--repo", str(repo), "--from", item.base_commit,
                "--to", item.head_commit, "--format", "text" if diagnostic else "json",
                "--audience", "human",
@@ -177,8 +180,38 @@ def run_lcr(item, preview, run, diagnostic=False, resume_session_id=None):
         if resume_session_id:
             command.extend(["--resume", resume_session_id])
             print("续跑 LCR 会话，复用已完成文件：", resume_session_id, flush=True)
+    return command
+
+
+def _platform_command(command, executable):
     if os.name == "nt" and executable.lower().endswith((".cmd", ".bat")):
-        command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", subprocess.list2cmdline(command)]
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", subprocess.list2cmdline(command)]
+    return command
+
+
+def _raise_lcr_failure(completed, folder):
+    detail = (completed.stderr or completed.stdout or "").strip()
+    detail = redact(detail[-4000:]) if detail else ""
+    suffix = ("；错误摘要：" + detail) if detail else ""
+    error = ValueError(f"LCR 退出码 {completed.returncode}{suffix}；参见 {folder}")
+    error.resume_session_id = _resume_id_from_output(completed.stdout, completed.stderr)
+    raise error
+
+
+def _interpret_lcr_result(completed, preview, diagnostic):
+    if diagnostic:
+        return {"status": "diagnostic_exited", "note": "诊断输出不计入正式答卷"}
+    if preview:
+        output = completed.stdout.strip()
+        if output.startswith("Preview:") and "file(s) changed" in output:
+            return {"status": "preview_completed", "preview_text": output}
+    return parse_lcr_output(completed.stdout)
+
+
+def run_lcr(item, preview, run, diagnostic=False, resume_session_id=None):
+    repo = getattr(WORKER, "repo", REPO)
+    executable = _lcr_executable()
+    command = _platform_command(_lcr_review_command(executable, repo, item, preview, diagnostic, resume_session_id), executable)
     print("运行：", " ".join(command), flush=True)
     folder = run / ("diagnostic" if diagnostic else "preview" if preview else "raw")
     outer_timeout = 120 if preview else process_timeout(item)
@@ -188,19 +221,8 @@ def run_lcr(item, preview, run, diagnostic=False, resume_session_id=None):
                                 cancellation_requested=cancellation_requested, redact=redact,
                                 stdout_suffix=".stdout.txt" if diagnostic else ".stdout.json")
     if completed.returncode:
-        detail = (completed.stderr or completed.stdout or "").strip()
-        detail = redact(detail[-4000:]) if detail else ""
-        suffix = ("；错误摘要：" + detail) if detail else ""
-        error = ValueError(f"LCR 退出码 {completed.returncode}{suffix}；参见 {folder}")
-        error.resume_session_id = _resume_id_from_output(completed.stdout, completed.stderr)
-        raise error
-    if diagnostic:
-        return {"status": "diagnostic_exited", "note": "诊断输出不计入正式答卷"}
-    if preview:
-        output = completed.stdout.strip()
-        if output.startswith("Preview:") and "file(s) changed" in output:
-            return {"status": "preview_completed", "preview_text": output}
-    return parse_lcr_output(completed.stdout)
+        _raise_lcr_failure(completed, folder)
+    return _interpret_lcr_result(completed, preview, diagnostic)
 
 
 def stage_review(instances, run, preview):
@@ -235,10 +257,7 @@ def review_case(item, run, preview, stop):
                 return None
             except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                 raw = getattr(error, "raw_output", raw)
-                resume_session_id = (_resume_id_from_result(raw)
-                                     or getattr(error, "resume_session_id", None)
-                                     or _resume_id_from_saved_logs(run, item.safe_id)
-                                     or resume_session_id)
+                resume_session_id = _retry_session(item, run, error, raw, resume_session_id)
                 can_retry = attempt <= MAX_CASE_RETRIES and retryable_case_error(error, raw)
                 if not can_retry:
                     raise
@@ -326,6 +345,33 @@ def _resume_id_from_saved_logs(run, safe_id):
     except OSError:
         return None
     return _resume_id_from_output(stdout, stderr)
+
+
+def _retry_session(item, run, error, raw, previous_session_id):
+    # A rejected resume must not select the same ID from the old logs again.
+    if "resume session" in str(error).lower():
+        print("LCR 拒绝续跑会话；清除会话 ID，下次重试重新检视案例。", flush=True)
+        return None
+    session_id = (_resume_id_from_result(raw)
+                  or getattr(error, "resume_session_id", None)
+                  or _resume_id_from_saved_logs(run, item.safe_id)
+                  or previous_session_id)
+    if not session_id:
+        return None
+    if _session_has_completed_items(item, run, session_id):
+        return session_id
+    print("没有确认到可复用的已完成文件；下次重试重新检视案例。", flush=True)
+    return None
+
+
+def _session_has_completed_items(item, run, session_id):
+    try:
+        execution_path = run / "raw" / (item.safe_id + ".execution.json")
+        execution = json.loads(execution_path.read_text(encoding="utf-8"))
+        evidence = collect_session(item, run, execution, session_id, redact)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+    return evidence.get("match") == "matched" and evidence.get("completed_review_items", 0) > 0
 
 
 def _stage_review(instances, run, preview):
