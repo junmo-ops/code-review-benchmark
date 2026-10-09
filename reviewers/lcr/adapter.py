@@ -161,7 +161,7 @@ def cancellation_requested():
     return (stop is not None and stop.is_set()) or (marker is not None and marker.exists())
 
 
-def run_lcr(item, preview, run, diagnostic=False):
+def run_lcr(item, preview, run, diagnostic=False, resume_session_id=None):
     repo = getattr(WORKER, "repo", REPO)
     executable = shutil.which("lcr.cmd") if os.name == "nt" else shutil.which("lcr")
     if not executable:
@@ -174,6 +174,9 @@ def run_lcr(item, preview, run, diagnostic=False):
         command.append("--preview")
     else:
         command.append("--keep-session")
+        if resume_session_id:
+            command.extend(["--resume", resume_session_id])
+            print("续跑 LCR 会话，复用已完成文件：", resume_session_id, flush=True)
     if os.name == "nt" and executable.lower().endswith((".cmd", ".bat")):
         command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", subprocess.list2cmdline(command)]
     print("运行：", " ".join(command), flush=True)
@@ -188,7 +191,9 @@ def run_lcr(item, preview, run, diagnostic=False):
         detail = (completed.stderr or completed.stdout or "").strip()
         detail = redact(detail[-4000:]) if detail else ""
         suffix = ("；错误摘要：" + detail) if detail else ""
-        raise ValueError(f"LCR 退出码 {completed.returncode}{suffix}；参见 {folder}")
+        error = ValueError(f"LCR 退出码 {completed.returncode}{suffix}；参见 {folder}")
+        error.resume_session_id = _resume_id_from_output(completed.stdout, completed.stderr)
+        raise error
     if diagnostic:
         return {"status": "diagnostic_exited", "note": "诊断输出不计入正式答卷"}
     if preview:
@@ -222,13 +227,18 @@ def review_case(item, run, preview, stop):
         out = run / "results" / (item.safe_id + ".json")
         if _skip_or_archive_existing_answer(item, run, out, preview):
             return None
+        resume_session_id = None
         for attempt in range(1, (1 if preview else MAX_CASE_RETRIES + 1) + 1):
             raw = None
             try:
-                raw = _run_case_attempt(item, run, out, preview, attempt, retries)
+                raw = _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_id)
                 return None
             except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                 raw = getattr(error, "raw_output", raw)
+                resume_session_id = (_resume_id_from_result(raw)
+                                     or getattr(error, "resume_session_id", None)
+                                     or _resume_id_from_saved_logs(run, item.safe_id)
+                                     or resume_session_id)
                 can_retry = attempt <= MAX_CASE_RETRIES and retryable_case_error(error, raw)
                 if not can_retry:
                     raise
@@ -264,8 +274,8 @@ def _skip_or_archive_existing_answer(item, run, out, preview):
     return False
 
 
-def _run_case_attempt(item, run, out, preview, attempt, retries):
-    raw = run_lcr(item, preview, run)
+def _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_id=None):
+    raw = run_lcr(item, preview, run, resume_session_id=resume_session_id)
     try:
         if preview:
             print("预览完成：", item.instance_id, "状态", raw.get("status"))
@@ -285,6 +295,37 @@ def _run_case_attempt(item, run, out, preview, attempt, retries):
     except (ValueError, OSError) as error:
         error.raw_output = raw
         raise
+
+
+def _resume_id_from_result(raw):
+    if not isinstance(raw, dict):
+        return None
+    value = raw.get("session_id")
+    return value if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F-]{36}", value) else None
+
+
+def _resume_id_from_output(stdout, stderr):
+    try:
+        value = json.loads(stdout).get("session_id")
+        if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F-]{36}", value):
+            return value
+    except (ValueError, AttributeError, TypeError):
+        pass
+    for output in (stderr, stdout):
+        match = re.search(r"(?:Session:\s*|--resume\s+)([0-9a-fA-F-]{36})", output or "")
+        if match:
+            return match.group(1)
+    return None
+
+
+def _resume_id_from_saved_logs(run, safe_id):
+    folder = run / "raw"
+    try:
+        stderr = (folder / (safe_id + ".stderr.txt")).read_text(encoding="utf-8", errors="replace")
+        stdout = (folder / (safe_id + ".stdout.json")).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return _resume_id_from_output(stdout, stderr)
 
 
 def _stage_review(instances, run, preview):

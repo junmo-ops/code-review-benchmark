@@ -62,7 +62,7 @@ def collect_session(item, run, execution, session_id, redact, session_root=None)
         return {'match': 'ambiguous' if candidates else 'not_found', 'candidate_count': len(candidates),
                 'note': '无法唯一匹配本次会话；未使用其他批次记录。'}
     path = candidates[0]
-    counts = Counter(); recent = deque(maxlen=8); failures=[]; slow=[]; end_record=None
+    counts = Counter(); recent = deque(maxlen=8); llm_errors=[]; checkpoints={}; slow=[]; end_record=None
     requests={}; total_ms=0; invalid=0; session=None; last=None
     try:
         with path.open(encoding='utf-8-sig') as source:
@@ -89,14 +89,26 @@ def collect_session(item, run, execution, session_id, redact, session_root=None)
                 if kind=='tool_call':
                     brief['tool']=record.get('name') or record.get('tool')
                     brief['ok']=record.get('ok')
-                if kind in ('llm_error','review_item_failed'):
-                    failures.append(brief)
+                if kind == 'llm_error':
+                    # A request error is diagnostic evidence, not proof that
+                    # the file stayed incomplete. LCR may recover or finish
+                    # the file through another task after this event.
+                    llm_errors.append(brief)
+                elif kind in ('review_item_done', 'review_item_reused', 'review_item_failed'):
+                    fingerprint = record.get('fingerprint')
+                    checkpoint_key = ('fingerprint', fingerprint) if fingerprint else (
+                        'path', record.get('filePath') or record.get('newPath') or record.get('oldPath') or '<unknown>')
+                    # Keep the latest checkpoint for each diff. A later done
+                    # or reused record means an earlier failure was recovered.
+                    checkpoints[checkpoint_key] = brief
                 if kind=='session_end':end_record=brief
                 if kind!='session_start':recent.append(brief)
     except OSError as error:
         return {'match':'read_failed','note':type(error).__name__}
+    failures = [record for record in checkpoints.values() if record.get('type') == 'review_item_failed']
     return {'match':'matched','session_id':session,'source_file':str(path),'last_event_at':last,
             'event_counts':dict(counts),'llm_recorded_duration_ms':total_ms,'slowest_requests':slow,
             'pending_requests':list(requests.values())[-5:], 'errors':failures,
+            'llm_errors':llm_errors,
             'session_end':end_record,'recent_events':list(recent),'unparsed_lines':invalid,
             'note':'仅摘录元数据；没有保存提示词、代码或完整模型响应。未结束请求只表示尚无对应返回记录。'}

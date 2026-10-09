@@ -91,30 +91,58 @@ def _extract_custom(archive, folder):
 
 
 def _validate_archive_manifest(source, entries, names):
-    if len(entries) > MAX_FILES or len(names) != len(set(names)) or 'manifest.json' not in names:
+    _validate_manifest_entry_list(entries, names)
+    info = _manifest_entry(entries)
+    manifest = _decode_manifest(source, info)
+    _validate_manifest_identity(manifest)
+    suite_id = _validate_manifest_suite(manifest)
+    expected = _validate_manifest_files(manifest, names)
+    return manifest, suite_id, expected
+
+
+def _validate_manifest_entry_list(entries, names):
+    invalid = len(entries) > MAX_FILES or len(names) != len(set(names)) or 'manifest.json' not in names
+    if invalid:
         raise ValueError('案例 ZIP 缺少清单、含重复文件或文件过多')
+
+
+def _manifest_entry(entries):
     info = next(entry for entry in entries if entry.filename == 'manifest.json')
     if info.is_dir() or info.file_size > 8 * 1024 * 1024:
         raise ValueError('案例 ZIP 的 manifest.json 无效或过大')
+    return info
+
+
+def _decode_manifest(source, info):
     try:
-        manifest = json.loads(source.read(info).decode('utf-8-sig'))
+        return json.loads(source.read(info).decode('utf-8-sig'))
     except (UnicodeDecodeError, ValueError, KeyError):
         raise ValueError('案例 ZIP 的 manifest.json 无效') from None
+
+
+def _validate_manifest_identity(manifest):
     if (not isinstance(manifest, dict) or manifest.get('format') != UPLOAD_FORMAT
             or not isinstance(manifest.get('name'), str) or not manifest['name'].strip()
             or len(manifest['name']) > 100):
         raise ValueError('案例 ZIP 格式或案例集名称无效')
+
+
+def _validate_manifest_suite(manifest):
     suite_id = manifest.get('suite')
     if not isinstance(suite_id, str) or suite_id not in {'aacr', 'swe_prbench_llm', 'codefuse_cr'}:
         raise ValueError('网页上传当前支持 AACR、SWE-PRBench 和 CodeFuse 案例集')
     from suites.registry import get_suite
     get_suite(suite_id)
+    return suite_id
+
+
+def _validate_manifest_files(manifest, names):
     expected = manifest.get('files')
     if not isinstance(expected, dict) or set(expected) != set(names) - {'manifest.json'}:
         raise ValueError('案例 ZIP 文件与 manifest.json 清单不匹配')
     if 'dataset.jsonl' not in expected:
         raise ValueError('案例 ZIP 必须包含 dataset.jsonl')
-    return manifest, suite_id, expected
+    return expected
 
 
 def _extract_archive_files(source, entries, expected, folder, config):
