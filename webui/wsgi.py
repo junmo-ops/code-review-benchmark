@@ -3,7 +3,6 @@ import os
 import secrets
 import subprocess
 import tempfile
-import tarfile
 import zipfile
 from urllib.parse import urlsplit
 from pathlib import Path
@@ -41,14 +40,6 @@ def _set_upload_limit():
     if request.path == '/api/cases/upload':
         from .case_upload import limits
         request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
-    if request.path == '/api/runs/import':
-        try:
-            max_gib = int(os.environ.get('BENCH_RUN_IMPORT_MAX_GIB', '16'))
-        except ValueError:
-            raise RuntimeError('BENCH_RUN_IMPORT_MAX_GIB 配置无效') from None
-        if not 1 <= max_gib <= 64:
-            raise RuntimeError('BENCH_RUN_IMPORT_MAX_GIB 须为 1–64')
-        request.max_content_length = max_gib * 1024 * 1024 * 1024
 
 
 def _authorize_origin(public, csrf):
@@ -113,8 +104,6 @@ def create_app(dashboard=None):
         from .case_upload import limits
         if request.path == '/api/cases/upload':
             message = '案例 ZIP 上限为 ' + limits()['upload_max_label']
-        elif request.path == '/api/runs/import':
-            message = '历史批次归档超过上传上限；可调整 BENCH_RUN_IMPORT_MAX_GIB 和平台入口请求上限'
         else:
             message = '请求过大，JSON 请求上限为 16 KB'
         return jsonify(error=message),413
@@ -142,23 +131,6 @@ def create_app(dashboard=None):
                 raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
             except subprocess.CalledProcessError:
                 raise ValueError('案例 Git 历史准备失败，请查看服务器日志；可以重新上传') from None
-    @app.post('/api/runs/import')
-    def import_run():
-        if os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').strip().lower() != 'cos':
-            raise ValueError('当前服务未启用 COS 运行数据存储')
-        upload = request.files.get('archive')
-        if upload is None or not upload.filename or not upload.filename.lower().endswith(('.tar.gz', '.tgz')):
-            raise ValueError('请选择工作台导出的 .tar.gz 历史批次归档')
-        from deployment.run_storage import import_run_archive, request_run_sync
-        try:
-            with tempfile.TemporaryDirectory(prefix='run-import-', dir=dashboard.data) as folder:
-                archive = Path(folder) / 'run.tar.gz'
-                upload.save(archive)
-                key = import_run_archive(dashboard, archive)
-        except (OSError, tarfile.TarError, EOFError):
-            raise ValueError('历史批次归档损坏或无法读取；原有记录未覆盖') from None
-        request_run_sync(dashboard.data)
-        return jsonify(key=key, message='批次已导入，等待后台保存到 COS；请在同步完成后再更新服务。')
     @app.post('/api/recovery')
     def acknowledge_recovery():
         value = request.get_json()
