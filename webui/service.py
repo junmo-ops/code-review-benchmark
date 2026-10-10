@@ -351,6 +351,35 @@ class Dashboard:
             raise ValueError('案例集文件不可用')
         return path
 
+    def prepare_case_repositories(self, spec, key, action):
+        from .case_storage import mode
+        if action in {'report', 'export', 'eval', 'recover'} or mode() != 'cos':
+            return
+        from .case_assets import _registry
+        rows = _registry(self.data)['datasets']
+        row, suite, digest = self._selected_case_asset(rows, spec, key)
+        if row and suite and digest:
+            from .case_storage import CaseAssetStorage
+            try:
+                CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest)
+            except RuntimeError as error:
+                raise ValueError(str(error)) from None
+
+    def _selected_case_asset(self, rows, spec, key):
+        if spec is not None:
+            suite = spec.get('suite')
+            row = next((item for item in rows if item.get('id') == spec.get('dataset')), None)
+            digest = row.get('dataset_sha256') if row else None
+        else:
+            experiment = self.run_dir(key) / 'experiment.json'
+            config = read(experiment) if experiment.is_file() else self.config(key)
+            suite_value = config.get('suite', {})
+            suite = suite_value if isinstance(suite_value, str) else suite_value.get('id')
+            digest = config.get('dataset_sha256')
+            row = next((item for item in rows if item.get('suite') == suite
+                        and item.get('dataset_sha256') == digest), None)
+        return row, suite, digest
+
     def _runtime_storage_state(self):
         path = self.data/'ui-state'/'run-storage-status.json'
         status = read(path) if path.is_file() else {'enabled': False, 'status': 'disabled'}
@@ -719,6 +748,7 @@ class Dashboard:
             steps = self.plan(job, request, spec)
             self.update(job_id, status='running', started_at=now(), total_steps=len(steps), message='正在执行')
             with log_path.open('a', encoding='utf-8', buffering=1) as log:
+                self.prepare_case_repositories(spec, job['key'], job['action'])
                 for index, (stage, task, init) in enumerate(steps):
                     if self.cancelled.is_set():
                         break

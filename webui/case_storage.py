@@ -1,10 +1,14 @@
 """Durable storage for uploaded case ZIP archives."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
+import shutil
+import tempfile
 from urllib.parse import urlsplit
+import zipfile
 
 from runner.runtime import data_root
 
@@ -53,9 +57,14 @@ class CaseArchiveStorage:
         self.object_prefix = f'{self.prefix}/v1/archives/'
         self.location = f'{self.endpoint}|{self.region}|{self.bucket}|{self.prefix}'
         self.cache = self.data / 'case-archives' / 'objects'
+        self.asset_cache = self.data / 'case-assets' / 'objects'
         self.index = _index_path(self.data)
         from webui.case_upload import limits
         self.max_bytes = limits()['upload_max_bytes']
+
+    @property
+    def assets_prefix(self):
+        return f'{self.prefix}/v2/'
 
     def _configure_storage(self, options):
         self.endpoint = str(options.get('endpoint', '')).strip()
@@ -115,6 +124,21 @@ class CaseArchiveStorage:
         if not ARCHIVE_ID.fullmatch(archive_id):
             raise ValueError('案例 ZIP 标识无效')
         return f'{self.object_prefix}{archive_id}.zip'
+
+    def _migration_key(self, archive_id):
+        return f'{self.prefix}/v2/migrations/{archive_id}.json'
+
+    def _asset_migration_done(self, archive_id):
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=self._migration_key(archive_id))
+            return True
+        except Exception:
+            return False
+
+    def _mark_asset_migrated(self, archive_id):
+        body = json.dumps({'archive_sha256': archive_id, 'format': 'case-assets-v2'}).encode('utf-8')
+        self.client.put_object(Bucket=self.bucket, Key=self._migration_key(archive_id), Body=body,
+                               ContentType='application/json', Metadata={'sha256': hashlib.sha256(body).hexdigest()})
 
     def list_archives(self):
         try:
@@ -225,14 +249,37 @@ class CaseArchiveStorage:
         if not installed.issubset(available):
             # Do not hide an object that was removed outside the workbench.
             raise RuntimeError('COS 案例包清单与本地恢复记录不一致，请检查专用前缀')
+        restored = 0
         for archive_id, size in archives:
             if archive_id in installed:
+                self._migrate_installed_archive(archive_id, size, dashboard.data)
+                continue
+            if self._asset_migration_done(archive_id):
+                installed.add(archive_id)
+                self._write_index(installed)
                 continue
             archive = self._download(archive_id, size)
             install(dashboard, archive, persist=False)
+            restored += 1
+            if self._migrate_custom_archive(archive_id, archive, dashboard.data):
+                self._mark_asset_migrated(archive_id)
             installed.add(archive_id)
             self._write_index(installed)
-        return len(archives)
+        return restored
+
+    def _migrate_installed_archive(self, archive_id, size, data):
+        if self._asset_migration_done(archive_id):
+            return
+        archive = self._download(archive_id, size)
+        if self._migrate_custom_archive(archive_id, archive, data):
+            self._mark_asset_migrated(archive_id)
+
+    def _migrate_custom_archive(self, archive_id, archive, data):
+        with zipfile.ZipFile(archive) as source:
+            if 'manifest.json' not in source.namelist():
+                return False
+        CaseAssetStorage(data).store_archive_assets(archive, data)
+        return True
 
     def mark_installed(self, archive_id):
         installed = self._read_index()
@@ -249,12 +296,248 @@ def persist_uploaded_archive(data, archive):
     return archive_id
 
 
+def persist_case_upload(data, archive):
+    if mode() != 'cos':
+        return None
+    with zipfile.ZipFile(archive) as source:
+        modular = 'manifest.json' in source.namelist()
+    if modular:
+        return CaseAssetStorage(data).store_archive_assets(archive, data)
+    return persist_uploaded_archive(data, archive)
+
+
+class CaseAssetStorage(CaseArchiveStorage):
+    """Store immutable dataset manifests and Git bundles as separate COS objects."""
+
+    def _dataset_prefix(self, suite, digest):
+        return f'{self.assets_prefix}datasets/{suite}/{digest}/'
+
+    def _repository_key(self, slug, digest):
+        return f'{self.assets_prefix}repositories/{slug}/{digest}.bundle'
+
+    def _local_record_path(self, data, suite, digest):
+        return Path(data) / 'case-assets' / 'records' / suite / (digest + '.json')
+
+    def _save_local_record(self, data, record):
+        target = self._local_record_path(data, record['suite'], record['dataset_sha256'])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(target.name + '.tmp')
+        temporary.write_text(json.dumps(record, ensure_ascii=False, sort_keys=True), encoding='utf-8')
+        temporary.replace(target)
+
+    def _put_stream(self, key, stream, size, digest, content_type):
+        metadata = {'sha256': digest}
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+            if head.get('ContentLength') == size and head.get('Metadata', {}).get('sha256') == digest:
+                return
+        except Exception:
+            pass
+        try:
+            self.client.put_object(Bucket=self.bucket, Key=key, Body=stream, ContentLength=size,
+                                   ContentType=content_type, Metadata=metadata)
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+            if head.get('ContentLength') != size or head.get('Metadata', {}).get('sha256') != digest:
+                raise RuntimeError('COS 对象回读校验不匹配')
+        except Exception:
+            raise RuntimeError('案例资源未能可靠保存到 COS；请检查专用前缀权限和连接') from None
+
+    def store_archive_assets(self, archive, data):
+        from runner.cloud import checked_instances
+        with zipfile.ZipFile(archive) as source:
+            manifest = json.loads(source.read('manifest.json').decode('utf-8-sig'))
+            suite = manifest['suite']
+            dataset_record = manifest['files']['dataset.jsonl']
+            digest = dataset_record['sha256']
+            with tempfile.TemporaryDirectory(prefix='case-upload-check-', dir=data) as name:
+                dataset_path = Path(name) / 'dataset.jsonl'
+                with source.open('dataset.jsonl') as member, dataset_path.open('wb') as output:
+                    shutil.copyfileobj(member, output, length=1024 * 1024)
+                if _sha256(dataset_path) != digest:
+                    raise RuntimeError('案例清单 SHA256 校验失败')
+                cases = checked_instances(dataset_path, suite)
+                dataset_key = self._dataset_prefix(suite, digest) + 'dataset.jsonl'
+                with dataset_path.open('rb') as dataset_stream:
+                    self._put_stream(dataset_key, dataset_stream, dataset_path.stat().st_size, digest,
+                                     'application/x-ndjson')
+            repositories = {}
+            for slug in sorted({case.repo.replace('/', '__') for case in cases}):
+                name = f'bundles/{slug}.bundle'
+                record = manifest['files'][name]
+                key = self._repository_key(slug, record['sha256'])
+                with source.open(name) as bundle:
+                    self._put_stream(key, bundle, record['size'], record['sha256'],
+                                     'application/octet-stream')
+                repositories[slug] = {'sha256': record['sha256'], 'size': record['size']}
+            entry = {'format': 'code-review-benchmark-case-assets-v2', 'name': manifest['name'].strip(),
+                     'suite': suite, 'count': len(cases), 'dataset_sha256': digest,
+                     'dataset_size': dataset_record['size'], 'repositories': repositories}
+            encoded = json.dumps(entry, ensure_ascii=False, sort_keys=True).encode('utf-8')
+            record_key = self._dataset_prefix(suite, digest) + 'record.json'
+            self._put_stream(record_key, io.BytesIO(encoded), len(encoded),
+                             hashlib.sha256(encoded).hexdigest(), 'application/json')
+            self._save_local_record(data, entry)
+
+    def _download_object(self, key, target, size, digest):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file() and target.stat().st_size == size and _sha256(target) == digest:
+            return
+        temporary = target.with_name(target.name + '.part')
+        total, checksum = 0, hashlib.sha256()
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            with temporary.open('wb') as output:
+                for chunk in response['Body'].iter_chunks(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > size:
+                        raise RuntimeError('COS 案例资源超过清单大小')
+                    checksum.update(chunk)
+                    output.write(chunk)
+            if total != size or checksum.hexdigest() != digest:
+                raise RuntimeError('COS 案例资源 SHA256 校验失败')
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise RuntimeError('无法下载或校验 COS 案例资源，请检查对象和读取权限') from None
+
+    def _records(self):
+        prefix = self.assets_prefix + 'datasets/'
+        try:
+            paginator = self.client.get_paginator('list_objects_v2')
+            return sorted(item['Key'] for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix)
+                          for item in page.get('Contents', []) if item['Key'].endswith('/record.json'))
+        except Exception:
+            raise RuntimeError('无法读取 COS 案例资源清单，请检查网络和前缀权限') from None
+
+    def _restore_record(self, dashboard, key):
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            raw = response['Body'].read(8 * 1024 * 1024 + 1)
+            if len(raw) > 8 * 1024 * 1024:
+                raise ValueError
+            record = json.loads(raw.decode('utf-8'))
+            self._validate_record(record, key)
+        except Exception:
+            raise RuntimeError('COS 案例资源清单格式无效') from None
+        self._restore_record_files(dashboard, record)
+
+    def _validate_record(self, record, key):
+        if not isinstance(record, dict):
+            raise ValueError
+        suite, digest = record.get('suite'), record.get('dataset_sha256')
+        if not self._valid_record_identity(record, suite, digest, key):
+            raise ValueError
+        from .case_upload import limits
+        maximum = limits()['unpacked_max_bytes']
+        repos = record.get('repositories')
+        dataset_size = record.get('dataset_size')
+        if (not self._valid_repository_records(repos, maximum)
+                or type(record.get('count')) is not int or record['count'] <= 0
+                or not isinstance(record.get('name'), str) or not record['name'].strip()
+                or type(dataset_size) is not int or not 0 < dataset_size <= maximum
+                or sum(item['size'] for item in repos.values()) + dataset_size > maximum):
+            raise ValueError
+
+    def _valid_record_identity(self, record, suite, digest, key):
+        return (record.get('format') == 'code-review-benchmark-case-assets-v2'
+                and suite in {'aacr', 'swe_prbench_llm', 'codefuse_cr'}
+                and isinstance(digest, str) and ARCHIVE_ID.fullmatch(digest)
+                and key == self._dataset_prefix(suite, digest) + 'record.json')
+
+    @staticmethod
+    def _valid_repository_records(repositories, maximum):
+        if not isinstance(repositories, dict) or not repositories:
+            return False
+        for slug, item in repositories.items():
+            if (not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slug)
+                    or not isinstance(item, dict) or not isinstance(item.get('sha256'), str)
+                    or not ARCHIVE_ID.fullmatch(item['sha256']) or type(item.get('size')) is not int
+                    or not 0 < item['size'] <= maximum):
+                return False
+        return True
+
+    def _restore_record_files(self, dashboard, record):
+        from runner.cloud import checked_instances
+        from .case_assets import _registry
+        from .service import save
+        suite, digest = record['suite'], record['dataset_sha256']
+        folder = dashboard.data / 'case-datasets' / suite / digest
+        dataset = folder / 'dataset.jsonl'
+        self._download_object(self._dataset_prefix(suite, digest) + 'dataset.jsonl', dataset,
+                              record['dataset_size'], digest)
+        cases = checked_instances(dataset, suite)
+        expected = {case.repo.replace('/', '__') for case in cases}
+        if len(cases) != record.get('count') or expected != set(record['repositories']):
+            raise RuntimeError('COS 案例清单中的案例与仓库资源不匹配')
+        self._save_local_record(dashboard.data, record)
+        registry = _registry(dashboard.data)
+        entry = dict(id=f'uploads/{suite}/{digest}.jsonl', suite=suite, name=record['name'],
+                     count=len(cases), dataset_sha256=digest,
+                     file=dataset.relative_to(dashboard.data).as_posix(), repositories=sorted(expected))
+        existing = next((row for row in registry['datasets']
+                         if row.get('suite') == suite and row.get('dataset_sha256') == digest), None)
+        if existing:
+            # Keep dataset IDs used by saved forms and comparison manifests.
+            entry['id'] = existing['id']
+            existing.update(entry)
+        else:
+            registry['datasets'].append(entry)
+        save(dashboard.data / 'case-datasets' / 'registry.json', registry)
+
+    def prepare_dataset_repositories(self, data, suite, digest):
+        from runner.cloud import checked_instances
+        from .case_assets import _prepare_repositories
+        path = self._local_record_path(data, suite, digest)
+        try:
+            record = json.loads(path.read_text(encoding='utf-8'))
+            self._validate_record(record, self._dataset_prefix(suite, digest) + 'record.json')
+        except (OSError, ValueError, KeyError, TypeError):
+            raise RuntimeError('找不到该案例集在 COS 中的仓库资源清单；请确认案例集已成功导入') from None
+        dataset = self._registered_dataset_path(data, suite, digest)
+        cases = checked_instances(dataset, suite)
+        with tempfile.TemporaryDirectory(prefix='case-assets-', dir=data) as name:
+            staging = Path(name)
+            for slug, item in record['repositories'].items():
+                cached_bundle = self.asset_cache / (item['sha256'] + '.bundle')
+                self._download_object(self._repository_key(slug, item['sha256']), cached_bundle,
+                                      item['size'], item['sha256'])
+                repo_bundle = staging / 'bundles' / (slug + '.bundle')
+                repo_bundle.parent.mkdir(parents=True, exist_ok=True)
+                repo_bundle.symlink_to(cached_bundle)
+            _prepare_repositories(cases, staging / 'bundles', Path(data) / 'repos')
+
+    @staticmethod
+    def _registered_dataset_path(data, suite, digest):
+        from .case_assets import _registry
+        row = next((item for item in _registry(data)['datasets']
+                    if item.get('suite') == suite and item.get('dataset_sha256') == digest), None)
+        if row is None:
+            raise RuntimeError('案例集未注册，请重新导入案例包')
+        base = (Path(data) / 'case-datasets').resolve()
+        original = Path(data) / row['file']
+        path = original.resolve()
+        if original.is_symlink() or not path.is_relative_to(base) or not path.is_file():
+            raise RuntimeError('已注册案例集文件不可用，请重新导入案例包')
+        if _sha256(path) != digest:
+            raise RuntimeError('已注册案例集 SHA256 校验失败')
+        return path
+
+    def restore(self, dashboard):
+        records = self._records()
+        for key in records:
+            self._restore_record(dashboard, key)
+        return len(records)
+
+
 def restore_case_archives(root=ROOT):
     if mode() != 'cos':
         return 0
     from webui.service import Dashboard
     dashboard = Dashboard(root=root, load_jobs=False)
-    storage = CaseArchiveStorage(dashboard.data)
-    count = storage.restore(dashboard)
-    print(f'COS 案例包恢复完成：{count} 份；未调用模型。', flush=True)
+    asset_count = CaseAssetStorage(dashboard.data).restore(dashboard)
+    archive_count = CaseArchiveStorage(dashboard.data).restore(dashboard)
+    count = asset_count + archive_count
+    print(f'COS 案例资源恢复完成：{asset_count} 份拆分案例集和 {archive_count} 份旧 ZIP；未调用模型。', flush=True)
     return count

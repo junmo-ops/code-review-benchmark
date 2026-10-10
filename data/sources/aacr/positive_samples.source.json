@@ -1,0 +1,13 @@
+{
+  "benchmark": "AACR-Bench",
+  "subset": "official positive_samples (all records)",
+  "url": "https://raw.githubusercontent.com/alibaba/aacr-bench/main/dataset/positive_samples.json",
+  "retrieval_url": "https://api.github.com/repos/alibaba/aacr-bench/contents/dataset/positive_samples.json",
+  "retrieved_at": "2026-10-10T07:28:19.066176+00:00",
+  "upstream_revision": "main; exact bytes pinned by raw_sha256",
+  "raw_sha256": "7a4a0e7046ffd1b8f41f951480bbb618d23d38d9f67364f38aabcda121a50be3",
+  "standard_sha256": "238b164392efcb1ce33786db9b580da0955058107aab301fe413f6fc3a200cbf",
+  "records": 196,
+  "repositories": 50,
+  "converter": "vendor/aacr/evaluation/converters/aacr_bench.py"
+}

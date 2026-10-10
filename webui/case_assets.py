@@ -30,21 +30,30 @@ def registered_datasets(data):
     base = (Path(data) / 'case-datasets').resolve()
     result = []
     for row in _registry(data)['datasets']:
-        if not isinstance(row, dict) or not isinstance(row.get('file'), str):
-            continue
         try:
-            original = Path(data) / row['file']
-            path = original.resolve()
-            repositories = row.get('repositories')
-            if (path.is_relative_to(base) and path.is_file() and not original.is_symlink()
-                    and isinstance(repositories, list) and repositories
-                    and all(isinstance(slug, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', slug)
-                            and (Path(data) / 'repos' / slug / '.git').is_dir()
-                            for slug in repositories)):
+            if isinstance(row, dict) and isinstance(row.get('file'), str) and _registered_row_usable(row, data, base):
                 result.append(row)
         except (OSError, ValueError):
             continue
     return result
+
+
+def _registered_row_usable(row, data, base):
+    original = Path(data) / row['file']
+    path = original.resolve()
+    if not path.is_relative_to(base) or not path.is_file() or original.is_symlink():
+        return False
+    repositories = row.get('repositories')
+    if not isinstance(repositories, list) or not repositories:
+        return False
+    if not all(isinstance(slug, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', slug) for slug in repositories):
+        return False
+    repositories_ready = all((Path(data) / 'repos' / slug / '.git').is_dir() for slug in repositories)
+    record_path = (Path(data) / 'case-assets' / 'records' / row.get('suite', '')
+                   / (str(row.get('dataset_sha256', '')) + '.json'))
+    from .case_storage import mode
+    assets_ready = mode() == 'cos' and record_path.is_file()
+    return repositories_ready or assets_ready
 
 
 def _legacy_ready(root, data):
@@ -278,7 +287,7 @@ def _install_custom(dashboard, archive):
                          if row.get('suite') == suite_id and row.get('dataset_sha256') == digest), None)
         if existing:
             return dict(status(dashboard.root, dashboard.data), message=f"案例集“{existing['name']}”已导入，可直接选择使用。")
-        identifier = digest[:16]
+        identifier = digest
         upload_rel = f'case-datasets/{suite_id}/{identifier}/dataset.jsonl'
         destination = dashboard.data / upload_rel
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -301,23 +310,29 @@ def install(dashboard, archive, persist=True):
         with dashboard.lock:
             result = _install_locked(dashboard, archive)
             if persist:
-                from .case_storage import persist_uploaded_archive
+                from .case_storage import persist_case_upload
                 try:
-                    persist_uploaded_archive(dashboard.data, archive)
+                    persist_case_upload(dashboard.data, archive)
                 except RuntimeError as error:
                     raise ValueError(str(error)) from None
             return result
 
 
 def _install_locked(dashboard, archive):
-    from runner.cloud import checked_instances
-    from tools.prepare_case_archive import stage
-    from tools.setup import restore_repositories
-    from .service import save
-    root, data = dashboard.root, dashboard.data
+    _ensure_no_active_jobs(dashboard)
+    custom = _validate_case_archive(archive)
+    if custom:
+        return _install_custom(dashboard, archive)
+    return _install_legacy_archive(dashboard, archive)
+
+
+def _ensure_no_active_jobs(dashboard):
     jobs = dashboard.queue.jobs() if hasattr(dashboard, 'queue') else dashboard.jobs
     if any(job['status'] in {'queued', 'running', 'cancelling'} for job in jobs.values()):
         raise ValueError('请先等待测评任务结束，再准备案例')
+
+
+def _validate_case_archive(archive):
     config = limits()
     if archive.stat().st_size > config['upload_max_bytes']:
         raise ValueError('案例 ZIP 上限为 ' + config['upload_max_label'])
@@ -325,9 +340,15 @@ def _install_locked(dashboard, archive):
         entries = source.infolist()
         if len(entries) > MAX_FILES or sum(entry.file_size for entry in entries) > config['unpacked_max_bytes']:
             raise ValueError('案例 ZIP 文件过多或解压总大小超过 ' + config['unpacked_max_label'])
-        custom = 'manifest.json' in source.namelist()
-    if custom:
-        return _install_custom(dashboard, archive)
+        return 'manifest.json' in source.namelist()
+
+
+def _install_legacy_archive(dashboard, archive):
+    from runner.cloud import checked_instances
+    from tools.prepare_case_archive import stage
+    from tools.setup import restore_repositories
+    from .service import save
+    root, data = dashboard.root, dashboard.data
     manifest_path = root / 'deployment/aacr-cases-manifest.json'
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
     cases = checked_instances(root / 'data/pilot5.jsonl', 'aacr')
