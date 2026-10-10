@@ -3,6 +3,7 @@ import os
 import secrets
 import subprocess
 import tempfile
+import tarfile
 import zipfile
 from urllib.parse import urlsplit
 from pathlib import Path
@@ -12,6 +13,67 @@ from .queue import DurableDashboard
 from webui.routes import is_page_route
 
 STATIC=Path(__file__).parent/'static'
+
+
+def _authenticate_identity(public, proxy, mode, basic_user, basic_password):
+    if mode == 'basic':
+        auth = request.authorization
+        valid = (auth and auth.type.lower() == 'basic'
+                 and secrets.compare_digest((auth.username or '').encode(), basic_user.encode())
+                 and secrets.compare_digest((auth.password or '').encode(), basic_password.encode()))
+        if not valid:
+            response = jsonify(error='请登录测评工作台')
+            response.status_code = 401
+            response.headers['WWW-Authenticate'] = 'Basic realm="Review Lab", charset="UTF-8"'
+            return response
+        g.bench_user, g.bench_role = basic_user, 'operator'
+    else:
+        if not secrets.compare_digest(request.headers.get('X-Bench-Proxy-Token',''), proxy):
+            return jsonify(error='请求未通过认证入口'), 403
+        user, role = request.headers.get('X-Bench-User'), request.headers.get('X-Bench-Role')
+        if not user or role not in {'viewer','operator'}:
+            return jsonify(error='需要有效用户与角色'), 403
+        g.bench_user, g.bench_role = user, role
+    return None
+
+
+def _set_upload_limit():
+    if request.path == '/api/cases/upload':
+        from .case_upload import limits
+        request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
+    if request.path == '/api/runs/import':
+        try:
+            max_gib = int(os.environ.get('BENCH_RUN_IMPORT_MAX_GIB', '16'))
+        except ValueError:
+            raise RuntimeError('BENCH_RUN_IMPORT_MAX_GIB 配置无效') from None
+        if not 1 <= max_gib <= 64:
+            raise RuntimeError('BENCH_RUN_IMPORT_MAX_GIB 须为 1–64')
+        request.max_content_length = max_gib * 1024 * 1024 * 1024
+
+
+def _authorize_origin(public, csrf):
+    origin = request.headers.get('Origin')
+    if origin and origin != public:
+        return jsonify(error='不接受跨站请求'), 403
+    if request.method == 'POST' and (g.bench_role != 'operator' or origin != public):
+        message = '只读用户不能执行或停止任务' if g.bench_role != 'operator' else '缺少可信页面来源'
+        return jsonify(error=message), 403
+    if request.path.startswith('/api/') and not secrets.compare_digest(request.headers.get('X-Dashboard-Token',''), csrf):
+        return jsonify(error='页面会话失效，请刷新'), 403
+    return None
+
+
+def _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_password):
+    if request.path == '/healthz' and request.method == 'GET':
+        return None
+    if request.host != parsed.netloc:
+        return jsonify(error='请求域名与 BENCH_PUBLIC_URL 不一致'), 403
+    response = _authenticate_identity(public, proxy, mode, basic_user, basic_password)
+    if response:
+        return response
+    _set_upload_limit()
+    return _authorize_origin(public, csrf)
+
 
 def create_app(dashboard=None):
     public=os.environ.get('BENCH_PUBLIC_URL','').rstrip('/')
@@ -33,38 +95,8 @@ def create_app(dashboard=None):
     dashboard=dashboard or DurableDashboard()
     @app.before_request
     def authorize():
-        if request.path == '/healthz' and request.method == 'GET':
-            return None
-        if request.host != parsed.netloc:
-            return jsonify(error='请求域名与 BENCH_PUBLIC_URL 不一致'),403
-        if mode == 'basic':
-            auth = request.authorization
-            if (not auth or auth.type.lower() != 'basic'
-                    or not secrets.compare_digest((auth.username or '').encode(), basic_user.encode())
-                    or not secrets.compare_digest((auth.password or '').encode(), basic_password.encode())):
-                response = jsonify(error='请登录测评工作台')
-                response.status_code = 401
-                response.headers['WWW-Authenticate'] = 'Basic realm="Review Lab", charset="UTF-8"'
-                return response
-            g.bench_user, g.bench_role = basic_user, 'operator'
-        else:
-            # The gateway must overwrite identity headers, never forward browser values.
-            if not secrets.compare_digest(request.headers.get('X-Bench-Proxy-Token',''),proxy):
-                return jsonify(error='请求未通过认证入口'),403
-            user, role = request.headers.get('X-Bench-User'), request.headers.get('X-Bench-Role')
-            if not user or role not in {'viewer','operator'}:
-                return jsonify(error='需要有效用户与角色'),403
-            g.bench_user, g.bench_role = user, role
-        if request.path == '/api/cases/upload':
-            from .case_upload import limits
-            request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
-        origin=request.headers.get('Origin')
-        if origin and origin!=public:return jsonify(error='不接受跨站请求'),403
-        if request.method=='POST':
-            if g.bench_role!='operator':return jsonify(error='只读用户不能执行或停止任务'),403
-            if origin!=public:return jsonify(error='缺少可信页面来源'),403
-        if request.path.startswith('/api/') and not secrets.compare_digest(request.headers.get('X-Dashboard-Token',''),csrf):
-            return jsonify(error='页面会话失效，请刷新'),403
+        # The gateway must overwrite identity headers, never forward browser values.
+        return _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_password)
     @app.after_request
     def headers(response):
         response.headers['Cache-Control']='no-store'
@@ -79,7 +111,12 @@ def create_app(dashboard=None):
     @app.errorhandler(413)
     def too_large(exc):
         from .case_upload import limits
-        message = '案例 ZIP 上限为 ' + limits()['upload_max_label'] if request.path == '/api/cases/upload' else '请求过大，JSON 请求上限为 16 KB'
+        if request.path == '/api/cases/upload':
+            message = '案例 ZIP 上限为 ' + limits()['upload_max_label']
+        elif request.path == '/api/runs/import':
+            message = '历史批次归档超过上传上限；可调整 BENCH_RUN_IMPORT_MAX_GIB 和平台入口请求上限'
+        else:
+            message = '请求过大，JSON 请求上限为 16 KB'
         return jsonify(error=message),413
     @app.post('/api/cases/upload')
     def upload_cases():
@@ -105,13 +142,36 @@ def create_app(dashboard=None):
                 raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
             except subprocess.CalledProcessError:
                 raise ValueError('案例 Git 历史准备失败，请查看服务器日志；可以重新上传') from None
+    @app.post('/api/runs/import')
+    def import_run():
+        if os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').strip().lower() != 'cos':
+            raise ValueError('当前服务未启用 COS 运行数据存储')
+        upload = request.files.get('archive')
+        if upload is None or not upload.filename or not upload.filename.lower().endswith(('.tar.gz', '.tgz')):
+            raise ValueError('请选择工作台导出的 .tar.gz 历史批次归档')
+        from deployment.run_storage import import_run_archive, request_run_sync
+        try:
+            with tempfile.TemporaryDirectory(prefix='run-import-', dir=dashboard.data) as folder:
+                archive = Path(folder) / 'run.tar.gz'
+                upload.save(archive)
+                key = import_run_archive(dashboard, archive)
+        except (OSError, tarfile.TarError, EOFError):
+            raise ValueError('历史批次归档损坏或无法读取；原有记录未覆盖') from None
+        request_run_sync(dashboard.data)
+        return jsonify(key=key, message='批次已导入，等待后台保存到 COS；请在同步完成后再更新服务。')
+    @app.post('/api/recovery')
+    def acknowledge_recovery():
+        value = request.get_json()
+        if not isinstance(value, dict) or value.get('confirmed') is not True:
+            raise ValueError('请先确认旧任务进程和容器已停止')
+        dashboard.acknowledge_recovery(actor=g.bench_user[:200])
+        return jsonify(ok=True)
     @app.get('/healthz')
     def health():
         import time
-        ready = os.environ.get('BENCH_CONTAINER_ROLE', 'web') != 'all' or (
-            time.time() - (dashboard.queue.meta('heartbeat') or 0) < 15
-            and not dashboard.queue.meta('recovery_required'))
-        return jsonify(status='ready' if ready else 'worker_unavailable'), 200 if ready else 503
+        ready = os.environ.get('BENCH_CONTAINER_ROLE', 'web') != 'all' or time.time() - (dashboard.queue.meta('heartbeat') or 0) < 15
+        status = 'recovery_required' if dashboard.queue.meta('recovery_required') else 'ready'
+        return jsonify(status=status if ready else 'worker_unavailable'), 200 if ready else 503
     @app.get('/')
     def index():return Response((STATIC/'index.html').read_text(encoding='utf-8').replace('__TOKEN__',csrf),mimetype='text/html')
     @app.get('/<path:name>')

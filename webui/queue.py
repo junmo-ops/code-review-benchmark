@@ -2,6 +2,7 @@
 import contextlib
 import hashlib
 import json
+import os
 import sqlite3
 import time
 from .service import Dashboard, ROOT, ACTIVE, now
@@ -70,6 +71,16 @@ class Queue:
                 self.update(job['id'],dict(status='interrupted',ended_at=now(),message='Worker 曾中断；确认旧进程与容器已停止后，人工恢复'))
                 self.meta('recovery_required',True)
 
+    def acknowledge_recovery(self, actor):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute("SELECT 1 FROM jobs WHERE status IN ('running','cancelling') LIMIT 1").fetchone():
+                raise ValueError('仍有运行中的任务，不能解除恢复阻塞')
+            db.execute('INSERT OR REPLACE INTO meta VALUES(?,?)',
+                       ('recovery_required', json.dumps(False)))
+            db.execute('INSERT OR REPLACE INTO meta VALUES(?,?)',
+                       ('recovery_acknowledged', json.dumps({'actor': actor, 'at': now()})))
+
 class Cancellation:
     def __init__(self,app):self.app=app
     def is_set(self):
@@ -117,5 +128,10 @@ class DurableDashboard(Dashboard):
         out['recovery_required']=bool(self.queue.meta('recovery_required'))
         return out
     def logs(self,id):self.sync();return super().logs(id)
+    def acknowledge_recovery(self, actor):
+        self.queue.acknowledge_recovery(actor)
+        if os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').strip().lower() == 'cos':
+            from deployment.run_storage import request_run_sync
+            request_run_sync(self.data)
     def stop(self,id,actor=None):self.queue.stop(id,actor)
     def shutdown(self):pass  # Web shutdown must not stop a worker job.

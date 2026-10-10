@@ -8,7 +8,13 @@ SUITES = {"codefuse_cr": CodeFuseSuite(), "aacr": AACRSuite(), "swe_prbench": SW
 # Exact source revisions retained for batches created before partial scoring and
 # provenance metadata were added. The current bytes are pinned too, so later
 # scorer changes cannot silently become compatible with an old batch.
+# The pipeline revision below only defers review-tool imports; grading logic
+# and parameters are identical, so existing saved answers can still be scored.
 AACR_COMPATIBLE_REVISIONS = {
+    "vendor/aacr/evaluation/pipeline.py": {
+        "previous": {"9d9e3ec0cbf9eada45a0a0b8c8ddf97eb153bacdc116a18e08d6dcac3c0820cf"},
+        "current": {"f774ab3d53dc9839defe4778f56d654a9058c3b7515a018ed7324ceca732242d"},
+    },
     "suites/aacr/adapter.py": {
         "previous": {"c93ca39a1d9880584d72c6a1cfbecae2d79b2df1e99108343db64928408df283"},
         "current": {
@@ -57,7 +63,7 @@ def _has_only_compatible_aacr_changes(previous_files, current_files):
         previous_hash = previous_files[name]
         if previous_hash == current_hash:
             continue
-        revisions = AACR_COMPATIBLE_REVISIONS.get(name)
+        revisions = AACR_COMPATIBLE_REVISIONS.get(name.replace("\\", "/"))
         if not revisions or previous_hash not in revisions["previous"] or current_hash not in revisions["current"]:
             return False
         changed = True

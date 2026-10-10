@@ -65,7 +65,7 @@ sudo systemctl status review-lab-worker review-lab-web
 - 页面“取消排队”只取消尚未开始的任务；“停止”会向 Worker 写入停止请求，由执行器清理本任务进程。
 - Web 服务可单独重启，不停止 Worker。
 - Worker 正常停止会保留已完成结果，当前任务标记取消；不会自动从中间继续。
-- Worker 异常退出时，systemd 以 `KillMode=control-group` 清理该服务进程组。Worker 再启动将残留 running/cancelling 标记为 interrupted，并阻塞队列，防止旧进程尚在运行时重复请求。
+- Worker 异常退出时，systemd 以 `KillMode=control-group` 清理该服务进程组。Worker 再启动将残留 running/cancelling 标记为 interrupted，并暂停领取任务，防止旧进程尚在运行时重复请求；Worker 保持心跳，网页仍可查看历史结果。确认旧任务进程和容器已停止后，操作员可在网页恢复队列。
 - 管理员先停 Worker 服务，检查旧检视进程及相关容器已结束，在相同环境下以服务账号执行：
 
 ```bash
@@ -74,7 +74,7 @@ sudo systemctl status review-lab-worker review-lab-web
 
 此命令只清除阻塞，不重跑中断任务；随后重启 Worker。对具体批次用已有恢复/显式重试功能处理；c-CRAB 仍需新建批次。
 
-systemd 自动拉起与“自动重试测评”不同。启动失败或恢复阻塞时查看 `journalctl -u review-lab-worker`；Web 状态栏会提示 Worker 不就绪。
+systemd 自动拉起与“自动重试测评”不同。启动失败或队列暂停时查看 `journalctl -u review-lab-worker`；Web 状态栏会提示 Worker 不就绪或队列需要确认恢复。
 
 ## 配置、升级和备份
 

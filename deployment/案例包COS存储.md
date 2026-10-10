@@ -1,13 +1,19 @@
 # 案例包 COS 存储
 
-行内 Docker 镜像默认启用 COS 案例包存储；本地 Mac 工作台默认仍使用本地存储。服务收到 ZIP 并成功导入后，会按 ZIP 的 SHA-256 写入 COS。容器启动时会列出、下载并校验尚未恢复的案例包，再重建案例清单和 Git 仓库；恢复完成后才启动 Web 与 Worker。过程不会调用模型。
+行内 Docker 镜像使用 COS 保存案例包和运行记录；本地 Mac 工作台默认仍使用本地存储。服务收到 ZIP 并成功导入后，会按 ZIP 的 SHA-256 写入 COS。容器启动时会先恢复批次记录和任务日志，再恢复案例 ZIP、重建案例清单和 Git 仓库；恢复完成后才启动 Web 与 Worker。过程不会调用模型。
 
-普通参数保存在 `deployment/case-storage.json`。测评工作台使用独立 COS 桶；创建桶后，将该文件中的 endpoint、region 和 bucket 填为新桶的信息。前缀为 `code-review-benchmark/case-archives/v1/archives/`。密钥不写入配置和源码，由平台 Secret 注入：
+普通参数保存在 `deployment/case-storage.json`。案例 ZIP 和运行记录复用当前测评工作台 COS 桶；运行记录使用独立前缀 `code-review-benchmark/run-data/`，不与案例 ZIP 混放。endpoint、region 和 bucket 沿用当前值。案例 ZIP 前缀为 `code-review-benchmark/case-archives/v1/archives/`。运行数据以 SHA-256 内容对象和清单保存，每 30 秒扫描一次；持续追加的日志和原始输出按当次已写入的长度生成快照，其余文件连续 15 秒未变化后同步；容器收到正常停止信号时会再做一次最终同步。工作区仓库副本不上传，完整答卷、原始输出、评分范围、评分结果、报告和工作台任务日志会持久化。模型配置和 API 密钥不会上传 COS，容器重建后需由平台 Secret 或工作台重新提供模型配置。
+
+平台账号需在案例包和运行数据两个前缀分别具备 `ListBucket`、`GetObject`、`PutObject` 权限；不需要 `DeleteObject`。运行数据使用内容寻址，更新会留下不再被清单引用的旧对象，因此需为该前缀申请足够容量并按组织的数据保留要求管理桶。密钥不写入配置和源码，由平台 Secret 注入：
 
 - `BENCH_CASE_S3_ACCESS_KEY_ID`
 - `BENCH_CASE_S3_SECRET_ACCESS_KEY`
 - 使用临时凭证时提供 `BENCH_CASE_S3_SESSION_TOKEN`
 
-平台账号需允许专用前缀内的 `ListBucket`、`GetObject`、`PutObject`；不需要删除权限。对象名使用 ZIP 的 SHA-256，重传相同文件会复用同一个对象。上传成功后会回读对象元数据确认 COS 已接收；无法确认时页面会提示重新上传同一个 ZIP。恢复时也会校验文件 SHA-256，COS 不可用或对象校验失败会阻止工作台启动，避免显示不完整的案例清单。
+案例 ZIP 对象名使用 ZIP 的 SHA-256，重传相同文件会复用同一个对象。上传成功后会回读对象元数据确认 COS 已接收；无法确认时页面会提示重新上传同一个 ZIP。恢复时也会校验文件 SHA-256，COS 不可用或对象校验失败会阻止工作台启动，避免显示不完整的案例清单。运行数据同步状态会显示在工作台；同步异常时请勿重建容器，等状态恢复后再更新。
 
-单包上限仍由 `BENCH_CASE_UPLOAD_MAX_MIB` 控制，默认 2048 MiB。上传的原始 ZIP 保存在 COS；解包后的 dataset 与 Git 仓库作为运行缓存保存在 `BENCH_DATA_ROOT`。如果以后将 Web 和 Worker 拆成独立容器，两边都要使用该版本镜像、相同 COS 配置和 Secret，并分别恢复案例包。
+从启用运行数据 COS 的版本之前迁移旧批次：先在旧工作台逐批执行“生成归档”并下载 `.tar.gz`；部署新版本后，在“单模型测评”页点击“导入历史批次”，逐个上传归档。导入会拒绝覆盖同名批次，并跳过归档中的仓库工作区副本；答卷和评分证据交给后台同步，页面会显示等待保存，确认同步完成后再更新服务。模型配置含密钥，不在归档中，导入后需重新配置或由平台注入。默认单个归档上传上限为 16 GiB，可用 `BENCH_RUN_IMPORT_MAX_GIB` 调整至 64 GiB；平台 HTTPS 入口也需允许相同大小的请求。
+
+恢复时仅下载本地缺失的文件；本地已有文件与 COS 不同时保留本地版本，避免覆盖尚未同步的结果。同步与恢复使用同一进程间锁串行执行，网页导入只提交同步请求，不另起 COS 写入器。
+
+单包上限仍由 `BENCH_CASE_UPLOAD_MAX_MIB` 控制，默认 2048 MiB。上传的原始 ZIP 保存在 COS；解包后的 dataset 与 Git 仓库作为运行缓存保存在 `BENCH_DATA_ROOT`。如将 Web 和 Worker 拆成独立容器，两边必须共享可写的运行目录，Worker 启用运行数据同步，Web 和 Worker 使用相同 COS 配置和 Secret。

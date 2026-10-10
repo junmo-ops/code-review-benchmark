@@ -19,6 +19,7 @@
   <header class="topbar"><div><span class="breadcrumb">工作空间</span><span class="slash">/</span><span id="page-label">测评工作台</span></div><div class="topbar-right"><span id="connection" class="connection"><i></i> 正在连接</span><button class="icon-button" id="refresh" title="刷新" aria-label="刷新">↻</button></div></header>
   <main>
     <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    <button id="ack-recovery" class="secondary" hidden>确认旧任务已停止，恢复队列</button>
     <section id="cases-view" hidden>
       <div class="page-heading"><div><div class="eyebrow">CASE DATASETS</div><h1>案例集管理<span class="heading-dot">.</span></h1><p>下方案例集可用于测评；需要扩充时，先选择案例 ZIP，再确认导入。</p></div></div>
       <div id="case-upload-disabled" class="notice" hidden>当前工作台未开启案例上传，可使用下方已有案例集。</div>
@@ -37,7 +38,7 @@
       </section>
     </section>
     <section id="runs-view">
-      <div class="page-heading"><div><div class="eyebrow">BENCHMARK WORKSPACE</div><h1>单模型测评<span class="heading-dot">.</span></h1><p>选择一个模型运行测评；需要比较多个模型时，请使用“多模型实验”。</p></div><button class="primary" id="new-run">＋ 新建测评</button></div>
+      <div class="page-heading"><div><div class="eyebrow">BENCHMARK WORKSPACE</div><h1>单模型测评<span class="heading-dot">.</span></h1><p>选择一个模型运行测评；需要比较多个模型时，请使用“多模型实验”。</p></div><div class="actions-row" style="margin:0"><button class="secondary" id="import-run" hidden>导入历史批次</button><input id="run-import-file" type="file" accept=".tar.gz,.tgz" hidden><button class="primary" id="new-run">＋ 新建测评</button></div></div>
       <div class="suite-grid" id="suite-grid"></div>
       <div id="active-task" hidden></div>
       <section class="panel runs-panel">

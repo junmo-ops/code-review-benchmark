@@ -24,9 +24,8 @@ from typing import Any, Callable, Dict, List, Optional
 import config
 import evaluate
 from repo_utils import RepoError, log
-from reviewers import claude as claude_reviewer
-from reviewers import codex as codex_reviewer
-from reviewers import ocr as ocr_reviewer
+# Review-only dependencies are loaded at execution time. Grading can coexist
+# with a host application's own top-level `reviewers` package.
 from schema import ReviewInstance, load_instances
 
 try:
@@ -71,6 +70,8 @@ def _review_one_instance(
     """
     try:
         if reviewer == "ocr":
+            from reviewers import ocr as ocr_reviewer
+
             return ocr_reviewer.review_instance(
                 instance=instance,
                 repo_dir=repo_dir,
@@ -81,6 +82,8 @@ def _review_one_instance(
                 max_tools=max_tools,
             )
         if reviewer == "codex":
+            from reviewers import codex as codex_reviewer
+
             return codex_reviewer.review_instance(
                 instance=instance,
                 repo_dir=repo_dir,
@@ -90,6 +93,8 @@ def _review_one_instance(
                 timeout_minutes=timeout_minutes,
                 preview=preview,
             )
+        from reviewers import claude as claude_reviewer
+
         return claude_reviewer.review_instance(
             instance=instance,
             repo_dir=repo_dir,
@@ -104,6 +109,34 @@ def _review_one_instance(
     finally:
         if on_done is not None:
             on_done(instance.instance_id)
+
+
+def _prepare_review_tool(reviewer, ocr_command, preview):
+    reviewer_env = {}
+    codex_home = None
+    if reviewer == "ocr":
+        from reviewers import ocr as tool
+        tool.ensure_ocr_installed(ocr_command)
+        tool.check_env(preview)
+    elif reviewer == "claude":
+        from reviewers import claude as tool
+        tool.ensure_claude_installed()
+        if not preview:
+            reviewer_env = tool.resolve_claude_env()
+            log(f"Using model={reviewer_env[config.CLAUDE_MODEL_VAR]} "
+                f"via {reviewer_env[config.CLAUDE_URL_VAR]}")
+    elif reviewer == "codex":
+        from reviewers import codex as tool
+        tool.ensure_codex_installed()
+        if not preview:
+            reviewer_env = tool.resolve_codex_env()
+            codex_home = tool.write_codex_config(reviewer_env)
+            model_desc = reviewer_env.get(config.CODEX_MODEL_VAR, "(codex default)")
+            log(f"Using model={model_desc}")
+            log(f"CODEX_HOME = {codex_home}")
+    else:
+        raise ValueError(f"未知的 reviewer: {reviewer}")
+    return tool, reviewer_env, codex_home
 
 
 def run_review_stage(
@@ -124,30 +157,7 @@ def run_review_stage(
     """
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    reviewer_env: Dict[str, str] = {}
-    codex_home: Optional[Path] = None
-    if reviewer == "ocr":
-        ocr_reviewer.ensure_ocr_installed(ocr_command)
-        ocr_reviewer.check_env(preview)
-    elif reviewer == "claude":
-        claude_reviewer.ensure_claude_installed()
-        if not preview:
-            reviewer_env = claude_reviewer.resolve_claude_env()
-            log(
-                f"Using model={reviewer_env[config.CLAUDE_MODEL_VAR]} "
-                f"via {reviewer_env[config.CLAUDE_URL_VAR]}"
-            )
-    elif reviewer == "codex":
-        codex_reviewer.ensure_codex_installed()
-        if not preview:
-            reviewer_env = codex_reviewer.resolve_codex_env()
-            # 生成临时 CODEX_HOME + config.toml（所有实例共享一份）
-            codex_home = codex_reviewer.write_codex_config(reviewer_env)
-            model_desc = reviewer_env.get(config.CODEX_MODEL_VAR, "(codex default)")
-            log(f"Using model={model_desc}")
-            log(f"CODEX_HOME = {codex_home}")
-    else:
-        raise ValueError(f"未知的 reviewer: {reviewer}")
+    review_tool, reviewer_env, codex_home = _prepare_review_tool(reviewer, ocr_command, preview)
 
     repo_groups = _group_instances_by_repo(instances)
     effective_concurrency = max(1, min(concurrency, len(repo_groups)))
@@ -214,7 +224,7 @@ def run_review_stage(
             progress_bar.close()
         # codex：清理临时 CODEX_HOME（codex 会在其中存 sessions/auth/hooks 状态）
         if reviewer == "codex" and codex_home is not None:
-            codex_reviewer.cleanup_codex_home(codex_home)
+            review_tool.cleanup_codex_home(codex_home)
 
     summary_path = results_dir / f"summary_{reviewer}.json"
     with summary_path.open("w", encoding="utf-8") as handle:

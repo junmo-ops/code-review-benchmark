@@ -257,10 +257,10 @@ def review_case(item, run, preview, stop):
                 return None
             except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                 raw = getattr(error, "raw_output", raw)
-                resume_session_id = _retry_session(item, run, error, raw, resume_session_id)
                 can_retry = attempt <= MAX_CASE_RETRIES and retryable_case_error(error, raw)
                 if not can_retry:
                     raise
+                resume_session_id = _retry_session(item, run, error, raw, resume_session_id)
                 retries.append({"attempt": attempt, "error": redact(f"{type(error).__name__}: {error}")})
                 print(f"案例失败，将在短暂等待后自动重试（{attempt}/{MAX_CASE_RETRIES}）：",
                       item.instance_id, redact(error), file=sys.stderr, flush=True)
@@ -374,9 +374,26 @@ def _session_has_completed_items(item, run, session_id):
     return evidence.get("match") == "matched" and evidence.get("completed_review_items", 0) > 0
 
 
-def _stage_review(instances, run, preview):
-    if (run / "stop-request.json").exists():
-        raise SystemExit("本轮已有停止请求，不再启动任务。核对日志后使用新轮次。")
+def _create_case_workspace(source, workspace, item):
+    if workspace.exists():
+        raise ValueError(f"案例工作区已存在，先检查上次任务是否结束：{workspace}")
+    # Match offline repository preparation: LFS media are not bundled, and
+    # checkout must not contact an external LFS endpoint.
+    command = ["git", "-C", str(source), "-c", "filter.lfs.process=",
+               "-c", "filter.lfs.smudge=", "-c", "filter.lfs.required=false",
+               "worktree", "add", "--detach", str(workspace), item.head_commit]
+    try:
+        result = subprocess.run(command, env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"),
+                                capture_output=True, text=True, timeout=180, check=False)
+        if result.returncode:
+            raise ValueError(f"创建案例独立工作区失败：{item.instance_id}；{(result.stderr or result.stdout).strip()}")
+    except BaseException:
+        subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
+                       capture_output=True, text=True, timeout=60, check=False)
+        raise
+
+
+def _prepare_case_workspaces(instances, run):
     global CASE_REPOS
     CASE_REPOS = {}
     if REPOS_ROOT is None:
@@ -403,12 +420,7 @@ def _stage_review(instances, run, preview):
             for item in instances:
                 source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
                 workspace = workspace_root / item.safe_id
-                if workspace.exists():
-                    raise ValueError(f"案例工作区已存在，先检查上次任务是否结束：{workspace}")
-                result = subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(workspace), item.head_commit],
-                                        capture_output=True, text=True, timeout=180, check=False)
-                if result.returncode:
-                    raise ValueError(f"创建案例独立工作区失败：{item.instance_id}；{(result.stderr or result.stdout).strip()}")
+                _create_case_workspace(source, workspace, item)
                 created.append((source, workspace))
                 CASE_REPOS[item.safe_id] = workspace
         except BaseException:
@@ -417,6 +429,52 @@ def _stage_review(instances, run, preview):
                                capture_output=True, text=True, timeout=60, check=False)
             CASE_REPOS = {}
             raise
+
+
+def _cleanup_case_workspaces(instances):
+    global CASE_REPOS
+    for item in reversed(instances):
+        workspace = CASE_REPOS.get(item.safe_id)
+        if workspace is None:
+            continue
+        source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
+        result = subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
+                                capture_output=True, text=True, timeout=60, check=False)
+        if result.returncode:
+            print(f"独立工作区清理失败：{workspace}；{(result.stderr or result.stdout).strip()}", file=sys.stderr, flush=True)
+    CASE_REPOS = {}
+
+
+def _wait_review_futures(futures, stop, interrupted):
+    failures = []
+    announced = False
+    pending = set(futures)
+    while pending:
+        if stop.is_set():
+            if interrupted.is_set() and not announced:
+                print("已收到取消请求，正在终止本轮 LCR 子进程并保存日志；请勿关闭窗口。", flush=True)
+                announced = True
+            for future in pending:
+                future.cancel()
+            pending = {future for future in pending if not future.cancelled()}
+            if not pending:
+                break
+        # Windows indefinite condition waits can delay Python signal handling.
+        # Return to the main thread regularly, including when LCR is silent.
+        done, pending = wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
+        for future in done:
+            if future.cancelled():
+                continue
+            failure = future.result()
+            if failure:
+                failures.append(failure)
+    return failures
+
+
+def _stage_review(instances, run, preview):
+    if (run / "stop-request.json").exists():
+        raise SystemExit("本轮已有停止请求，不再启动任务。核对日志后使用新轮次。")
+    _prepare_case_workspaces(instances, run)
     if not instances:
         return
     stop = threading.Event()
@@ -438,29 +496,9 @@ def _stage_review(instances, run, preview):
             if signum is not None:
                 previous_handlers[signum] = signal.getsignal(signum)
                 signal.signal(signum, request_interrupt)
-    announced = False
     try:
         futures = [pool.submit(review_case, item, run, preview, stop) for item in instances]
-        pending = set(futures)
-        while pending:
-            if stop.is_set():
-                if interrupted.is_set() and not announced:
-                    print("已收到取消请求，正在终止本轮 LCR 子进程并保存日志；请勿关闭窗口。", flush=True)
-                    announced = True
-                for future in pending:
-                    future.cancel()
-                pending = {future for future in pending if not future.cancelled()}
-                if not pending:
-                    break
-            # Windows indefinite condition waits can delay Python signal handling.
-            # Return to the main thread regularly, including when LCR is silent.
-            done, pending = wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
-            for future in done:
-                if future.cancelled():
-                    continue
-                failure = future.result()
-                if failure:
-                    failures.append(failure)
+        failures = _wait_review_futures(futures, stop, interrupted)
     finally:
         # Ctrl+C signals running workers, whose capture_process cleans its own tree.
         stop.set()
@@ -471,16 +509,7 @@ def _stage_review(instances, run, preview):
         finally:
             for signum, handler in previous_handlers.items():
                 signal.signal(signum, handler)
-            for item in reversed(instances):
-                workspace = CASE_REPOS.get(item.safe_id)
-                if workspace is None:
-                    continue
-                source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
-                result = subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
-                                        capture_output=True, text=True, timeout=60, check=False)
-                if result.returncode:
-                    print(f"独立工作区清理失败：{workspace}；{(result.stderr or result.stdout).strip()}", file=sys.stderr, flush=True)
-            CASE_REPOS = {}
+            _cleanup_case_workspaces(instances)
     if interrupted.is_set():
         raise KeyboardInterrupt
     if failures:

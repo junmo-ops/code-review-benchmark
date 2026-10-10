@@ -182,6 +182,38 @@ class Dashboard:
                 pass
         return {}
 
+    def _score_scope(self, key):
+        path = self.run_dir(key) / 'evaluation-scope.json'
+        if not path.is_file():
+            return None
+        scope = read(path)
+        return scope.get('included', []) if isinstance(scope, dict) else []
+
+    def _score_status(self, key, cases, summary):
+        completed = {case['id'] for case in cases if case['status'] == 'complete'}
+        total = len(cases)
+        scope = self._score_scope(key)
+        covered = len(completed.intersection(scope)) if scope is not None else None
+        if not summary:
+            status = 'reviewed' if len(completed) == total else 'partial' if completed else 'failed' if any(c['status'] != 'pending' for c in cases) else 'pending'
+        elif scope is None:
+            status = 'scored' if len(completed) == total else 'partial_scored'
+            covered = len(completed) if len(completed) == total else None
+        elif len(completed) == total and set(scope) == completed:
+            status = 'scored'
+        else:
+            status = 'partial_scored'
+        return status, covered
+
+    def _existing_score_message(self, key):
+        scope = self._score_scope(key)
+        if scope is not None:
+            cases = self.cases(key)
+            total = len(cases)
+            if len(scope) < total:
+                return f'已有部分评分，覆盖 {len(scope)}/{total} 个案例；评分证据不可覆盖，新完成的答卷未纳入。若需全量评分，请新建批次。'
+        return '该批次已有评分，评分证据不可覆盖。请直接阅读报告；更换裁判或模型需新建批次。'
+
     def compatibility(self, key):
         if (self.run_dir(key)/'comparison-protocol.json').exists():
             return '对比实验分组使用独立一对一协议，请在对比实验中查看；不从单批次入口重跑或覆盖评分。'
@@ -206,31 +238,47 @@ class Dashboard:
     def describe(self, key):
         cfg = self.config(key)
         if key.startswith('ccrab/'):
-            folder=self.run_dir(key)
-            result=read(folder/'status.json') if (folder/'status.json').exists() else {}
-            status=result.get('status','pending')
-            metrics={}
-            if status=='complete' and result.get('repair_executed') and result.get('test_pass_rate') in (0,1):
-                metrics['test_pass_rate']=result['test_pass_rate']
-            return dict(key=key,name=folder.name,suite='ccrab',reviewer='lcr',model=cfg.get('review_model','—'),judge_model='不使用语义裁判',evaluator='发布测试（适配）',
-                created=cfg.get('created_at',datetime.datetime.fromtimestamp(folder.stat().st_mtime,datetime.timezone.utc).isoformat()),status=status,
-                completed=int(bool(result.get('review_executed'))),total=1,cases=[dict(id=cfg['instance_id'],repo=cfg.get('repo','networkx/networkx'),status=status,scored=bool(metrics))],
-                metrics=metrics,artifacts=self.artifacts(key),repair_executed=bool(result.get('repair_executed')),
-                can_run=cfg.get('ui_managed',False) and status=='pending' and not (folder/'execution.started').exists(),compatibility_warning=self.compatibility(key) if cfg.get('ui_managed') else '历史 CLI 批次仅供查看；重新执行请新建批次。',profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+            return self._describe_ccrab(key, cfg)
         mcr = key.startswith('mcr/')
         cases = self.cases(key)
         reports = self.artifacts(key)
         summary = self.summary(key)
         total, completed = len(cases), sum(c['status'] == 'complete' for c in cases)
+        score_status, scored_cases = self._score_status(key, cases, summary)
         return dict(key=key, compatibility_warning=self.compatibility(key), name=key.split('/')[-1], suite='mcr' if mcr else cfg.get('suite', {}).get('id', 'aacr'),
                     simulation=cfg.get('simulation',False), reviewer=cfg.get('reviewer', 'lcr'), model=cfg.get('review_model', '—'), judge_model=cfg.get('judge_model', '—'),
                     evaluator='Martian 一对一（内部）' if (self.run_dir(key)/'comparison-protocol.json').exists() else 'MCR 一对一' if mcr else cfg.get('evaluator', {}).get('id', 'original'),
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
-                    status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else 'scored' if summary and completed == total else 'reviewed' if completed == total else 'partial' if completed else 'failed' if any(c['status'] != 'pending' for c in cases) else 'pending',
-                    completed=completed, total=total, cases=cases, metrics=summary, artifacts=reports,
+                    status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else score_status,
+                    completed=completed, total=total, scored_cases=scored_cases, cases=cases, metrics=summary, artifacts=reports,
                     timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1),
                     max_case_retries=cfg.get('max_case_retries', 1 if cfg.get('reviewer', 'lcr') == 'lcr' else 0),
                     profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+
+    def _describe_ccrab(self, key, cfg):
+        folder = self.run_dir(key)
+        result = read(folder/'status.json') if (folder/'status.json').exists() else {}
+        status = result.get('status', 'pending')
+        metrics = self._ccrab_metrics(status, result)
+        created = cfg.get('created_at', datetime.datetime.fromtimestamp(folder.stat().st_mtime, datetime.timezone.utc).isoformat())
+        return dict(key=key, name=folder.name, suite='ccrab', reviewer='lcr', model=cfg.get('review_model', '—'),
+                    judge_model='不使用语义裁判', evaluator='发布测试（适配）', created=created, status=status,
+                    completed=int(bool(result.get('review_executed'))), total=1,
+                    cases=[dict(id=cfg['instance_id'], repo=cfg.get('repo', 'networkx/networkx'), status=status, scored=bool(metrics))],
+                    metrics=metrics, artifacts=self.artifacts(key), repair_executed=bool(result.get('repair_executed')),
+                    can_run=self._ccrab_can_run(key, cfg, status, folder),
+                    compatibility_warning=self.compatibility(key) if cfg.get('ui_managed') else '历史 CLI 批次仅供查看；重新执行请新建批次。',
+                    profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+
+    @staticmethod
+    def _ccrab_metrics(status, result):
+        if status == 'complete' and result.get('repair_executed') and result.get('test_pass_rate') in (0, 1):
+            return {'test_pass_rate': result['test_pass_rate']}
+        return {}
+
+    @staticmethod
+    def _ccrab_can_run(key, cfg, status, folder):
+        return cfg.get('ui_managed', False) and status == 'pending' and not (folder/'execution.started').exists()
 
     def artifacts(self, key):
         root = self.run_dir(key)
@@ -298,6 +346,17 @@ class Dashboard:
             raise ValueError('案例集文件不可用')
         return path
 
+    def _runtime_storage_state(self):
+        path = self.data/'ui-state'/'run-storage-status.json'
+        status = read(path) if path.is_file() else {'enabled': False, 'status': 'disabled'}
+        pending = next((self.data/'ui-state'/'run-sync-requests').glob('*.json'), None)
+        if pending is not None and status.get('status') != 'error':
+            status.update(status='pending', message='运行数据等待同步到 COS；同步完成后再更新服务。')
+        mode = os.environ.get('BENCH_STORAGE_MODE', 'persistent')
+        if os.environ.get('BENCH_SERVER_MODE') and os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').strip().lower() != 'cos':
+            mode = 'ephemeral'
+        return status, mode
+
     def snapshot(self):
         runs = []
         paths = list((self.data / 'runs').glob('*/run-config.json')) + list((self.data / 'runs/mcr').glob('*/run-config.json'))
@@ -321,6 +380,7 @@ class Dashboard:
             from comparison.service import list_experiments
             from .experiment_view import decorate
             experiments=decorate(self,list_experiments(self),runs)
+            run_storage, storage_mode = self._runtime_storage_state()
             case_assets = None
             if os.environ.get('BENCH_CASE_UPLOAD') == '1':
                 from .case_assets import status
@@ -330,7 +390,8 @@ class Dashboard:
                     if not case_assets['datasets']:
                         case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
             return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
-                        active=self.active, case_assets=case_assets, storage_mode=os.environ.get('BENCH_STORAGE_MODE', 'persistent'), runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
+                        active=self.active, case_assets=case_assets, run_storage=run_storage,
+                        storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
     def command(self, key, stage, profile, task=None, retry=False, init=None):
         if stage=='comparison':
@@ -526,13 +587,81 @@ class Dashboard:
             self.jobs[job_id].update(changes)
             save(self.state/'jobs'/f'{job_id}.json', self.jobs[job_id])
 
+    def _continue_partial_review(self, job, steps, index, stage, code, timed_out=False):
+        # AACR's evaluator can score complete answers while explicitly excluding failed cases.
+        if (code == 0 and not timed_out) or stage != 'review' or job['action'] not in {'workflow', 'create'}:
+            return False
+        if job['action'] == 'create' and not job.get('start_after_create'):
+            return False
+        if self.config(job['key']).get('suite', {}).get('id') != 'aacr':
+            return False
+        return any(next_stage == 'eval' for next_stage, _, _ in steps[index + 1:])
+
+    def _execute_stage(self, job_id, job, request, stage, task, init, log):
+        cmd, env, limit = self.command(job['key'], stage, job['profile'], task,
+                                       bool(request.get('retry')), init)
+        env['PYTHONUTF8'] = '1'
+        log.write(f'\n[{now()}] {stage + (" · " + task if task else "")}\n'
+                  + self.redact(' '.join(cmd)) + '\n')
+        process = None
+        reader = None
+        try:
+            process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt'
+                               else {'start_new_session': True})
+            process = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT, text=True, encoding='utf-8',
+                                       errors='replace', **process_options)
+            self.update(job_id, pid=process.pid)
+            stream = process.stdout
+
+            def output():
+                try:
+                    for line in stream:
+                        log.write(self.redact(line))
+                except (OSError, ValueError):
+                    # The main process exit code remains authoritative if a child retains the pipe.
+                    pass
+
+            reader = threading.Thread(target=output, daemon=True)
+            reader.start()
+            deadline = time.monotonic() + limit + 30
+            timed_out = False
+            while process.poll() is None:
+                cancelled = self.cancelled.wait(.15)
+                deadline_reached = time.monotonic() > deadline
+                if cancelled or deadline_reached:
+                    from local import terminate
+                    terminate(process)
+                    timed_out = deadline_reached and not cancelled
+                    break
+            reader.join(timeout=10)
+            if reader.is_alive():
+                log.write('主命令已退出；仍有子进程持有日志流，按主命令退出码继续。\n')
+            else:
+                stream.close()
+            return process.returncode, timed_out
+        finally:
+            if reader and reader.is_alive():
+                reader.join(timeout=1)
+            if process is not None and process.poll() is None:
+                from local import terminate
+                terminate(process)
+
     def plan(self, job, request, spec):
-        if job['action']=='comparison':return [('comparison',None,None)]
+        if job['action'] == 'comparison':
+            return [('comparison', None, None)]
         if spec is not None:
             return [('init', None, spec)]
         key, action = job['key'], job['action']
         if key.startswith('ccrab/'):
-            return [('check',None,None)] + ([('run',None,None)] if action=='workflow' else [])
+            return self._plan_ccrab(action)
+        return self._plan_run(key, action, request)
+
+    @staticmethod
+    def _plan_ccrab(action):
+        return [('check', None, None)] + ([('run', None, None)] if action == 'workflow' else [])
+
+    def _plan_run(self, key, action, request):
         mcr = key.startswith('mcr/')
         case_ids = [c['id'] for c in self.cases(key)]
         if request.get('task'):
@@ -544,15 +673,41 @@ class Dashboard:
         if action in {'review','preview','recover'}:
             return [(action, case, None) for case in case_ids]
         if action == 'workflow':
-            steps = [] if mcr and self.config(key)['reviewer'] == 'llm_direct' else [('prepare-repos' if mcr else 'check', None, None)]
-            review_steps = [('review', None, None)] if not mcr and self.config(key).get('reviewer', 'lcr') == 'lcr' and not request.get('task') else [('review', case, None) for case in case_ids]
-            return steps + review_steps + ([] if self.summary(key) or self.config(key).get('simulation') else [('eval', None, None)])
+            return self._plan_workflow(key, request, mcr, case_ids)
         if action == 'eval' and self.summary(key):
-            raise ValueError('该批次已有完整评分。请直接阅读报告；更换裁判或模型需新建批次。')
+            raise ValueError(self._existing_score_message(key))
         return [(action, request.get('task') if mcr else None, None)]
 
+    def _plan_workflow(self, key, request, mcr, case_ids):
+        cfg = self.config(key)
+        steps = [] if mcr and cfg['reviewer'] == 'llm_direct' else [('prepare-repos' if mcr else 'check', None, None)]
+        review_steps = [('review', None, None)] if not mcr and cfg.get('reviewer', 'lcr') == 'lcr' and not request.get('task') else [('review', case, None) for case in case_ids]
+        eval_steps = [] if self.summary(key) or cfg.get('simulation') else [('eval', None, None)]
+        return steps + review_steps + eval_steps
+
+    def _run_work_stage(self, job_id, job, request, steps, index, stage, task, init, log):
+        label = stage + (' · ' + task if task else '')
+        self.update(job_id, step=label, step_started_at=now(), completed_steps=index)
+        code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
+        self.update(job_id, exit_code=code)
+        if self.cancelled.is_set():
+            return 'cancelled'
+        if code != 0 or timed_out:
+            if stage == 'comparison':
+                raise ValueError('对比实验存在失败或未完成案例，请查看对比报告与日志；不自动重试。')
+            if self._continue_partial_review(job, steps, index, stage, code, timed_out):
+                reason = '外层时限已到，检视进程已停止' if timed_out else '检视存在未完成案例'
+                log.write(f'{reason}；继续评分结构完整的答卷，失败案例将从评分中排除。\n')
+                self.update(job_id, completed_steps=index+1, message='检视部分失败，正在评分已完成案例')
+                return 'partial'
+            if timed_out:
+                raise ValueError('页面外层执行时限已到，进程已停止，保留日志')
+            raise ValueError('本步骤失败，后续步骤未执行。请查看日志；已完成答卷保留。')
+        self.update(job_id, completed_steps=index+1)
+        return 'complete'
+
     def work(self, job_id, request, spec):
-        process = None
+        partial_review = False
         log_path = self.state/'jobs'/f'{job_id}.log'
         try:
             job = self.jobs[job_id]
@@ -562,64 +717,22 @@ class Dashboard:
                 for index, (stage, task, init) in enumerate(steps):
                     if self.cancelled.is_set():
                         break
-                    label = stage + (' · '+task if task else '')
-                    self.update(job_id, step=label, step_started_at=now(), completed_steps=index)
-                    cmd, env, limit = self.command(job['key'], stage, job['profile'], task, bool(request.get('retry')), init)
-                    # The web service decodes subprocess logs as UTF-8. Force
-                    # child Python's text files and standard streams to match,
-                    # independent of the Windows console code page.
-                    env['PYTHONUTF8'] = '1'
-                    log.write(f'\n[{now()}] {label}\n'+self.redact(' '.join(cmd))+'\n')
-                    process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt'
-                                       else {'start_new_session': True})
-                    process = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                               text=True, encoding='utf-8', errors='replace', **process_options)
-                    self.update(job_id, pid=process.pid)
-                    stream = process.stdout
-                    def output():
-                        try:
-                            for line in stream:
-                                log.write(self.redact(line))
-                        except (OSError, ValueError):
-                            # A child may inherit the pipe after the command exits; preserve the
-                            # command's exit status as the source of truth for workflow progress.
-                            pass
-                    reader = threading.Thread(target=output, daemon=True)
-                    reader.start()
-                    deadline = time.monotonic()+limit+30
-                    while process.poll() is None:
-                        if self.cancelled.wait(.15) or time.monotonic()>deadline:
-                            from local import terminate
-                            terminate(process)
-                            if not self.cancelled.is_set():
-                                raise ValueError('页面外层执行时限已到，进程已停止，保留日志')
-                            break
-                    reader.join(timeout=10)
-                    if reader.is_alive():
-                        log.write('主命令已退出；仍有子进程持有日志流，按主命令退出码继续。\n')
-                    else:
-                        stream.close()
-                    code = process.returncode
-                    self.update(job_id, exit_code=code)
-                    if self.cancelled.is_set():
+                    outcome = self._run_work_stage(job_id, job, request, steps, index, stage, task, init, log)
+                    if outcome == 'cancelled':
                         break
-                    if code != 0:
-                        if stage=='comparison':raise ValueError('对比实验存在失败或未完成案例，请查看对比报告与日志；不自动重试。')
-                        raise ValueError('本步骤失败，后续步骤未执行。请查看日志；已完成答卷保留。')
-                    self.update(job_id, completed_steps=index+1)
+                    partial_review = partial_review or outcome == 'partial'
                     if stage=='init' and request.get('start_after_create') and not self.cancelled.is_set():
                         steps.extend(self.plan(dict(job,key=job['key'],action='workflow'),{},None))
                         self.update(job_id,total_steps=len(steps))
-            self.update(job_id, status='cancelled' if self.cancelled.is_set() else 'succeeded', message='已停止，已写入的结果保留' if self.cancelled.is_set() else '执行完成', ended_at=now())
+            message = ('已停止，已写入的结果保留' if self.cancelled.is_set() else
+                       '评分已完成；部分案例检视失败，请查看案例状态与日志' if partial_review else '执行完成')
+            self.update(job_id, status='cancelled' if self.cancelled.is_set() else 'succeeded', message=message, ended_at=now())
         except BaseException as exc:
             detail = self.redact(str(exc)) if isinstance(exc, ValueError) else type(exc).__name__+'；请查看日志和批次原始证据'
             with log_path.open('a', encoding='utf-8') as log:
                 log.write('\n'+detail+'\n')
             self.update(job_id, status='cancelled' if self.cancelled.is_set() else 'failed', message=detail, ended_at=now())
         finally:
-            if process is not None and process.poll() is None:
-                from local import terminate
-                terminate(process)
             with self.lock:
                 self.active = None
 

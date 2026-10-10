@@ -62,6 +62,7 @@ class CaseArchiveStorage:
         self.region = str(options.get('region', '')).strip()
         self.bucket = str(options.get('bucket', '')).strip()
         self.prefix = str(options.get('prefix', '')).strip().strip('/')
+        self.run_prefix = str(options.get('run_prefix', '')).strip().strip('/')
         self.timeout_ms = self._timeout(options)
         self._validate_storage_options()
         access_key, secret_key, session_token = self._credentials()
@@ -83,7 +84,8 @@ class CaseArchiveStorage:
         valid_endpoint = parsed.scheme in {'http', 'https'} and bool(parsed.netloc)
         safe_endpoint = not (parsed.username or parsed.password or parsed.query or parsed.fragment)
         safe_prefix = bool(self.prefix) and all(part not in {'', '.', '..'} for part in self.prefix.split('/'))
-        if not valid_endpoint or not safe_endpoint or not self.region or not self.bucket or not safe_prefix:
+        safe_run_prefix = bool(self.run_prefix) and all(part not in {'', '.', '..'} for part in self.run_prefix.split('/'))
+        if not valid_endpoint or not safe_endpoint or not self.region or not self.bucket or not safe_prefix or not safe_run_prefix:
             raise RuntimeError('案例包 COS 地址、区域、桶、前缀或超时时间无效')
 
     @staticmethod

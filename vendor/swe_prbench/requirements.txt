@@ -1,5 +1,6 @@
 numpy>=1.26.0
 sentence-transformers>=2.6.1
+transformers>=5.5.0
 torch>=2.6.0
 python-dotenv>=1.0.1
 structlog>=24.1.0
