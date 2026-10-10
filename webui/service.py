@@ -71,7 +71,8 @@ class Dashboard:
                 continue
             try:
                 obj = read(p)
-                profiles.append(dict(id=p.name, label=('批次固定配置' if p.name.startswith('model.run-') else profile_label(p)), internal=p.name.startswith('model.run-'), review_ready=bool(obj.get('LCR_LLM_BASE_URL') and obj.get('LCR_LLM_TOKEN') and obj.get('LCR_LLM_MODEL')), review_model=obj.get('LCR_LLM_MODEL', '未设置'),
+                provider = p.name.split('.', 2)[1] if p.name.count('.') >= 2 else ''
+                profiles.append(dict(id=p.name, label=('批次固定配置' if p.name.startswith('model.run-') else profile_label(p)), internal=p.name.startswith('model.run-'), provider=provider, base_url=obj.get('LCR_LLM_BASE_URL', ''), review_ready=bool(obj.get('LCR_LLM_BASE_URL') and obj.get('LCR_LLM_TOKEN') and obj.get('LCR_LLM_MODEL')), review_model=obj.get('LCR_LLM_MODEL', '未设置'),
                                      stream_enabled=normalize_stream_mode(obj.get('LCR_LLM_STREAM', 'false')) == 'true',
                                      judge_model=obj.get('JUDGE_MODEL', '未设置'),
                                      ready=bool(obj.get('LCR_LLM_TOKEN') and obj.get('JUDGE_API_KEY'))))

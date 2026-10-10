@@ -46,8 +46,8 @@ def _authorize_origin(public, csrf):
     origin = request.headers.get('Origin')
     if origin and origin != public:
         return jsonify(error='不接受跨站请求'), 403
-    if request.method == 'POST' and (g.bench_role != 'operator' or origin != public):
-        message = '只读用户不能执行或停止任务' if g.bench_role != 'operator' else '缺少可信页面来源'
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and (g.bench_role != 'operator' or origin != public):
+        message = '只读用户不能修改工作台配置或任务' if g.bench_role != 'operator' else '缺少可信页面来源'
         return jsonify(error=message), 403
     if request.path.startswith('/api/') and not secrets.compare_digest(request.headers.get('X-Dashboard-Token',''), csrf):
         return jsonify(error='页面会话失效，请刷新'), 403
@@ -182,6 +182,14 @@ def create_app(dashboard=None):
     def profiles():
         from .profiles import create_profile
         return jsonify(create_profile(dashboard, request.get_json())),201
+    @app.put('/api/profiles/<profile_id>')
+    def update_model_profile(profile_id):
+        from .profiles import update_profile
+        return jsonify(update_profile(dashboard, profile_id, request.get_json()))
+    @app.delete('/api/profiles/<profile_id>')
+    def delete_model_profile(profile_id):
+        from .profiles import delete_profile
+        return jsonify(delete_profile(dashboard, profile_id))
     @app.post('/api/jobs')
     def jobs():
         data=request.get_json()

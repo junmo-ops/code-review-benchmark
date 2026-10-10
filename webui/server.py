@@ -140,6 +140,38 @@ def handler_for(app, token):
                 self.send(400, {'error':app.redact(str(exc)) if isinstance(exc,ValueError) else '操作参数或文件不可用'})
             except Exception:
                 self.send(500, {'error':'操作未完成，请查看日志'})
+
+        def _profile_mutation(self, method):
+            if not self.authorized(mutation=True):
+                return
+            try:
+                prefix = '/api/profiles/'
+                if not self.path.startswith(prefix):
+                    return self.send(404, {'error':'操作不存在'})
+                from urllib.parse import unquote
+                profile_id = unquote(self.path[len(prefix):])
+                if not profile_id or '/' in profile_id or '\\' in profile_id:
+                    raise ValueError('模型配置标识无效')
+                if method == 'PUT':
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 16384 or self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                        raise ValueError('请求大小或格式不合法')
+                    from .profiles import update_profile
+                    result = update_profile(app, profile_id, json.loads(self.rfile.read(length)))
+                else:
+                    from .profiles import delete_profile
+                    result = delete_profile(app, profile_id)
+                self.send(200, result)
+            except (ValueError, KeyError, OSError) as exc:
+                self.send(400, {'error':app.redact(str(exc)) if isinstance(exc,ValueError) else '操作参数或文件不可用'})
+            except Exception:
+                self.send(500, {'error':'操作未完成，请查看日志'})
+
+        def do_PUT(self):
+            self._profile_mutation('PUT')
+
+        def do_DELETE(self):
+            self._profile_mutation('DELETE')
     return Handler
 
 

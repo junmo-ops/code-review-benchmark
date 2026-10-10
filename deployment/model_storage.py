@@ -180,6 +180,19 @@ def persist_profile(root, filename):
     return True
 
 
+def remove_profile(root, filename):
+    from webui.case_storage import mode
+    if mode() != 'cos':
+        return False
+    storage = ModelProfileStorage(root)
+    key = storage._key(filename)
+    try:
+        storage.client.delete_object(Bucket=storage.bucket, Key=key)
+    except Exception:
+        raise RuntimeError('模型配置未能从 COS 删除；请检查私有前缀的删除权限后重试') from None
+    return True
+
+
 def restore_profiles(root=ROOT):
     from webui.case_storage import mode
     if mode() != 'cos':

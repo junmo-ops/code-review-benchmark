@@ -15,7 +15,7 @@ const inSuite = (id, chosen) => id===chosen || (chosen==='swe_prbench_llm'&&id==
 const isExperimentGroup = key => state.comparisons?.some(c=>c.report.groups.some(g=>g.key===key));
 const suiteName = id => state?.catalog.find(c=>c.id===id)?.name || (id==='swe_prbench' ? 'SWE-PRBench（旧协议）' : id);
 function toast(s){$('#toast').textContent=s;$('#toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').hidden=true,5000)}
-async function api(path, data){const response=await fetch(path,{headers:{'X-Dashboard-Token':token,...(data?{'Content-Type':'application/json'}:{})},...(data?{method:'POST',body:JSON.stringify(data)}:{})});let body;try{body=await response.json()}catch{throw Error('页面服务暂不可用')}if(!response.ok)throw Error(body.error || '操作失败');return body}
+async function api(path, data, method){const options={headers:{'X-Dashboard-Token':token}};if(data){options.headers['Content-Type']='application/json';options.method=method||'POST';options.body=JSON.stringify(data)}else if(method)options.method=method;const response=await fetch(path,options);let body;try{body=await response.json()}catch{throw Error('页面服务暂不可用')}if(!response.ok)throw Error(body.error || '操作失败');return body}
 function options(node,values,wanted){const old=wanted ?? node.value;node.innerHTML=values.map(v=>`<option value="${esc(v.value)}">${esc(v.label)}</option>`).join('');if(values.some(v=>v.value===old))node.value=old;}
 function availableModel(p){return p.id!=='environment'||p.review_ready===true}
 function profileOptions(node,wanted){options(node,state.profiles.filter(p=>availableModel(p)&&(!p.internal||p.id===wanted)).map(p=>({value:p.id,label:`${p.label} · ${p.review_model}`})),wanted)}
@@ -292,23 +292,32 @@ function renderModels(){
  $('#model-list').innerHTML=profiles.map(p=>{
  const test=modelTests.get(p.id), passed=test?.results?.every(r=>r.status==='passed');
  const title=p.review_model||'未设置模型';
- const provider=/qwen/i.test(title)?['Q','Qwen','qwen']:/deepseek/i.test(title)?['D','DeepSeek','deepseek']:/gpt/i.test(title)?['O','OpenAI','openai']:['M','兼容接口','generic'];
+ const provider=p.provider==='qwen'?['Q','Qwen','qwen']:p.provider==='deepseek'?['D','DeepSeek','deepseek']:/qwen/i.test(title)?['Q','Qwen','qwen']:/deepseek/i.test(title)?['D','DeepSeek','deepseek']:/gpt/i.test(title)?['O','OpenAI','openai']:['M','兼容接口','generic'];
  const tone=test?.pending?'checking':passed?'passed':test?'warning':p.review_ready?'untested':'incomplete';
  const status=test?.pending?'测试中':passed?'连通正常':test?'需检查':p.review_ready?'未测试':'待完善';
- return `<article class="model-card"><div class="model-card-head"><div class="provider-mark ${provider[2]}" aria-hidden="true">${provider[0]}</div><div class="model-identity"><small>${provider[1]}</small><h3>${esc(p.label)}</h3></div><span class="model-status ${tone}">${status}</span></div><dl class="model-facts"><div><dt>可用角色</dt><dd>被测模型 / 裁判模型</dd></div><div><dt>模型 ID</dt><dd title="${esc(title)}">${esc(title)}</dd></div><div><dt>响应模式</dt><dd>${p.stream_enabled?'流式':'非流式'}</dd></div></dl>${test?`<div class="model-connection" role="status" aria-live="polite">${connectionResult(test)}</div>`:''}<div class="model-card-footer"><span>${test?.pending?'正在发送小请求':!p.review_ready?'请补齐配置后测试':'密钥已配置 · 不回显'}</span><button class="secondary" data-test-profile="${esc(p.id)}" ${state.access_role==='viewer'||modelTestBusy?'disabled':''}>${test?.pending?'测试中…':test?'重新测试':'测试连通性'}</button></div></article>`;
+ return `<article class="model-card"><div class="model-card-head"><div class="provider-mark ${provider[2]}" aria-hidden="true">${provider[0]}</div><div class="model-identity"><small>${provider[1]}</small><h3>${esc(p.label)}</h3></div><span class="model-status ${tone}">${status}</span></div><dl class="model-facts"><div><dt>可用角色</dt><dd>被测模型 / 裁判模型</dd></div><div><dt>模型 ID</dt><dd title="${esc(title)}">${esc(title)}</dd></div><div><dt>响应模式</dt><dd>${p.stream_enabled?'流式':'非流式'}</dd></div></dl>${test?`<div class="model-connection" role="status" aria-live="polite">${connectionResult(test)}</div>`:''}<div class="model-card-footer"><span>${test?.pending?'正在发送小请求':!p.review_ready?'请补齐配置后测试':'密钥已配置 · 不回显'}</span><div class="model-actions"><button class="secondary" data-test-profile="${esc(p.id)}" ${state.access_role==='viewer'||modelTestBusy?'disabled':''}>${test?.pending?'测试中…':test?'重新测试':'测试连通性'}</button>${p.id==='environment'?'':`<button class="secondary" data-edit-profile="${esc(p.id)}" ${state.access_role==='viewer'?'disabled':''}>编辑</button><button class="secondary danger" data-delete-profile="${esc(p.id)}" ${state.access_role==='viewer'?'disabled':''}>删除</button>`}</div></div></article>`;
  }).join('');
 }
-function openModel(){
+let editingProfileId='';
+function openModel(profile=null){
  if(!state||state.access_role==='viewer')return;
- $('#model-form').reset();$('#model-error').textContent='';
+ editingProfileId=profile?.id||'';
+ const form=$('#model-form');form.reset();$('#model-error').textContent='';
+ form.elements.profile_id.value=editingProfileId;
+ $('#model-title').textContent=profile?'编辑模型配置':'新增模型配置';
+ $('#save-model').textContent=profile?'保存修改':'保存配置';
+ const key=form.elements.api_key;key.required=!profile;key.value='';
+ key.placeholder=profile?'留空则保留现有密钥':'填写模型 API Key';
+ form.elements.provider.value=profile?.provider==='qwen'||/qwen/i.test(profile?.review_model||'')?'qwen':'deepseek';
+ if(profile){form.elements.name.value=profile.label||'';form.elements.model.value=profile.review_model==='未设置'?'':profile.review_model;form.elements.base_url.value=profile.base_url||'';form.elements.stream.checked=profile.stream_enabled===true;}
  $('#model-dialog').showModal();
 }
 $('#new-model').addEventListener('click',openModel);
 document.querySelectorAll('.close-model').forEach(b=>b.addEventListener('click',()=>$('#model-dialog').close()));
-$('#model-dialog').addEventListener('close',()=>{$('#model-form').reset();$('#model-error').textContent=''});
+$('#model-dialog').addEventListener('close',()=>{$('#model-form').reset();$('#model-error').textContent='';editingProfileId='';$('#model-title').textContent='新增模型配置';$('#save-model').textContent='保存配置';$('#model-form').elements.api_key.required=true});
 $('#model-form').addEventListener('submit',async event=>{
  event.preventDefault();$('#save-model').disabled=true;$('#model-error').textContent='';
- try{await api('/api/profiles',Object.fromEntries(new FormData(event.target)));$('#model-dialog').close();await refresh();toast('配置已保存，未调用模型。可新建测评验证。')}
+ try{const form=event.target;const data=Object.fromEntries(new FormData(form));delete data.profile_id;if(editingProfileId){data.stream=form.elements.stream.checked?'true':'false';await api('/api/profiles/'+encodeURIComponent(editingProfileId),data,'PUT')}else await api('/api/profiles',data);$('#model-dialog').close();await refresh();toast('配置已保存，未调用模型。已有批次仍使用创建时固定的配置。')}
  catch(e){$('#model-error').textContent=e.message}finally{$('#save-model').disabled=false}
 });
 
@@ -324,6 +333,8 @@ async function testModel(profileId){
  const target=$('#model-test-result');
  const version=modelTestVersion;
  const data=profileId?{profile_id:profileId}:Object.fromEntries(new FormData(form));
+ if(profileId==='environment')data.profile_id=profileId;
+ if(!profileId&&editingProfileId){data.profile_id=editingProfileId;data.stream=form.elements.stream.checked?'true':'false'}
  modelTestBusy=true;$('#test-model').disabled=true;$('#save-model').disabled=true;
  if(profileId){modelTests.set(profileId,{pending:true});renderModels()}else target.innerHTML=connectionResult({pending:true});
  $('#test-model').textContent='测试中…';
@@ -336,7 +347,10 @@ async function testModel(profileId){
 
 }
 $('#test-model').addEventListener('click',()=>testModel());
-$('#model-list').addEventListener('click',event=>{const b=event.target.closest('[data-test-profile]');if(b)testModel(b.dataset.testProfile)});
+$('#model-list').addEventListener('click',event=>{const test=event.target.closest('[data-test-profile]');if(test){testModel(test.dataset.testProfile);return}const edit=event.target.closest('[data-edit-profile]');if(edit){const profile=state.profiles.find(p=>p.id===edit.dataset.editProfile);if(profile)openModel(profile);return}const remove=event.target.closest('[data-delete-profile]');if(remove){const profile=state.profiles.find(p=>p.id===remove.dataset.deleteProfile);if(profile)confirmDeleteProfile(profile)}});
+let deletingProfile=null;
+function confirmDeleteProfile(profile){if(state.access_role==='viewer')return;deletingProfile=profile;$('#model-delete-description').textContent=`确定删除“${profile.label}”吗？删除后将从当前工作台和 COS 配置存储中移除。`;$('#model-delete-error').textContent='';$('#confirm-delete-profile').disabled=false;$('#model-delete-dialog').showModal()}
+$('#confirm-delete-profile').addEventListener('click',async event=>{event.preventDefault();if(!deletingProfile)return;const button=event.currentTarget;button.disabled=true;$('#model-delete-error').textContent='';try{await api('/api/profiles/'+encodeURIComponent(deletingProfile.id),null,'DELETE');modelTests.delete(deletingProfile.id);$('#model-delete-dialog').close();deletingProfile=null;await refresh();toast('模型配置已删除。已有批次仍保留创建时的配置。')}catch(error){$('#model-delete-error').textContent=error.message}finally{button.disabled=false}});
 
 
 

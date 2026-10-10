@@ -60,6 +60,7 @@
 .connection-row>div{flex:1;min-width:0}.connection-row strong{font-size:12px;font-weight:500}.connection-row div>span{display:block;font-size:11px;color:#7b8e86;margin-top:2px;overflow-wrap:anywhere}.connection-row.failed div>span{color:#a05e55}.connection-row>small{font-size:10px;color:#83958e;white-space:nowrap}
 .connection-caption{font-size:10px;color:#87958f;margin-top:8px;line-height:1.7}.connection-error{font-size:12px;color:var(--red);padding:8px 0;overflow-wrap:anywhere}.connection-progress{display:flex;gap:10px;align-items:center;color:#668278;font-size:12px;padding:10px 0}.connection-progress .spinner{width:15px;height:15px}
 .model-page-note{font-size:11px;color:#89979e;line-height:1.8;margin-top:20px}
+.model-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.model-card-footer .model-actions button{padding:7px 10px}.model-card-footer .danger{color:#a4473c;border-color:#ead1ce;background:#fff}.model-card-footer .danger:hover,.danger-button:hover{background:#fff2f0}.danger-button{background:#a4473c;border-color:#a4473c}
 #model-test-result:not(:empty){border:1px solid #e3ede7;border-radius:9px;background:#f8fbfa;padding:12px 15px;margin:14px 0}
 @media(max-width:1050px){.model-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.model-section-bar{align-items:flex-start;flex-direction:column;gap:6px}.model-card-head{padding:18px 16px}.model-facts{padding:0 16px 16px}.model-card-footer,.model-connection{padding:12px 16px}.connection-row{flex-wrap:wrap}.model-identity h3{font-size:14px}}

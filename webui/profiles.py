@@ -1,4 +1,4 @@
-"""Write-only model configuration creation; never return credentials."""
+"""Manage model configurations without exposing credentials."""
 import json
 import os
 import uuid
@@ -95,16 +95,115 @@ def create_profile(dashboard, data):
     return {'id': filename}
 
 
+def _managed_path(dashboard, profile_id):
+    if not isinstance(profile_id, str) or profile_id not in {p['id'] for p in dashboard.profiles() if not p.get('internal')}:
+        raise ValueError('模型配置不存在或不可修改')
+    path = dashboard.configs / profile_id
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('模型配置文件不存在或无效')
+    return path
+
+
+def _existing_profile(dashboard, profile_id, overrides=None):
+    path = _managed_path(dashboard, profile_id)
+    try:
+        current = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, ValueError):
+        raise ValueError('模型配置文件无法读取') from None
+    filename_provider = path.name.split('.', 2)[1] if path.name.count('.') >= 2 else ''
+    provider = filename_provider if filename_provider in {'deepseek', 'qwen'} else (
+        'qwen' if 'qwen' in current.get('LCR_LLM_MODEL', '').lower() else 'deepseek')
+    supplied = overrides if isinstance(overrides, dict) else {}
+    form = {
+        'provider': supplied.get('provider', provider),
+        'name': supplied.get('name', profile_label(path)),
+        'model': supplied.get('model', current.get('LCR_LLM_MODEL', '')),
+        'base_url': supplied.get('base_url', current.get('LCR_LLM_BASE_URL', '')),
+        'api_key': supplied.get('api_key') or current.get('LCR_LLM_TOKEN', ''),
+        'stream': supplied.get('stream', current.get('LCR_LLM_STREAM', 'false')),
+    }
+    return path, current, form
+
+
+def _write_private(path, content):
+    temp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(content)
+        temp.replace(path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def update_profile(dashboard, profile_id, data):
+    path, old_config, payload = _existing_profile(dashboard, profile_id, data)
+    old_config_bytes = path.read_bytes()
+    label_path = path.with_suffix('.label')
+    old_label_bytes = label_path.read_bytes() if label_path.is_file() and not label_path.is_symlink() else b''
+    original_provider = path.name.split('.', 2)[1] if path.name.count('.') >= 2 else ''
+    if original_provider in {'deepseek', 'qwen'} and payload.get('provider') != original_provider:
+        raise ValueError('模型厂商暂不支持修改；如需切换厂商，请新增一份配置')
+    payload['provider'] = original_provider if original_provider in {'deepseek', 'qwen'} else payload['provider']
+    payload.setdefault('stream', 'false')
+    label, config = resolve_profile(dashboard, payload)
+    with dashboard.lock:
+        if any(p['label'] == label and p['id'] != profile_id
+               for p in dashboard.profiles() if not p.get('internal')):
+            raise ValueError('显示名称已存在，请换一个便于区分的名称')
+        try:
+            _write_private(path, (json.dumps(config, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
+            _write_private(label_path, label.encode('utf-8'))
+            from deployment.model_storage import persist_profile
+            persist_profile(dashboard.root, profile_id)
+        except Exception as error:
+            _write_private(path, old_config_bytes)
+            if old_label_bytes:
+                _write_private(label_path, old_label_bytes)
+            else:
+                label_path.unlink(missing_ok=True)
+            if isinstance(error, RuntimeError):
+                raise ValueError(str(error)) from None
+            raise
+    return {'id': profile_id}
+
+
+def delete_profile(dashboard, profile_id):
+    path = _managed_path(dashboard, profile_id)
+    label_path = path.with_suffix('.label')
+    try:
+        old_config = path.read_bytes()
+        old_label = label_path.read_bytes() if label_path.exists() and not label_path.is_symlink() else None
+    except OSError:
+        raise ValueError('模型配置文件无法读取') from None
+    with dashboard.lock:
+        path.unlink()
+        label_path.unlink(missing_ok=True)
+        try:
+            from deployment.model_storage import remove_profile
+            remove_profile(dashboard.root, profile_id)
+        except Exception as error:
+            _write_private(path, old_config)
+            if old_label is not None:
+                _write_private(label_path, old_label)
+            if isinstance(error, RuntimeError):
+                raise ValueError(str(error)) from None
+            raise
+    return {'id': profile_id}
+
+
 def test_connection(dashboard, data):
     """Small real requests only on explicit click; no retries, response bodies or secrets returned."""
     from concurrent.futures import ThreadPoolExecutor
     if not isinstance(data, dict):
         raise ValueError('请求必须是对象')
     if 'profile_id' in data:
-        profile = data['profile_id']
-        if profile not in {p['id'] for p in dashboard.profiles()}:
-            raise ValueError('模型配置不存在')
-        config = dashboard.environment(profile)
+        if data['profile_id'] == 'environment':
+            config = dashboard.environment('environment')
+        else:
+            _, _, payload = _existing_profile(dashboard, data['profile_id'], data)
+            payload.setdefault('stream', 'false')
+            _, config = resolve_profile(dashboard, payload)
     else:
         _, config = resolve_profile(dashboard, data)
     roles = [('模型接口', 'LCR_LLM_BASE_URL', 'LCR_LLM_TOKEN', 'LCR_LLM_MODEL')]
