@@ -19,6 +19,8 @@ STATIC = Path(__file__).parent/'static'
 
 
 def handler_for(app, token):
+    from .case_import import start
+    start(app)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -34,8 +36,11 @@ def handler_for(app, token):
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             if download:
                 self.send_header('Content-Disposition', 'attachment; filename="'+download+'"')
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.end_headers()
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
 
         def authorized(self, mutation=False):
             hosts = {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
@@ -58,61 +63,53 @@ def handler_for(app, token):
             try:
                 parsed = urlsplit(self.path)
                 q = {k:v[0] for k,v in parse_qs(parsed.query).items()}
-                if is_page_route(parsed.path):
-                    data = (STATIC/'index.html').read_text(encoding='utf-8').replace('__TOKEN__',token).encode()
-                    return self.send(200, data, 'text/html; charset=utf-8')
-                if parsed.path == '/favicon.ico':
-                    return self.send(204, b'', 'image/x-icon')
-                if parsed.path in {'/app.js','/presentation.js','/style.css'}:
-                    path = STATIC/parsed.path[1:]
-                    return self.send(200, path.read_bytes(), 'text/javascript; charset=utf-8' if path.suffix=='.js' else 'text/css; charset=utf-8')
-                if parsed.path == '/api/state':
-                    return self.send(200, app.snapshot())
-                if parsed.path == '/api/log':
-                    return self.send(200, app.logs(q['job']))
-                if parsed.path == '/api/comparison-case':
-                    from .experiment_view import case_evidence
-                    return self.send(200,case_evidence(app,q['key'],q['group'],q['case']))
-                if parsed.path == '/api/artifact':
-                    return self.send(200, app.artifact(q['key'],q['path']))
-                if parsed.path == '/api/export':
-                    root=app.run_dir(q['key'])
-                    path=root.parent/(root.name+'-results.tar.gz')
-                    if not path.is_file() or path.is_symlink():
-                        raise ValueError('请先生成结果归档')
-                    return self.send(200, path.read_bytes(), 'application/gzip', root.name+'-results.tar.gz')
-                self.send(404, {'error':'页面不存在'})
+                return self._dispatch_get(parsed, q)
             except (ValueError, KeyError, OSError) as exc:
-                self.send(400, {'error':app.redact(str(exc)) if isinstance(exc,ValueError) else '文件不可用，请检查批次记录'})
+                return self._handle_get_error(exc)
             except Exception:
                 self.send(500, {'error':'读取失败，请查看页面服务终端'})
+
+        def _dispatch_get(self, parsed, query):
+            if is_page_route(parsed.path):
+                data = (STATIC/'index.html').read_text(encoding='utf-8').replace('__TOKEN__',token).encode()
+                return self.send(200, data, 'text/html; charset=utf-8')
+            if parsed.path == '/favicon.ico':
+                return self.send(204, b'', 'image/x-icon')
+            if parsed.path in {'/app.js','/presentation.js','/style.css'}:
+                path = STATIC/parsed.path[1:]
+                content_type = 'text/javascript; charset=utf-8' if path.suffix=='.js' else 'text/css; charset=utf-8'
+                return self.send(200, path.read_bytes(), content_type)
+            if parsed.path == '/api/state':
+                return self.send(200, app.snapshot())
+            if parsed.path == '/api/cases/imports':
+                from .case_import import current
+                return self.send(200, {'task': current(app)})
+            if parsed.path == '/api/log':
+                return self.send(200, app.logs(query['job']))
+            if parsed.path == '/api/comparison-case':
+                from .experiment_view import case_evidence
+                return self.send(200,case_evidence(app,query['key'],query['group'],query['case']))
+            if parsed.path == '/api/artifact':
+                return self.send(200, app.artifact(query['key'],query['path']))
+            if parsed.path == '/api/export':
+                root=app.run_dir(query['key'])
+                path=root.parent/(root.name+'-results.tar.gz')
+                if not path.is_file() or path.is_symlink():
+                    raise ValueError('请先生成结果归档')
+                return self.send(200, path.read_bytes(), 'application/gzip', root.name+'-results.tar.gz')
+            return self.send(404, {'error':'页面不存在'})
+
+        def _handle_get_error(self, exc):
+            message = app.redact(str(exc)) if isinstance(exc,ValueError) else '文件不可用，请检查批次记录'
+            return self.send(400, {'error':message})
 
         def do_POST(self):
             if not self.authorized(mutation=True):
                 return
             try:
                 length = int(self.headers.get('Content-Length','0'))
-                if self.path == '/api/cases/upload':
-                    if os.environ.get('BENCH_CASE_UPLOAD') != '1':
-                        return self.send(404, {'error':'当前工作台未启用案例上传'})
-                    from .case_upload import limits, receive_archive
-                    config = limits()
-                    if not 0 < length <= config['upload_max_bytes']:
-                        self.close_connection = True
-                        return self.send(413, {'error':'案例 ZIP 上限为 ' + config['upload_max_label']})
-                    if self.headers.get('Content-Type', '').split(';')[0] != 'application/zip':
-                        self.close_connection = True
-                        raise ValueError('请选择 ZIP 文件上传')
-                    from .case_assets import install
-                    with tempfile.TemporaryDirectory(prefix='case-upload-', dir=app.data) as folder:
-                        archive = Path(folder) / 'cases.zip'
-                        receive_archive(self.rfile, archive, length)
-                        try:
-                            return self.send(200, install(app, archive))
-                        except (zipfile.BadZipFile, RuntimeError):
-                            raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
-                        except subprocess.CalledProcessError:
-                            raise ValueError('案例 Git 历史准备失败，请查看服务终端；可以重新上传') from None
+                if self.path in {'/api/cases/upload', '/api/repositories/upload'}:
+                    return self._upload_case_resource(length)
                 if not 0 < length <= 16384:
                     raise ValueError('请求大小不合法')
                 if self.headers.get('Content-Type','').split(';')[0] != 'application/json':
@@ -120,26 +117,75 @@ def handler_for(app, token):
                 request = json.loads(self.rfile.read(length))
                 if not isinstance(request,dict):
                     raise ValueError('请求格式错误')
-                if self.path == '/api/comparisons':
-                    from .experiment_view import submit_named
-                    return self.send(202, submit_named(app, request, comparison=True))
-                if self.path == '/api/profiles/test':
-                    from .profiles import test_connection
-                    return self.send(200, test_connection(app, request))
-                if self.path == '/api/profiles':
-                    from .profiles import create_profile
-                    return self.send(201, create_profile(app, request))
-                if self.path == '/api/jobs':
-                    from .experiment_view import submit_named
-                    return self.send(202, submit_named(app, request))
-                if self.path == '/api/stop':
-                    app.stop(request['job'])
-                    return self.send(200, {'ok':True})
-                self.send(404, {'error':'操作不存在'})
+                return self._dispatch_post(request)
             except (ValueError, KeyError, OSError) as exc:
-                self.send(400, {'error':app.redact(str(exc)) if isinstance(exc,ValueError) else '操作参数或文件不可用'})
+                return self._handle_post_error(exc)
             except Exception:
                 self.send(500, {'error':'操作未完成，请查看日志'})
+
+        def _dispatch_post(self, request):
+            if self.path == '/api/comparisons':
+                from .experiment_view import submit_named
+                return self.send(202, submit_named(app, request, comparison=True))
+            if self.path in {'/api/cases/manage', '/api/repositories/manage'}:
+                return self._manage_case_resource(request)
+            if self.path == '/api/profiles/test':
+                from .profiles import test_connection
+                return self.send(200, test_connection(app, request))
+            if self.path == '/api/profiles':
+                from .profiles import create_profile
+                return self.send(201, create_profile(app, request))
+            if self.path == '/api/jobs':
+                from .experiment_view import submit_named
+                return self.send(202, submit_named(app, request))
+            if self.path == '/api/stop':
+                app.stop(request['job'])
+                return self.send(200, {'ok':True})
+            return self.send(404, {'error':'操作不存在'})
+
+        def _handle_post_error(self, exc):
+            if isinstance(exc, OSError) and self.path in {'/api/cases/upload', '/api/repositories/upload'}:
+                kind = '仓库 ZIP' if self.path == '/api/repositories/upload' else '案例 ZIP'
+                print(f'{kind}导入文件错误：{type(exc).__name__}: {exc}', flush=True)
+                message = kind+'导入时服务端文件读写失败，请检查服务终端日志、运行目录权限和磁盘空间'
+            else:
+                message = app.redact(str(exc)) if isinstance(exc,ValueError) else '操作参数或文件不可用'
+            return self.send(400, {'error':message})
+
+        def _upload_case_resource(self, length):
+            if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+                return self.send(404, {'error':'当前工作台未启用案例上传'})
+            from .case_upload import limits, receive_archive
+            config = limits()
+            if not 0 < length <= config['upload_max_bytes']:
+                self.close_connection = True
+                return self.send(413, {'error':'上传 ZIP 上限为 ' + config['upload_max_label']})
+            if self.headers.get('Content-Type', '').split(';')[0] != 'application/zip':
+                self.close_connection = True
+                raise ValueError('请选择 ZIP 文件上传')
+            from .case_assets import install_repositories
+            repository_upload = self.path == '/api/repositories/upload'
+            prefix, filename = ('repo-upload-', 'repositories.zip') if repository_upload else ('case-upload-', 'cases.zip')
+            with tempfile.TemporaryDirectory(prefix=prefix, dir=app.data) as folder:
+                archive = Path(folder) / filename
+                receive_archive(self.rfile, archive, length)
+                try:
+                    if not repository_upload:
+                        from .case_import import submit
+                        return self.send(202, submit(app, archive))
+                    return self.send(200, install_repositories(app, archive))
+                except (zipfile.BadZipFile, RuntimeError):
+                    kind = '仓库 ZIP' if repository_upload else '案例 ZIP'
+                    raise ValueError(kind + '无效，请检查文件格式') from None
+                except subprocess.CalledProcessError:
+                    raise ValueError('案例 Git 历史准备失败，请查看服务终端；可以重新上传') from None
+
+        def _manage_case_resource(self, request):
+            if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+                return self.send(404, {'error':'当前工作台未开启资源管理'})
+            from .case_assets import manage_case_dataset, manage_repository
+            operation = manage_case_dataset if self.path == '/api/cases/manage' else manage_repository
+            return self.send(200, operation(app, request))
 
         def _profile_mutation(self, method):
             if not self.authorized(mutation=True):

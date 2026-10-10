@@ -604,6 +604,8 @@ class Dashboard:
                 raise
 
     def enqueue(self, job, request, spec):
+        from .case_import import ensure_idle
+        ensure_idle(self)
         job_id=job['id'];key=job['key'];profile=job['profile']
         self.jobs[job_id] = job
         self.active = job_id

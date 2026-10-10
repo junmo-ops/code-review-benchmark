@@ -3,6 +3,7 @@ import os
 import secrets
 import subprocess
 import tempfile
+import traceback
 import zipfile
 from urllib.parse import urlsplit
 from pathlib import Path
@@ -37,7 +38,7 @@ def _authenticate_identity(public, proxy, mode, basic_user, basic_password):
 
 
 def _set_upload_limit():
-    if request.path == '/api/cases/upload':
+    if request.path in {'/api/cases/upload', '/api/repositories/upload'}:
         from .case_upload import limits
         request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
 
@@ -98,12 +99,16 @@ def create_app(dashboard=None):
     def invalid(exc):return jsonify(error=dashboard.redact(str(exc))),400
     @app.errorhandler(KeyError)
     @app.errorhandler(OSError)
-    def unavailable(exc):return jsonify(error='文件或参数不可用，请检查记录'),400
+    def unavailable(exc):
+        details = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        app.logger.error('请求处理失败：%s %s\n%s', request.method, request.path,
+                         dashboard.redact(details))
+        return jsonify(error='文件或参数不可用，请检查记录'),400
     @app.errorhandler(413)
     def too_large(exc):
         from .case_upload import limits
-        if request.path == '/api/cases/upload':
-            message = '案例 ZIP 上限为 ' + limits()['upload_max_label']
+        if request.path in {'/api/cases/upload', '/api/repositories/upload'}:
+            message = '上传 ZIP 上限为 ' + limits()['upload_max_label']
         else:
             message = '请求过大，JSON 请求上限为 16 KB'
         return jsonify(error=message),413
@@ -121,16 +126,50 @@ def create_app(dashboard=None):
             stream, length = upload.stream, None
         else:
             raise ValueError('请选择 ZIP 文件上传')
-        from .case_assets import install
+        from .case_import import submit
         with tempfile.TemporaryDirectory(prefix='case-upload-', dir=dashboard.data) as folder:
             archive = Path(folder) / 'cases.zip'
             receive_archive(stream, archive, length)
+            return jsonify(submit(dashboard, archive)),202
+    @app.get('/api/cases/imports')
+    def case_import_status():
+        from .case_import import current
+        return jsonify(task=current(dashboard))
+    @app.post('/api/repositories/upload')
+    def upload_repositories():
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前部署未启用案例资源上传'),404
+        if request.mimetype != 'application/zip':
+            raise ValueError('请选择 ZIP 格式的仓库资源包')
+        from .case_upload import receive_archive
+        from .case_assets import install_repositories
+        with tempfile.TemporaryDirectory(prefix='repo-upload-', dir=dashboard.data) as folder:
+            archive = Path(folder) / 'repositories.zip'
+            receive_archive(request.stream, archive, request.content_length)
             try:
-                return jsonify(install(dashboard, archive))
+                return jsonify(install_repositories(dashboard, archive))
             except (zipfile.BadZipFile, RuntimeError):
-                raise ValueError('ZIP 无效或需要解密，请检查文件格式') from None
+                raise ValueError('仓库 ZIP 无效，请检查文件格式') from None
             except subprocess.CalledProcessError:
-                raise ValueError('案例 Git 历史准备失败，请查看服务器日志；可以重新上传') from None
+                raise ValueError('Git bundle 校验失败，请查看服务器日志') from None
+    @app.post('/api/cases/manage')
+    def manage_cases():
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前工作台未开启案例集管理'), 404
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise ValueError('案例集操作参数无效')
+        from .case_assets import manage_case_dataset
+        return jsonify(manage_case_dataset(dashboard, payload))
+    @app.post('/api/repositories/manage')
+    def manage_repositories():
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前工作台未开启仓库管理'), 404
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise ValueError('仓库操作参数无效')
+        from .case_assets import manage_repository
+        return jsonify(manage_repository(dashboard, payload))
     @app.post('/api/recovery')
     def acknowledge_recovery():
         value = request.get_json()
@@ -202,4 +241,6 @@ def create_app(dashboard=None):
         data=request.get_json()
         if not isinstance(data,dict):raise ValueError('请求必须为对象')
         dashboard.stop(data['job'],actor=g.bench_user[:200]);return jsonify(ok=True)
+    from .case_import import start
+    start(dashboard)
     return app

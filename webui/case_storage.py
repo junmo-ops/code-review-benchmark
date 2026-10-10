@@ -297,13 +297,24 @@ def persist_uploaded_archive(data, archive):
 
 
 def persist_case_upload(data, archive):
-    if mode() != 'cos':
-        return None
+    storage_mode = mode()
     with zipfile.ZipFile(archive) as source:
-        modular = 'manifest.json' in source.namelist()
-    if modular:
+        manifest = json.loads(source.read('manifest.json').decode('utf-8-sig')) if 'manifest.json' in source.namelist() else None
+    if manifest and manifest.get('format') == 'code-review-benchmark-case-config-v1':
+        if storage_mode == 'cos':
+            return CaseAssetStorage(data).store_case_config_assets(archive, data)
+        return None
+    if storage_mode != 'cos':
+        return None
+    if manifest:
         return CaseAssetStorage(data).store_archive_assets(archive, data)
     return persist_uploaded_archive(data, archive)
+
+
+def persist_repository_upload(data, versions):
+    if mode() != 'cos':
+        return None
+    return CaseAssetStorage(data).store_repository_versions(data, versions)
 
 
 class CaseAssetStorage(CaseArchiveStorage):
@@ -314,6 +325,135 @@ class CaseAssetStorage(CaseArchiveStorage):
 
     def _repository_key(self, slug, digest):
         return f'{self.assets_prefix}repositories/{slug}/{digest}.bundle'
+
+    def _repository_pool_key(self, slug, digest):
+        return f'{self.prefix}/v3/repositories/{slug}/{digest}.bundle'
+
+    def restore_repository_bundle(self, slug, record):
+        target = self.asset_cache / (record['sha256'] + '.bundle')
+        self._download_object(self._repository_pool_key(slug, record['sha256']), target,
+                              record['size'], record['sha256'])
+        return target
+
+    def rename_dataset(self, suite, digest, name):
+        path = self._local_record_path(self.data, suite, digest)
+        try:
+            record = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            raise RuntimeError('找不到案例集的 COS 记录，无法修改名称') from None
+        self._validate_record(record, self._dataset_prefix(suite, digest) + 'record.json')
+        record['name'] = name
+        encoded = json.dumps(record, ensure_ascii=False, sort_keys=True).encode('utf-8')
+        self._put_stream(self._dataset_prefix(suite, digest) + 'record.json', io.BytesIO(encoded), len(encoded),
+                         hashlib.sha256(encoded).hexdigest(), 'application/json')
+        self._save_local_record(self.data, record)
+
+    def delete_dataset(self, suite, digest):
+        for suffix in ('record.json', 'dataset.jsonl'):
+            self.client.delete_object(Bucket=self.bucket, Key=self._dataset_prefix(suite, digest) + suffix)
+        self._local_record_path(self.data, suite, digest).unlink(missing_ok=True)
+
+    def delete_repository(self, slug, versions, registry):
+        self._upload_repository_registry(registry)
+        for version in versions:
+            digest = version.get('sha256') if isinstance(version, dict) else None
+            if isinstance(digest, str) and ARCHIVE_ID.fullmatch(digest):
+                self.client.delete_object(Bucket=self.bucket, Key=self._repository_pool_key(slug, digest))
+        self._save_repository_registry(self.data, registry)
+
+    def store_repository_archive(self, archive, data):
+        from .case_assets import repository_registry
+        registry = repository_registry(data)
+        with zipfile.ZipFile(archive) as source:
+            manifest = json.loads(source.read('manifest.json').decode('utf-8-sig'))
+            for slug, repo in manifest['repositories'].items():
+                record = manifest['files'][f'bundles/{slug}.bundle']
+                with source.open(f'bundles/{slug}.bundle') as bundle:
+                    self._put_stream(self._repository_pool_key(slug, record['sha256']), bundle,
+                                     record['size'], record['sha256'], 'application/octet-stream')
+                entry = registry['repositories'].get(slug, {'repo': repo['name'], 'versions': [], 'current': ''})
+                if entry.get('repo') != repo['name'] or not isinstance(entry.get('versions'), list):
+                    raise RuntimeError('仓库名称与 COS 中已有资源不一致：' + slug)
+                version = {'sha256': record['sha256'], 'size': record['size'],
+                           'file': f'case-repositories/objects/{record["sha256"]}.bundle'}
+                if not any(item['sha256'] == version['sha256'] for item in entry['versions']):
+                    entry['versions'].append(version)
+                entry['current'] = version['sha256']
+                registry['repositories'][slug] = entry
+            self._upload_repository_registry(registry)
+        self._save_repository_registry(data, registry)
+
+    def store_repository_versions(self, data, versions):
+        from .case_assets import repository_registry
+        registry = repository_registry(data)
+        for slug, record in versions.items():
+            path = Path(data) / 'case-repositories' / 'objects' / (record['sha256'] + '.bundle')
+            if path.stat().st_size != record['size'] or _sha256(path) != record['sha256']:
+                raise RuntimeError('本地仓库 bundle 校验失败：' + slug)
+            with path.open('rb') as bundle:
+                self._put_stream(self._repository_pool_key(slug, record['sha256']), bundle,
+                                 record['size'], record['sha256'], 'application/octet-stream')
+        self._upload_repository_registry(registry)
+        self._save_repository_registry(data, registry)
+
+    def _upload_repository_registry(self, registry):
+        encoded = json.dumps(registry, ensure_ascii=False, sort_keys=True).encode('utf-8')
+        key = f'{self.prefix}/v3/repositories/registry.json'
+        self._put_stream(key, io.BytesIO(encoded), len(encoded), hashlib.sha256(encoded).hexdigest(),
+                         'application/json')
+
+    def _save_repository_registry(self, data, registry):
+        from .case_assets import repository_registry_path
+        target = repository_registry_path(data)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix('.tmp')
+        temporary.write_text(json.dumps(registry, ensure_ascii=False, sort_keys=True), encoding='utf-8')
+        temporary.replace(target)
+
+    def _restore_repository_registry(self, data):
+        key = f'{self.prefix}/v3/repositories/registry.json'
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            raw = response['Body'].read(16 * 1024 * 1024 + 1)
+            if len(raw) > 16 * 1024 * 1024:
+                raise ValueError
+            value = json.loads(raw.decode('utf-8'))
+            if not isinstance(value, dict) or not isinstance(value.get('repositories'), dict):
+                raise ValueError
+        except Exception as error:
+            if getattr(error, 'response', {}).get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                return
+            raise RuntimeError('无法恢复 COS 仓库资源清单') from None
+        self._save_repository_registry(data, value)
+
+    def store_case_config_assets(self, archive, data):
+        from .case_assets import _registry
+        from runner.cloud import checked_instances
+        with zipfile.ZipFile(archive) as source:
+            manifest = json.loads(source.read('manifest.json').decode('utf-8-sig'))
+            suite = manifest['suite']
+            digest = manifest['files']['dataset.jsonl']['sha256']
+            dataset_path = Path(data) / 'case-datasets' / suite / digest / 'dataset.jsonl'
+            cases = checked_instances(dataset_path, suite)
+            row = next((item for item in _registry(data)['datasets']
+                        if item.get('suite') == suite and item.get('dataset_sha256') == digest), None)
+            refs = row.get('repository_versions') if row else None
+            if not isinstance(refs, dict) or not refs:
+                raise RuntimeError('案例配置未固定仓库版本')
+            repositories = {slug: dict(item) for slug, item in refs.items()}
+            self._store_dataset_record(data, row['name'], suite, digest, dataset_path, cases, repositories)
+
+    def _store_dataset_record(self, data, name, suite, digest, dataset_path, cases, repositories):
+        dataset_key = self._dataset_prefix(suite, digest) + 'dataset.jsonl'
+        with dataset_path.open('rb') as stream:
+            self._put_stream(dataset_key, stream, dataset_path.stat().st_size, digest, 'application/x-ndjson')
+        entry = {'format': 'code-review-benchmark-case-assets-v2', 'name': name.strip(),
+                 'suite': suite, 'count': len(cases), 'dataset_sha256': digest,
+                 'dataset_size': dataset_path.stat().st_size, 'repositories': repositories}
+        encoded = json.dumps(entry, ensure_ascii=False, sort_keys=True).encode('utf-8')
+        self._put_stream(self._dataset_prefix(suite, digest) + 'record.json', io.BytesIO(encoded), len(encoded),
+                         hashlib.sha256(encoded).hexdigest(), 'application/json')
+        self._save_local_record(data, entry)
 
     def _local_record_path(self, data, suite, digest):
         return Path(data) / 'case-assets' / 'records' / suite / (digest + '.json')
@@ -356,27 +496,55 @@ class CaseAssetStorage(CaseArchiveStorage):
                 if _sha256(dataset_path) != digest:
                     raise RuntimeError('案例清单 SHA256 校验失败')
                 cases = checked_instances(dataset_path, suite)
-                dataset_key = self._dataset_prefix(suite, digest) + 'dataset.jsonl'
-                with dataset_path.open('rb') as dataset_stream:
-                    self._put_stream(dataset_key, dataset_stream, dataset_path.stat().st_size, digest,
-                                     'application/x-ndjson')
+            from .case_assets import _registry
+            row = next((item for item in _registry(data)['datasets']
+                        if item.get('suite') == suite and item.get('dataset_sha256') == digest), None)
+            if row is None:
+                raise RuntimeError('本地案例集注册记录缺失')
+            local_record = self._local_record_path(data, suite, digest)
+            dataset_name = row['name']
+            if local_record.is_file():
+                dataset_name = self._validate_existing_local_record(local_record, suite, digest)['name']
+            registered_dataset = Path(data) / row['file']
             repositories = {}
             for slug in sorted({case.repo.replace('/', '__') for case in cases}):
                 name = f'bundles/{slug}.bundle'
-                record = manifest['files'][name]
-                key = self._repository_key(slug, record['sha256'])
-                with source.open(name) as bundle:
-                    self._put_stream(key, bundle, record['size'], record['sha256'],
-                                     'application/octet-stream')
-                repositories[slug] = {'sha256': record['sha256'], 'size': record['size']}
-            entry = {'format': 'code-review-benchmark-case-assets-v2', 'name': manifest['name'].strip(),
-                     'suite': suite, 'count': len(cases), 'dataset_sha256': digest,
-                     'dataset_size': dataset_record['size'], 'repositories': repositories}
-            encoded = json.dumps(entry, ensure_ascii=False, sort_keys=True).encode('utf-8')
-            record_key = self._dataset_prefix(suite, digest) + 'record.json'
-            self._put_stream(record_key, io.BytesIO(encoded), len(encoded),
-                             hashlib.sha256(encoded).hexdigest(), 'application/json')
-            self._save_local_record(data, entry)
+                record = self._pinned_repository_record(row, slug, manifest['files'][name])
+                pool_key = self._repository_pool_key(slug, record['sha256'])
+                bundle_path = Path(data) / 'case-repositories' / 'objects' / (record['sha256'] + '.bundle')
+                if (bundle_path.is_file() and bundle_path.stat().st_size == record['size']
+                        and _sha256(bundle_path) == record['sha256']):
+                    with bundle_path.open('rb') as bundle:
+                        self._put_stream(pool_key, bundle, record['size'], record['sha256'],
+                                         'application/octet-stream')
+                else:
+                    if record['sha256'] != manifest['files'][name]['sha256']:
+                        raise RuntimeError('本地固定仓库版本缺失，拒绝改写案例集版本绑定：' + slug)
+                    with source.open(name) as bundle:
+                        self._put_stream(pool_key, bundle, record['size'], record['sha256'],
+                                         'application/octet-stream')
+                repositories[slug] = {'sha256': record['sha256'], 'size': record['size'],
+                                      'source': 'repository-pool'}
+            from .case_assets import repository_registry
+            self._upload_repository_registry(repository_registry(data))
+            self._store_dataset_record(data, dataset_name, suite, digest, registered_dataset, cases, repositories)
+
+    def _validate_existing_local_record(self, path, suite, digest):
+        try:
+            record = json.loads(path.read_text(encoding='utf-8'))
+            self._validate_record(record, self._dataset_prefix(suite, digest) + 'record.json')
+        except (OSError, ValueError, KeyError, TypeError):
+            raise RuntimeError('已有案例集 COS 记录无效，拒绝覆盖其仓库版本绑定') from None
+        return record
+
+    @staticmethod
+    def _pinned_repository_record(row, slug, archive_record):
+        references = row.get('repository_versions')
+        pinned = references.get(slug, {}) if isinstance(references, dict) else {}
+        digest, size = pinned.get('sha256'), pinned.get('size')
+        if not isinstance(digest, str) or not ARCHIVE_ID.fullmatch(digest) or type(size) is not int or size <= 0:
+            digest, size = archive_record['sha256'], archive_record['size']
+        return {'sha256': digest, 'size': size}
 
     def _download_object(self, key, target, size, digest):
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -421,7 +589,40 @@ class CaseAssetStorage(CaseArchiveStorage):
             self._validate_record(record, key)
         except Exception:
             raise RuntimeError('COS 案例资源清单格式无效') from None
+        record = self._migrate_legacy_repository_refs(record, dashboard.data)
         self._restore_record_files(dashboard, record)
+
+    def _migrate_legacy_repository_refs(self, record, data):
+        legacy = [(slug, item) for slug, item in record['repositories'].items()
+                  if item.get('source', 'case-archive') == 'case-archive']
+        if not legacy:
+            return record
+        from .case_assets import _register_repository_version, repository_registry
+        from .service import save
+        registry = repository_registry(data)
+        for slug, item in legacy:
+            existing = registry['repositories'].get(slug, {})
+            current = existing.get('current') if isinstance(existing, dict) else None
+            target = self.asset_cache / (item['sha256'] + '.bundle')
+            self._download_object(self._repository_key(slug, item['sha256']), target,
+                                  item['size'], item['sha256'])
+            key = self._repository_pool_key(slug, item['sha256'])
+            with target.open('rb') as bundle:
+                self._put_stream(key, bundle, item['size'], item['sha256'], 'application/octet-stream')
+            pool_record = {'sha256': item['sha256'], 'size': item['size'],
+                           'file': f'case-repositories/objects/{item["sha256"]}.bundle'}
+            _register_repository_version(registry, slug, slug.replace('__', '/'), pool_record)
+            if current and current != item['sha256']:
+                registry['repositories'][slug]['current'] = current
+            item['source'] = 'repository-pool'
+        self._upload_repository_registry(registry)
+        from .case_assets import repository_registry_path
+        save(repository_registry_path(data), registry)
+        encoded = json.dumps(record, ensure_ascii=False, sort_keys=True).encode('utf-8')
+        self._put_stream(self._dataset_prefix(record['suite'], record['dataset_sha256']) + 'record.json',
+                         io.BytesIO(encoded), len(encoded), hashlib.sha256(encoded).hexdigest(),
+                         'application/json')
+        return record
 
     def _validate_record(self, record, key):
         if not isinstance(record, dict):
@@ -436,8 +637,7 @@ class CaseAssetStorage(CaseArchiveStorage):
         if (not self._valid_repository_records(repos, maximum)
                 or type(record.get('count')) is not int or record['count'] <= 0
                 or not isinstance(record.get('name'), str) or not record['name'].strip()
-                or type(dataset_size) is not int or not 0 < dataset_size <= maximum
-                or sum(item['size'] for item in repos.values()) + dataset_size > maximum):
+                or type(dataset_size) is not int or not 0 < dataset_size <= maximum):
             raise ValueError
 
     def _valid_record_identity(self, record, suite, digest, key):
@@ -454,7 +654,8 @@ class CaseAssetStorage(CaseArchiveStorage):
             if (not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slug)
                     or not isinstance(item, dict) or not isinstance(item.get('sha256'), str)
                     or not ARCHIVE_ID.fullmatch(item['sha256']) or type(item.get('size')) is not int
-                    or not 0 < item['size'] <= maximum):
+                    or not 0 < item['size'] <= maximum
+                    or item.get('source', 'case-archive') not in {'case-archive', 'repository-pool'}):
                 return False
         return True
 
@@ -473,9 +674,11 @@ class CaseAssetStorage(CaseArchiveStorage):
             raise RuntimeError('COS 案例清单中的案例与仓库资源不匹配')
         self._save_local_record(dashboard.data, record)
         registry = _registry(dashboard.data)
+        versions = record['repositories']
         entry = dict(id=f'uploads/{suite}/{digest}.jsonl', suite=suite, name=record['name'],
                      count=len(cases), dataset_sha256=digest,
-                     file=dataset.relative_to(dashboard.data).as_posix(), repositories=sorted(expected))
+                     file=dataset.relative_to(dashboard.data).as_posix(), repositories=sorted(expected),
+                     repository_versions=versions)
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite and row.get('dataset_sha256') == digest), None)
         if existing:
@@ -501,7 +704,10 @@ class CaseAssetStorage(CaseArchiveStorage):
             staging = Path(name)
             for slug, item in record['repositories'].items():
                 cached_bundle = self.asset_cache / (item['sha256'] + '.bundle')
-                self._download_object(self._repository_key(slug, item['sha256']), cached_bundle,
+                object_key = (self._repository_pool_key(slug, item['sha256'])
+                              if item.get('source') == 'repository-pool'
+                              else self._repository_key(slug, item['sha256']))
+                self._download_object(object_key, cached_bundle,
                                       item['size'], item['sha256'])
                 repo_bundle = staging / 'bundles' / (slug + '.bundle')
                 repo_bundle.parent.mkdir(parents=True, exist_ok=True)
@@ -525,6 +731,7 @@ class CaseAssetStorage(CaseArchiveStorage):
         return path
 
     def restore(self, dashboard):
+        self._restore_repository_registry(dashboard.data)
         records = self._records()
         for key in records:
             self._restore_record(dashboard, key)

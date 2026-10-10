@@ -1,7 +1,7 @@
 FROM csbase.registry.cmbchina.cn/paas/cmb-nodejs-22.22:c86-kylin10-v1 AS node_runtime
 USER root
 ARG NPM_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/
-ARG LCR_VERSION=1.0.8
+ARG LCR_VERSION=1.0.9
 RUN mkdir -p /node-runtime/bin && cp -L "$(command -v node)" /node-runtime/bin/node \
     && cp -a "$(dirname "$(dirname "$(readlink -f "$(command -v npm)")")")" /node-runtime/npm
 RUN npm install --prefix /lcr-runtime --registry="$NPM_REGISTRY" --ignore-scripts --no-audit --no-fund "@LV01.30/leancode-code-review-cli@$LCR_VERSION"

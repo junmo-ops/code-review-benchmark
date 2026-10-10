@@ -2,6 +2,7 @@
 const $ = s => document.querySelector(s);
 const token = $('meta[name="dashboard-token"]').content;
 let state = null, filter = '', selected = null, tab = 'overview', selectedJob = '', reportText = '', fileText = '', loading = false;
+let assetEdit = null, assetDelete = null;
 const labels = {simulation_complete:'模拟完成·不计分',remote_wait_timeout:'等待超时·可恢复查询',remote_needs_attention:'远端任务需检查',complete_no_findings:'未检出 · 未修复',pending:'待运行',partial:'部分完成',partial_scored:'部分评分',reviewed:'待评分',scored:'已评分',complete:'已完成',failed:'失败',invalid_answer:'答卷无效',queued:'排队中',running:'运行中',cancelling:'停止中',cancelled:'已停止',succeeded:'已完成',interrupted:'曾中断',unreadable:'需检查',unfinished_check_required:'需检查',recoverable_check_required:'可尝试恢复',exited:'已退出',platform_timeout:'超时'};
 const UX=window.BenchUX;
 const actionName=j=>j.action==='create'?(j.start_after_create?'创建并开始测评':'保存配置'):(actions[j.action]||j.action);
@@ -22,7 +23,38 @@ function profileOptions(node,wanted){options(node,state.profiles.filter(p=>avail
 async function refresh(){if(loading)return;loading=true;try{const incoming=await api('/api/state');const changed=JSON.stringify(incoming)!==JSON.stringify(state);state=incoming;$('#connection').classList.remove('disconnected');$('#connection').innerHTML=incoming.queue_mode?'<i></i> 服务器已连接':'<i></i> 本地服务已连接';$('#error-banner').hidden=!(incoming.queue_mode&&!incoming.worker_ready);if(changed)render();else if(selected&&tab==='log')loadLog();if(!routeReady)restoreRoute();}catch(e){$('#connection').classList.add('disconnected');$('#connection').innerHTML='<i></i> 连接已断开';$('#error-banner').hidden=false;$('#error-banner').textContent=e.message+'。请确认页面服务仍在运行；已有日志保留在项目中。'}finally{loading=false}}
 const caseUploadLimit=()=>state?.case_assets?.upload_max_bytes??2*1024*1024*1024;
 const caseUploadLimitLabel=()=>state?.case_assets?.upload_max_label??'2 GiB';
-let caseUploading=false,caseUploadFeedback='选择文件后，点击“确认导入”。';
+let caseUploading=false,caseUploadFeedback='选择文件后，点击“确认导入”。',repositoryUploadFeedback='选择包含 Git 历史的仓库 ZIP 后点击“导入仓库”。',repositoryUploadProgress=null;
+let caseImportTask=null,caseImportPolling=false;
+const caseImportBusy=()=>['queued','running'].includes(caseImportTask?.status);
+
+async function pollCaseImport(){
+ if(caseImportPolling)return;
+ caseImportPolling=true;
+ try{
+  const result=await api('/api/cases/imports');
+  if(JSON.stringify(result.task)===JSON.stringify(caseImportTask))return;
+  caseImportTask=result.task;
+  if(caseImportTask)caseUploadFeedback=caseImportTask.message;
+  if(state)renderCaseUpload();
+  if(caseImportTask?.status==='succeeded')await refresh();
+ }catch(error){
+  if(caseImportBusy()){caseUploadFeedback='读取导入进度失败：'+error.message+'。刷新页面后可继续查看。';if(state)renderCaseUpload()}
+ }finally{caseImportPolling=false}
+}
+
+function renderCaseImport(){
+ const progress=$('#case-import-progress');progress.hidden=!caseImportBusy();
+ if(!caseImportBusy())return;
+ if(caseImportTask.total>0){progress.max=caseImportTask.total;progress.value=caseImportTask.completed}
+ else progress.removeAttribute('value');
+}
+
+function parseUploadReply(status,text){
+ let result;
+ try{result=JSON.parse(text)}catch{throw new Error(`上传请求返回 HTTP ${status}，响应不是 JSON；请查看平台与应用日志`)}
+ if(status<200||status>=300)throw new Error(result.error||`上传失败（HTTP ${status}）`);
+ return result;
+}
 function renderServerRuntime(){
  if(!state.queue_mode)return;
  const store=state.run_storage||{},ephemeral=state.storage_mode==='ephemeral';
@@ -50,7 +82,7 @@ function render(){renderModels();renderComparisons();renderCaseUpload();
 function renderRuns(){const term=$('#search').value.trim().toLowerCase();const runs=state.runs.filter(r=>!isExperimentGroup(r.key)&&(!filter||inSuite(r.suite,filter))&&(!term||((r.display_name||r.name)+' '+r.model+' '+suiteName(r.suite)).toLowerCase().includes(term)));$('#run-count').textContent=runs.length;$('#filter-label').textContent=filter?suiteName(filter)+' · 点击卡片取消筛选':'全部案例集';$('#runs-body').innerHTML=runs.length?runs.map(r=>{const live=state.jobs.find(j=>j.id===state.active&&j.key===r.key);return `<tr><td><button class="run-title" data-open="${esc(r.key)}">${esc(r.display_name||r.name)}</button><div class="subline"><span class="suite-label">${esc(suiteName(r.suite))}</span>${stamp(r.created)}</div></td><td class="model-cell">${esc(r.model||'—')}<small>${esc(r.reviewer==='llm_direct'?'直接模型':r.reviewer||'—')} · ${esc(r.evaluator||'—')}</small></td><td><div class="progress-value"><b>${r.completed} / ${r.total}</b><span>${r.suite==='mcr'?'轮':'例'}</span></div><div class="progress-track"><progress value="${r.completed}" max="${r.total||1}"></progress></div></td><td>${badge(live?live.status:r.status)}</td><td class="f1-value">${r.suite==='ccrab'?(r.metrics?.test_pass_rate===1?'测试通过':r.metrics?.test_pass_rate===0?'测试未通过':'未执行测试'):Number.isFinite(r.metrics?.f1)?'F1 '+pct(r.metrics.f1):r.status==='failed'?'无有效评分':'尚未评分'}</td><td><button class="text-button" data-open="${esc(r.key)}">查看 →</button></td></tr>`}).join(''):'<tr><td colspan="6" class="empty-row">没有符合条件的批次。试试其他关键词，或新建一次测评。</td></tr>'}
 function renderActive(){const job=state.jobs.find(j=>j.id===state.active);$('#active-task').hidden=!job;if(job)$('#active-task').innerHTML=`<div class="active-panel"><span class="spinner"></span><div class="active-info"><strong>${esc(actionName(job))} · ${esc(job.key.split('/').pop())}</strong><small>${esc(stageName(job.step)||job.message)} · ${job.completed_steps}/${job.total_steps} 步</small></div><button class="text-button" data-job="${job.id}">查看日志 →</button><button class="secondary" data-stop="${job.id}" ${job.status==='cancelling'||state.access_role==='viewer'?'disabled':''}>停止</button></div>`}
 function renderJobs(){$('#job-list').innerHTML=state.jobs.length?state.jobs.map(j=>`<article class="panel job-card"><div><h3>${esc(actionName(j))} · ${esc(j.key)}</h3><p>${stamp(j.created_at)} · ${j.completed_steps}/${j.total_steps} 步 · ${esc(stageName(j.step))}</p><div class="job-message">${esc(j.message)}</div></div>${badge(j.status)}${state.queue_mode&&state.access_role!=='viewer'&&j.status==='queued'?`<button class="secondary" data-stop="${j.id}">取消排队</button>`:''}<button class="secondary" data-job="${j.id}">查看日志</button></article>`).join(''):'<article class="panel guide"><h2>还没有执行记录</h2><p>在页面创建或运行批次后，任务和日志会显示在这里。之前在终端执行的原始日志仍可从批次详情查看。</p></article>'}
-const viewRoutes={runs:'/',jobs:'/jobs',experiments:'/experiments',comparisons:'/comparisons',models:'/models',cases:'/cases',guide:'/guide'};
+const viewRoutes={runs:'/',jobs:'/jobs',experiments:'/experiments',comparisons:'/comparisons',models:'/models',cases:'/cases',repositories:'/repositories',guide:'/guide'};
 let routeRestoring=false,routeReady=false;
 function viewAtLocation(){return Object.keys(viewRoutes).find(v=>viewRoutes[v]===(location.pathname.replace(/\/$/,'')||'/'))||'runs'}
 function writeRoute(view,params={},replace=false){
@@ -65,7 +97,7 @@ function showView(view,{fromHistory=false}={}){
  if(!Object.hasOwn(viewRoutes,view))view='runs';
  for(const v of Object.keys(viewRoutes))$('#'+v+'-view').hidden=v!==view;
  document.querySelectorAll('[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
- const title={runs:'单模型测评',jobs:'执行记录',models:'模型配置',cases:'案例集管理',experiments:'多模型实验',comparisons:'结果对比',guide:'使用指南'}[view];
+ const title={runs:'单模型测评',jobs:'执行记录',models:'模型配置',cases:'案例集管理',repositories:'仓库管理',experiments:'多模型实验',comparisons:'结果对比',guide:'使用指南'}[view];
  $('#page-label').textContent=title;document.title=title+' · Review Lab';
  if(!fromHistory)writeRoute(view);
 }
@@ -91,34 +123,87 @@ function restoreRoute(){
 }
 window.addEventListener('popstate',restoreRoute);
 function renderCaseUpload(){
- const assets=state.case_assets;$('#case-upload-panel').hidden=!assets;
- $('#case-upload-disabled').hidden=!!assets;
- const datasets=state.catalog.flatMap(suite=>suite.datasets.map(dataset=>({...dataset,suite:suite.name,suiteId:suite.id})));
- $('#case-dataset-count').textContent=datasets.length;
- $('#case-dataset-body').innerHTML=datasets.length?datasets.map(d=>`<tr><td>${esc(d.name||d.suite+' · '+(d.count===1?'单例验证':d.count+' 例案例集'))}<div class="subline">${esc(d.id)}</div></td><td>${esc(d.suite)}</td><td>${d.count}${d.rounds?' PR / '+d.rounds+' 轮':' 例'}</td><td>${d.id.startsWith('uploads/')?'网页导入':'内置'}</td><td><button class="text-button" data-case-suite="${esc(d.suiteId)}" data-case-dataset="${esc(d.id)}" ${state.access_role==='viewer'||(!!state.case_assets&&!state.case_assets.ready)||(!!state.active&&!state.queue_mode)?'disabled':''}>新建测评 →</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty-row">还没有可用案例集，请先导入案例 ZIP。</td></tr>';
+ const assets=state.case_assets,editable=state.access_role!=='viewer'&&!state.active&&!caseImportBusy();
+ renderResourceAccess(assets);renderCaseDatasetTable(assets,editable);
  if(!assets)return;
  $('#case-upload-status').textContent=assets.message;
  $('#case-upload-form').hidden=state.access_role==='viewer';
- const file=$('#case-upload-file').files[0];
- $('#case-upload-file').disabled=caseUploading;$('#case-upload-select').disabled=caseUploading;
- $('#case-upload-submit').disabled=caseUploading||!file||file.size>caseUploadLimit()||!file.name.toLowerCase().endsWith('.zip');
- $('#case-upload-submit').textContent=caseUploading?'正在导入…':'确认导入';
- $('#case-upload-select').textContent=file?'更换文件':'选择 ZIP 文件';
- $('#case-upload-filename').textContent=file?file.name:'尚未选择文件';
- $('#case-upload-filehint').textContent=file?(file.size/1024/1024).toFixed(2)+' MiB · '+(caseUploading?'正在校验并准备案例':'待导入'):'支持 AACR、SWE-PRBench、CodeFuse 案例包，最大 '+caseUploadLimitLabel();
- $('#case-upload-feedback').textContent=caseUploadFeedback;
+ renderRepositoryTable(assets,editable);renderRepositoryUploadControls();renderCaseUploadControls();
  if(!assets.ready)$('#new-comparison').disabled=true;
 }
+function renderResourceAccess(assets){
+ $('#case-upload-panel').hidden=!assets||state.access_role==='viewer';
+ $('#case-upload-disabled').hidden=!!assets&&state.access_role!=='viewer';
+ if(!assets||state.access_role==='viewer')$('#case-upload-disabled').textContent=state.access_role==='viewer'?'当前账号为只读权限，可查看和使用案例集，不能上传、修改或删除。':'当前工作台未开启案例集管理；仍可查看和使用已登记的案例集。';
+ $('#repository-upload-panel').hidden=!assets||state.access_role==='viewer';
+ $('#repository-upload-disabled').hidden=!!assets&&state.access_role!=='viewer';
+ if(!assets||state.access_role==='viewer')$('#repository-upload-disabled').textContent=state.access_role==='viewer'?'当前账号为只读权限，可查看仓库资源，不能上传、更新或删除。':'当前工作台未开启仓库管理；仍可查看已有仓库。';
+}
+function renderCaseDatasetTable(assets,editable){
+ const datasets=state.catalog.flatMap(suite=>suite.datasets.map(dataset=>({...dataset,suite:suite.name,suiteId:suite.id})));
+ const uploaded=new Map((assets?.datasets||[]).map(dataset=>[dataset.id,dataset]));
+ $('#case-dataset-count').textContent=datasets.length;
+ $('#case-dataset-body').innerHTML=datasets.length?datasets.map(d=>{const managed=uploaded.get(d.id);return `<tr><td>${esc(d.name||d.suite+' · '+(d.count===1?'单例验证':d.count+' 例案例集'))}<div class="subline">${esc(d.id)}</div></td><td>${esc(d.suite)}</td><td>${d.count}${d.rounds?' PR / '+d.rounds+' 轮':' 例'}</td><td>${managed?'网页导入':'内置'}</td><td>${managed?`<button class="text-button" data-edit-case="${esc(d.id)}" data-name="${esc(managed.name)}" ${editable?'':'disabled'}>编辑</button> <button class="text-button danger-text" data-delete-case="${esc(d.id)}" data-name="${esc(managed.name)}" ${editable?'':'disabled'}>删除</button> · `:''}<button class="text-button" data-case-suite="${esc(d.suiteId)}" data-case-dataset="${esc(d.id)}" ${state.access_role==='viewer'||(!!assets&&!assets.ready)||(!!state.active&&!state.queue_mode)?'disabled':''}>新建测评 →</button></td></tr>`}).join(''):'<tr><td colspan="5" class="empty-row">还没有可用案例集。</td></tr>';
+}
+function renderRepositoryTable(assets,editable){
+ const repositories=assets.repositories||[];
+ $('#repository-count').textContent=repositories.length;
+ $('#repository-body').innerHTML=repositories.length?repositories.map(repo=>`<tr><td>${esc(repo.repo)}<div class="subline">${esc(repo.slug)}</div></td><td>${(repo.versions||[]).map(version=>`<div class="repository-version"><code>${esc(version.sha256.slice(0,12))}</code><span>${version.current?'当前版本':'历史版本'}</span><small>${formatBytes(version.size)}</small></div>`).join('')}</td><td><button class="text-button" data-update-repository="${esc(repo.slug)}" ${editable?'':'disabled'}>更新版本</button> <button class="text-button danger-text" data-delete-repository="${esc(repo.slug)}" data-name="${esc(repo.repo)}" ${editable?'':'disabled'}>删除</button></td></tr>`).join(''):'<tr><td colspan="3" class="empty-row">还没有独立上传的仓库资源。</td></tr>';
+}
+function renderRepositoryUploadControls(){
+ $('#repository-upload-form').hidden=state.access_role==='viewer';
+ const repositoryFiles=Array.from($('#repository-upload-file').files),repositoryFileError=validateRepositoryFiles(repositoryFiles);
+ $('#repository-upload-file').disabled=caseUploading||caseImportBusy()||!!state.active;$('#repository-upload-select').disabled=caseUploading||caseImportBusy()||!!state.active;
+ $('#repository-upload-submit').disabled=caseUploading||caseImportBusy()||!!state.active||!repositoryFiles.length||!!repositoryFileError;
+ $('#repository-upload-submit').textContent=caseUploading?'正在导入…':repositoryFiles.length>1?`导入 ${repositoryFiles.length} 个仓库`:'导入仓库';
+ $('#repository-upload-select').textContent=repositoryFiles.length?'更换文件':'选择仓库 ZIP';
+ $('#repository-upload-filename').textContent=repositoryFiles.length===1?repositoryFiles[0].name:repositoryFiles.length?`已选择 ${repositoryFiles.length} 个 ZIP 文件`:'尚未选择文件';
+ $('#repository-upload-hint').textContent=repositoryFileError|| (repositoryFiles.length?`${formatBytes(repositoryFiles.reduce((sum,file)=>sum+file.size,0))} · 将按顺序逐个导入，每个文件上限 ${caseUploadLimitLabel()}`:'ZIP 内需包含仓库的 .git 目录；支持一次选择多个 ZIP，单文件上限 '+caseUploadLimitLabel());
+ $('#repository-upload-feedback').textContent=repositoryUploadFeedback;
+ renderRepositoryProgress();
+}
+function renderCaseUploadControls(){
+ const file=$('#case-upload-file').files[0];
+ $('#case-upload-file').disabled=caseUploading||caseImportBusy()||!!state.active;$('#case-upload-select').disabled=caseUploading||caseImportBusy()||!!state.active;
+ $('#case-upload-submit').disabled=caseUploading||caseImportBusy()||!!state.active||!file||file.size>caseUploadLimit()||!file.name.toLowerCase().endsWith('.zip');
+ $('#case-upload-submit').textContent=caseImportBusy()?'后台导入中…':caseUploading?'正在上传…':'确认导入';
+ $('#case-upload-select').textContent=file?'更换文件':'选择 ZIP 文件';
+ $('#case-upload-filename').textContent=file?file.name:'尚未选择文件';
+ $('#case-upload-filehint').textContent=file?(file.size/1024/1024).toFixed(2)+' MiB · '+(caseUploading?'正在上传':'待导入'):'纯案例配置包不含 Git bundle，最大 '+caseUploadLimitLabel();
+ $('#case-upload-feedback').textContent=caseUploadFeedback;
+ renderCaseImport();
+}
+function formatBytes(size){if(!Number.isFinite(size)||size<=0)return '—';return size>=1073741824?(size/1073741824).toFixed(1)+' GiB':(size/1048576).toFixed(1)+' MiB'}
+function validateRepositoryFiles(files){if(!files.length)return '';if(files.some(file=>!file.name.toLowerCase().endsWith('.zip')))return '请选择 ZIP 格式的仓库包。';if(files.some(file=>file.size>caseUploadLimit()))return `单个仓库 ZIP 不得超过 ${caseUploadLimitLabel()}。`;return ''}
+function renderRepositoryProgress(){
+ const progress=$('#repository-upload-progress'),fill=$('#repository-upload-progress-fill'),text=$('#repository-upload-progress-text'),value=$('#repository-upload-progress-value');
+ const current=caseUploading?repositoryUploadProgress:null;progress.hidden=!current;if(!current)return;
+ const transferring=current.phase==='upload'&&current.total>0,percent=transferring?Math.min(100,Math.floor(current.loaded/current.total*100)):0;
+ const batch=`第 ${current.index+1}/${current.count} 个：${current.fileName}`;
+ text.textContent=transferring?`${batch} 正在上传`:`${batch} 已上传，正在检查 Git 历史并整理仓库资源`;
+ value.textContent=transferring?percent+'%':`${current.index+1}/${current.count}`;
+ fill.classList.toggle('indeterminate',!transferring);fill.style.width=transferring?percent+'%':`${Math.max(8,(current.index+1)/current.count*100)}%`;
+ const track=progress.querySelector('[role="progressbar"]');if(transferring)track.setAttribute('aria-valuenow',String(percent));else track.removeAttribute('aria-valuenow');
+}
+function uploadRepositoryZip(file,batch){
+ return new Promise((resolve,reject)=>{
+  const request=new XMLHttpRequest();request.open('POST','/api/repositories/upload');request.setRequestHeader('X-Dashboard-Token',token);request.setRequestHeader('Content-Type','application/zip');
+  request.upload.addEventListener('progress',event=>{repositoryUploadProgress={...batch,phase:'upload',loaded:event.loaded,total:event.lengthComputable?event.total:file.size};renderRepositoryProgress()});
+  request.upload.addEventListener('load',()=>{repositoryUploadProgress={...batch,phase:'processing'};repositoryUploadFeedback=`${batch.fileName} 上传完成，服务器正在解压、校验提交并整理 Git 历史。`;$('#repository-upload-feedback').textContent=repositoryUploadFeedback;renderRepositoryProgress()});
+  request.addEventListener('load',()=>{let result;try{result=JSON.parse(request.responseText)}catch{reject(new Error('服务器返回了非 JSON 响应，请检查平台上传大小限制和超时配置'));return}if(request.status<200||request.status>=300){reject(new Error(result.error||'仓库上传失败'));return}resolve(result)});
+  request.addEventListener('error',()=>reject(new Error('仓库上传连接中断，请检查网络和页面服务状态')));request.addEventListener('abort',()=>reject(new Error('仓库上传已中断')));request.send(file);
+ });
+}
 async function uploadCases(event){
- event.preventDefault();const file=$('#case-upload-file').files[0];if(!file||caseUploading)return;
+ event.preventDefault();const file=$('#case-upload-file').files[0];if(!file||caseUploading||caseImportBusy())return;
  if(file.size>caseUploadLimit()){caseUploadFeedback='案例 ZIP 上限为 '+caseUploadLimitLabel();renderCaseUpload();return;}
  caseUploading=true;renderCaseUpload();
  caseUploadFeedback='正在上传、校验并准备案例，请稍候…';renderCaseUpload();
  try{
   const response=await fetch('/api/cases/upload',{method:'POST',headers:{'X-Dashboard-Token':token,'Content-Type':'application/zip'},body:file});
-  let result;try{result=await response.json()}catch{throw new Error('服务器返回了非 JSON 响应，请检查平台上传大小限制和超时配置')}
-  if(!response.ok)throw new Error(result.error||'上传失败');
-  caseUploadFeedback=result.message+' 可在下方列表点击“新建测评”。';$('#case-upload-file').value='';toast('案例集已导入');await refresh();
+  const result=parseUploadReply(response.status,await response.text());
+  caseImportTask=result.task||null;
+  caseUploadFeedback=result.message;$('#case-upload-file').value='';toast(caseImportTask?'案例包已接收，后台导入中':'案例集已导入');await refresh();
  }catch(error){caseUploadFeedback=error.message}
  finally{caseUploading=false;renderCaseUpload()}
 }
@@ -126,14 +211,62 @@ $('#case-upload-form').addEventListener('submit',uploadCases);
 $('#case-upload-select').addEventListener('click',()=>$('#case-upload-file').click());
 $('#case-upload-file').addEventListener('change',()=>{
  const file=$('#case-upload-file').files[0];
- caseUploadFeedback=!file?'选择文件后，点击“确认导入”。':!file.name.toLowerCase().endsWith('.zip')?'请选择 ZIP 格式的案例集包。':file.size>caseUploadLimit()?'文件超过 '+caseUploadLimitLabel()+'，请调整上传上限或选择较小的案例包。':'已选择文件，确认导入后将校验案例并准备仓库历史。';
+ caseUploadFeedback=!file?'选择文件后，点击“确认导入”。':!file.name.toLowerCase().endsWith('.zip')?'请选择 ZIP 格式的案例配置包。':file.size>caseUploadLimit()?'文件超过 '+caseUploadLimitLabel()+'，请调整上传上限或选择较小的案例包。':'已选择文件，确认导入后将检查仓库资源和提交。';
+ renderCaseUpload();
+});
+async function uploadRepositories(event){
+ event.preventDefault();const files=Array.from($('#repository-upload-file').files);if(!files.length||caseUploading)return;
+ const invalid=validateRepositoryFiles(files);if(invalid){repositoryUploadFeedback=invalid;renderCaseUpload();return;}
+ let completed=0;caseUploading=true;repositoryUploadFeedback=`准备按顺序导入 ${files.length} 个仓库 ZIP…`;renderCaseUpload();
+ try{
+  for(let index=0;index<files.length;index++){
+   const file=files[index],batch={index,count:files.length,fileName:file.name};
+   repositoryUploadProgress={...batch,phase:'upload',loaded:0,total:file.size};repositoryUploadFeedback=`正在导入第 ${index+1}/${files.length} 个：${file.name}`;renderCaseUpload();
+   try{await uploadRepositoryZip(file,batch);completed++}catch(error){throw new Error(`第 ${index+1}/${files.length} 个文件“${file.name}”导入失败；此前已完成 ${completed} 个。${error.message}`)}
+  }
+  repositoryUploadProgress=null;repositoryUploadFeedback=`已成功导入 ${completed} 个仓库 ZIP。`;$('#repository-upload-file').value='';toast(`已导入 ${completed} 个仓库`);await refresh();
+ }catch(error){repositoryUploadFeedback=error.message;if(completed)await refresh()}
+ finally{caseUploading=false;repositoryUploadProgress=null;renderCaseUpload()}
+}
+$('#repository-upload-form').addEventListener('submit',uploadRepositories);
+$('#repository-upload-select').addEventListener('click',()=>$('#repository-upload-file').click());
+$('#repository-upload-file').addEventListener('change',()=>{
+ const files=Array.from($('#repository-upload-file').files),invalid=validateRepositoryFiles(files);
+ repositoryUploadFeedback=invalid||(!files.length?'选择一个或多个包含 Git 历史的仓库 ZIP 后点击“导入仓库”。':`${files.length} 个 ZIP 将按顺序导入；每个文件的 .git 历史都会在服务器校验并整理后加入资源库。`);
  renderCaseUpload();
 });
 $('#case-dataset-body').addEventListener('click',event=>{
+ const edit=event.target.closest('[data-edit-case]');if(edit){openAssetEdit('case',edit.dataset.editCase,edit.dataset.name);return;}
+ const remove=event.target.closest('[data-delete-case]');if(remove){openAssetDelete('case',remove.dataset.deleteCase,remove.dataset.name);return;}
  const button=event.target.closest('[data-case-dataset]');if(!button||button.disabled)return;
  newRun();if(!$('#create-dialog').open)return;
  $('#create-suite').value=button.dataset.caseSuite;createFields(true);
  $('#create-dataset').value=button.dataset.caseDataset;updatePlans();
+});
+$('#repository-body').addEventListener('click',event=>{
+ const update=event.target.closest('[data-update-repository]');
+ if(update){$('#repository-upload-file').click();return;}
+ const remove=event.target.closest('[data-delete-repository]');
+ if(remove)openAssetDelete('repository',remove.dataset.deleteRepository,remove.dataset.name);
+});
+function openAssetEdit(type,id,name){assetEdit={type,id};$('#asset-edit-title').textContent='编辑案例集名称';$('#asset-edit-name').value=name;$('#asset-edit-error').textContent='';$('#asset-edit-dialog').showModal();$('#asset-edit-name').focus()}
+function openAssetDelete(type,id,name){assetDelete={type,id};$('#asset-delete-message').textContent=type==='case'?`确认删除案例集“${name}”？`:`确认删除仓库“${name}”及其所有版本？`;$('#asset-delete-confirm').disabled=false;$('#asset-delete-dialog').showModal()}
+async function mutateAsset(endpoint,payload){const result=await api(endpoint,payload);toast(result.message);await refresh()}
+$('#asset-edit-form').addEventListener('submit',async event=>{
+ event.preventDefault();if(!assetEdit)return;
+ const button=$('#asset-edit-form button[type="submit"]');button.disabled=true;
+ try{await mutateAsset('/api/cases/manage',{action:'rename',id:assetEdit.id,name:$('#asset-edit-name').value});$('#asset-edit-dialog').close()}
+ catch(error){$('#asset-edit-error').textContent=error.message}
+ finally{button.disabled=false}
+});
+$('#asset-edit-close').addEventListener('click',()=>$('#asset-edit-dialog').close());
+$('#asset-edit-cancel').addEventListener('click',()=>$('#asset-edit-dialog').close());
+$('#asset-delete-close').addEventListener('click',()=>$('#asset-delete-dialog').close());
+$('#asset-delete-cancel').addEventListener('click',()=>$('#asset-delete-dialog').close());
+$('#asset-delete-confirm').addEventListener('click',async()=>{
+ if(!assetDelete)return;const button=$('#asset-delete-confirm');button.disabled=true;
+ try{const endpoint=assetDelete.type==='case'?'/api/cases/manage':'/api/repositories/manage';const payload=assetDelete.type==='case'?{action:'delete',id:assetDelete.id}:{action:'delete',slug:assetDelete.id};await mutateAsset(endpoint,payload);$('#asset-delete-dialog').close()}
+ catch(error){$('#asset-delete-message').textContent=error.message;button.disabled=false}
 });
 function datasetLabel(d,suite){return d.name?`${d.name} · ${d.count} 例`:(d.count===1?'流程验证':d.count<=5?'小规模对照':'案例测评')+' · '+d.count+(suite==='mcr'?' PR / '+d.rounds+' 轮':' 例')}
 function newRun(){if(!state)return;if(state.case_assets&&!state.case_assets.ready){toast('请先上传并准备案例 ZIP');return;}$('#create-form').reset();$('#create-error').textContent='';options($('#create-suite'),state.catalog.map(c=>({value:c.id,label:c.name+' · '+c.role})),filter||'aacr');profileOptions($('#create-profile'),'model.local.json');judgeOptions();createFields(true);$('#create-dialog').showModal();}
@@ -468,3 +601,4 @@ $('#comparison-stop').addEventListener('click',()=>stopJob(state.comparisons.fin
 $('#comparison-download').addEventListener('click',()=>download('模型对比报告.md',comparisonText));
 $('#comparison-json').addEventListener('click',()=>download('模型对比明细.json',JSON.stringify(state.comparisons.find(c=>c.key===comparisonSelected)?.report,null,2)));
 restoreRoute();refresh();setInterval(refresh,4000);
+pollCaseImport();setInterval(pollCaseImport,2000);
