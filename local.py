@@ -4,7 +4,7 @@ from runner.runtime import data_root, config_root, docker_context
 from pathlib import Path
 import argparse,datetime,json,os,signal,subprocess,sys,time
 ROOT=Path(__file__).resolve().parent
-ALLOWED={'LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL','JUDGE_USE_MOCK'}
+ALLOWED={'LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','LCR_LLM_STREAM','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL','JUDGE_USE_MOCK'}
 
 def descendants(pid):
     listing=subprocess.run(['ps','-axo','pid=,ppid='],capture_output=True,text=True,check=True)

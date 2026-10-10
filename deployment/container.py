@@ -34,6 +34,8 @@ def prepare():
         path.mkdir(parents=True, exist_ok=True)
     from deployment.run_storage import restore_run_data
     restore_run_data(ROOT)
+    from deployment.model_storage import restore_profiles
+    restore_profiles(ROOT)
     from webui.case_storage import restore_case_archives
     restore_case_archives(ROOT)
     print('工作台运行目录已准备；案例包可在网页上传，未调用模型。', flush=True)

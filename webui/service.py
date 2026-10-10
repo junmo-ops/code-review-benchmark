@@ -64,7 +64,7 @@ class Dashboard:
                 continue
 
     def profiles(self):
-        from .profiles import profile_label
+        from .profiles import normalize_stream_mode, profile_label
         profiles = []
         for p in sorted(self.configs.glob('model*.local.json')):
             if p.is_symlink():
@@ -72,11 +72,12 @@ class Dashboard:
             try:
                 obj = read(p)
                 profiles.append(dict(id=p.name, label=('批次固定配置' if p.name.startswith('model.run-') else profile_label(p)), internal=p.name.startswith('model.run-'), review_ready=bool(obj.get('LCR_LLM_BASE_URL') and obj.get('LCR_LLM_TOKEN') and obj.get('LCR_LLM_MODEL')), review_model=obj.get('LCR_LLM_MODEL', '未设置'),
+                                     stream_enabled=normalize_stream_mode(obj.get('LCR_LLM_STREAM', 'false')) == 'true',
                                      judge_model=obj.get('JUDGE_MODEL', '未设置'),
                                      ready=bool(obj.get('LCR_LLM_TOKEN') and obj.get('JUDGE_API_KEY'))))
             except (ValueError, OSError, AttributeError):
                 continue
-        profiles.append(dict(id='environment', label='平台环境变量', review_ready=bool(os.getenv('LCR_LLM_BASE_URL') and os.getenv('LCR_LLM_TOKEN') and os.getenv('LCR_LLM_MODEL')), review_model=os.getenv('LCR_LLM_MODEL', '未设置'),
+        profiles.append(dict(id='environment', label='平台环境变量', review_ready=bool(os.getenv('LCR_LLM_BASE_URL') and os.getenv('LCR_LLM_TOKEN') and os.getenv('LCR_LLM_MODEL')), review_model=os.getenv('LCR_LLM_MODEL', '未设置'), stream_enabled=os.getenv('LCR_LLM_STREAM', '').lower() in {'true','1','yes','on'},
                              judge_model=os.getenv('JUDGE_MODEL', '未设置'),
                              ready=bool(os.getenv('LCR_LLM_TOKEN') and os.getenv('JUDGE_API_KEY'))))
         return profiles
@@ -94,7 +95,10 @@ class Dashboard:
             values = read(self.configs / profile)
             if set(values) - ALLOWED or any(not isinstance(v, str) for v in values.values()):
                 raise ValueError('模型配置字段无效')
+            values.setdefault('LCR_LLM_STREAM', 'false')
             env.update(values)
+        from .profiles import normalize_stream_mode
+        env['LCR_LLM_STREAM'] = normalize_stream_mode(env.get('LCR_LLM_STREAM', 'false'))
         env['PYTHONUNBUFFERED'] = '1'
         return env
 
