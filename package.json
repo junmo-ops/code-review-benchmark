@@ -1,0 +1,17 @@
+{
+  "name": "code-review-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "setup": "node scripts/project.mjs setup",
+    "dev": "node scripts/project.mjs dev",
+    "start": "node scripts/project.mjs start",
+    "backend": "node scripts/project.mjs backend",
+    "frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "check": "node scripts/project.mjs check",
+    "cli": "node scripts/project.mjs cli"
+  }
+}

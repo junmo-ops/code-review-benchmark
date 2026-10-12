@@ -47,3 +47,20 @@ server.env
 runtimes/
 .runtime/
 windows-wheelhouse/
+
+# React frontend dependencies and TypeScript cache
+frontend/node_modules/
+frontend/*.tsbuildinfo
+frontend/dist/
+
+# Python packaging and service runtime
+**/*.egg-info/
+backend/build/
+backend/dist/
+runtime/
+case-datasets/
+case-repositories/
+case-packaging/
+
+# Legacy archive metadata generated locally
+requirements-container.resolved.txt

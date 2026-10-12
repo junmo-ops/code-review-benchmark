@@ -1,10 +1,11 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if not exist ".venv\Scripts\python.exe" (
-  echo 未找到项目 Python 环境。请先按 docs\Windows本地运行.md 准备 Windows 资源。
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo 请安装 Node 22。首次使用请执行 npm run setup 和 npm run build。
   pause
   exit /b 1
 )
-".venv\Scripts\python.exe" ui.py
+call npm run start
 pause

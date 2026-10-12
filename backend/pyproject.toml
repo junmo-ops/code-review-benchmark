@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-review-benchmark-backend"
+version = "1.0.0"
+description = "Code review benchmark API, workers and execution adapters"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[project.scripts]
+bench-api = "webui.server:main"
+bench-cli = "local:main"
+bench-cloud = "runner.cloud:main"
+bench-mcr = "mcr:main"
+bench-ccrab = "executable.ccrab:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["local", "cloud", "mcr", "ccrab", "ui"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+exclude = ["*.__pycache__*"]
+
+[tool.setuptools.package-data]
+"reviewers.lcr" = ["*.json"]
+"reviewers.cline_skill" = ["skills/**/*.md"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

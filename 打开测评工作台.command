@@ -1,8 +1,9 @@
 #!/bin/zsh
 cd -- "$(dirname -- "$0")" || exit 1
-if [[ ! -x .venv/bin/python ]]; then
-  echo '未找到项目 Python 环境，请先按照 docs/Mac本地验证.md 完成环境准备。'
+if ! command -v npm >/dev/null; then
+  echo '请安装 Node 22。首次使用请执行 npm run setup 和 npm run build。'
   read -r '?按回车关闭…'
   exit 1
 fi
-exec ./.venv/bin/python ui.py
+npm run start
+read -r '?按回车关闭…'

@@ -22,10 +22,10 @@ gpt-5.4只是已核对参数范围的示例，不代表账户已有权限或完�
 ## 先跑一例完整流程
 
 ```bash
-.venv/bin/python local.py --config model.openai.local.json --timeout-seconds 60 init --suite aacr --run-id mac-gpt54-01 --dataset data/pilot1.jsonl --timeout-minutes 10
-.venv/bin/python local.py --config model.openai.local.json --timeout-seconds 800 review --run-id mac-gpt54-01 --instance 'cline__cline@419534c'
-.venv/bin/python local.py --config model.openai.local.json --timeout-seconds 1800 eval --run-id mac-gpt54-01
-.venv/bin/python local.py --config model.openai.local.json --timeout-seconds 60 export --run-id mac-gpt54-01
+.venv/bin/python backend/src/local.py --config model.openai.local.json --timeout-seconds 60 init --suite aacr --run-id mac-gpt54-01 --dataset data/pilot1.jsonl --timeout-minutes 10
+.venv/bin/python backend/src/local.py --config model.openai.local.json --timeout-seconds 800 review --run-id mac-gpt54-01 --instance 'cline__cline@419534c'
+.venv/bin/python backend/src/local.py --config model.openai.local.json --timeout-seconds 1800 eval --run-id mac-gpt54-01
+.venv/bin/python backend/src/local.py --config model.openai.local.json --timeout-seconds 60 export --run-id mac-gpt54-01
 ```
 
 每条命令都带同一个--config。模型名与检视接口摘要在init冻结，不能将DeepSeek批次中途切成OpenAI。失败先看保存的日志，确认旧任务已停止后才重跑。模型调用有API费用；配置脚本和init/check不调用模型。

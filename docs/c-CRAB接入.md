@@ -22,8 +22,8 @@ c-CRAB 是独立的执行验证专项，不套用 AACR 或 Martian 的语义评�
 在项目根目录运行：
 
 ```bash
-.venv/bin/python ccrab.py check
-.venv/bin/python ccrab.py plan
+.venv/bin/python backend/src/ccrab.py check
+.venv/bin/python backend/src/ccrab.py plan
 ```
 
 `check` 检查素材哈希、Git 提交、实际 diff、Docker 和镜像，并写入 `runs/ccrab/preflight/readiness.json` 和 `report.zh-CN.md`。条件不足返回 2；素材损坏返回 1。它不会安装容器、拉取镜像、读取令牌或调用模型。检查通过仅代表准备条件满足，不代表模型与测试已执行。
@@ -36,14 +36,14 @@ c-CRAB 是独立的执行验证专项，不套用 AACR 或 Martian 的语义评�
 .venv/bin/python history/ccrab-upstream/run_tool_eval.py --help
 ```
 
-此检查只证明 Python 入口可加载，不证明容器或修复能运行。额外 Python 依赖记录在 `executable/requirements.txt`，未安装上游完整开发环境。
+此检查只证明 Python 入口可加载，不证明容器或修复能运行。额外 Python 依赖记录在 `backend/src/executable/requirements.txt`，未安装上游完整开发环境。
 
 ## 完整答卷转换
 
 后续得到与此案例 repo/base/head 一致的工程标准答卷后：
 
 ```bash
-.venv/bin/python ccrab.py adapt \
+.venv/bin/python backend/src/ccrab.py adapt \
   --answer /absolute/path/to/complete-answer.json \
   --output runs/ccrab/one-case/tool-results
 ```
@@ -62,7 +62,7 @@ c-CRAB 是独立的执行验证专项，不套用 AACR 或 Martian 的语义评�
 
 ## DeepSeek 适配路径（2026-10-01 更新）
 
-执行入口为 `executable/ccrab_run.py`，修复工具为 `executable/deepseek_repair.py`。
+执行入口为 `backend/src/executable/ccrab_run.py`，修复工具为 `backend/src/executable/deepseek_repair.py`。
 
 - 本机采用 Colima 专用 profile `ccrab` 和 Docker CLI；不安装桌面 Docker 应用。启动命令：`colima start ccrab --cpus 2 --memory 4 --disk 20 --vm-type vz --activate=false --ssh-config=false`。
 - 使用本地 `python:3.11-slim` + `pytest==8.3.5` 镜像，运行时记录实际 image ID；不冒充官方发布镜像。宿主 ARM 与 Cloud x86 分别验收。

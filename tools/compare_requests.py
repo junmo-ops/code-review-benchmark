@@ -142,6 +142,7 @@ def main():
     if not args.run_id or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in args.run_id):parser.error('run-id 非法')
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"backend/src"))
     from runner.storage import ROOT
     from suites.registry import resolve_run_suite
     from reviewers.lcr.logs import inspect_case
