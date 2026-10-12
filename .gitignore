@@ -47,3 +47,5 @@ server.env
 runtimes/
 .runtime/
 windows-wheelhouse/
+
+*/node_modules/
