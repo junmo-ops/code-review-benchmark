@@ -24,6 +24,7 @@ import {
   actionBlocked,
   actions,
   active,
+  caseStatus,
   labels,
   pct,
   primary,
@@ -32,7 +33,7 @@ import {
   suiteName,
 } from '../presentation';
 import { ErrorAlert, Status } from './Common';
-import type { Job, JobReply, Run, TextReply } from '../types';
+import type { Case, Job, JobReply, Run, TextReply } from '../types';
 function TextFile({ kind, run }: { kind: string; run: Run }) {
   const artifacts = kind === 'report' ? run.artifacts.filter((a) => a.report) : run.artifacts;
   const [chosen, setChosen] = useState('');
@@ -258,7 +259,9 @@ function Overview({
           {
             title: '状态',
             dataIndex: 'status',
-            render: (status: string) => <Status status={status} />,
+            render: (status: string, item: Case) => (
+              <Status status={caseStatus(status, latest, item.id)} />
+            ),
           },
         ]}
         pagination={{ pageSize: 10 }}

@@ -21,6 +21,7 @@ def handler_for(app, token):
     start(app)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
+            # Suppress routine HTTP access logs so polling does not obscure task output.
             pass
 
         def send(self, status, data, content_type='application/json; charset=utf-8', download=None,

@@ -36,7 +36,8 @@ def create_complete_bundle(path, target):
         git(repo, 'init', '--bare', '--quiet')
         objects = git(path, 'rev-parse', '--git-path', 'objects').decode().strip()
         objects = (path / objects).resolve()
-        (repo / 'objects/info/alternates').write_text(objects.as_posix() + '\n', encoding='utf-8')
+        # Git expects LF; Windows text-mode CRLF can become part of the object path.
+        (repo / 'objects/info/alternates').write_bytes((objects.as_posix() + '\n').encode('utf-8'))
         refs = git(path, 'for-each-ref', '--format=%(objectname) %(refname)').decode().splitlines()
         updates = ['update ' + ref.split(' ', 1)[1] + ' ' + ref.split(' ', 1)[0] for ref in refs]
         head = git(path, 'rev-parse', 'HEAD').decode().strip()

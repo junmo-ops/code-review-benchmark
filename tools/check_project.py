@@ -15,6 +15,7 @@ class Complexity(ast.NodeVisitor):
         self.value = 1
 
     def visit_FunctionDef(self, node):
+        # Nested functions are checked separately; exclude their branches from the parent.
         pass
 
     visit_AsyncFunctionDef = visit_FunctionDef

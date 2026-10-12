@@ -22,6 +22,12 @@ export const labels: Record<string, string> = {
   setup_failed: '准备失败',
   reviewing: '检视中',
   scoring: '评分中',
+  unfinished_check_required: '未完成 · 需检查',
+  recoverable_check_required: '待恢复结果',
+  answer_with_item_failures: '答卷含失败项',
+  starting: '启动中',
+  exited: '执行已结束 · 需检查',
+  unknown: '状态未知 · 需检查',
 };
 export const actions: Record<string, string> = {
   check: '检查准备',
@@ -37,6 +43,16 @@ export const actions: Record<string, string> = {
   comparison: '模型对比实验',
 };
 export const active = (status: string) => ['queued', 'running', 'cancelling'].includes(status);
+export function runStatus(run: Run, jobs: Job[]) {
+  const executing = jobs.find((job) => job.key === run.key && active(job.status));
+  return executing?.status ?? run.status;
+}
+export function caseStatus(status: string, job?: Job, caseId?: string) {
+  if (status !== 'unfinished_check_required') return status;
+  const [stage, selectedCase] = job?.step?.split(' · ') ?? [];
+  const reviewing = job && ['running', 'cancelling'].includes(job.status) && stage === 'review';
+  return reviewing && (!selectedCase || selectedCase === caseId) ? 'reviewing' : status;
+}
 export const pct = (value?: number) => (Number.isFinite(value) ? value!.toFixed(3) : '—');
 export const stamp = (value?: string) =>
   value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';

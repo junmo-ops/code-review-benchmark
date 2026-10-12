@@ -33,7 +33,8 @@ def main():
         git(temporary, 'init', '--bare', '--quiet')
         objects = git(args.repo, 'rev-parse', '--git-path', 'objects').decode().strip()
         objects = (args.repo.resolve() / objects).resolve()
-        (temporary / 'objects/info/alternates').write_text(objects.as_posix() + '\n', encoding='utf-8')
+        # Git expects LF; Windows text-mode CRLF can become part of the object path.
+        (temporary / 'objects/info/alternates').write_bytes((objects.as_posix() + '\n').encode('utf-8'))
         git(temporary, 'update-ref', 'refs/heads/bench-repair', head)
         bundle = Path(folder) / (slug + '.bundle')
         git(temporary, 'bundle', 'create', str(bundle), 'refs/heads/bench-repair', '^' + base)

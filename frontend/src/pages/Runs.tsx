@@ -2,7 +2,7 @@ import { Button, Card, Col, Input, Progress, Row, Space, Table, Typography } fro
 import { PlusOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useWorkbench } from '../context';
-import { canSubmit, pct, stamp, suiteName } from '../presentation';
+import { canSubmit, pct, runStatus, stamp, suiteName } from '../presentation';
 import { Heading, Status } from '../components/Common';
 import type { Run } from '../types';
 export function Runs() {
@@ -66,7 +66,11 @@ export function Runs() {
         </>
       ),
     },
-    { title: '状态', dataIndex: 'status', render: (s: string) => <Status status={s} /> },
+    {
+      title: '状态',
+      key: 'status',
+      render: (_: unknown, run: Run) => <Status status={runStatus(run, state.jobs)} />,
+    },
     {
       title: 'F1 / 测试',
       key: 'score',

@@ -676,7 +676,9 @@ def _merge_repository_repair(data, slug, supplement, entry, maximum):
         git(repo, 'init', '--bare', '--quiet')
         git(repo, 'fetch', '--no-tags', str(bundle), '+refs/*:refs/*')
         git(repo, 'bundle', 'verify', str(supplement))
-        git(repo, 'fetch', '--no-tags', str(supplement), '+refs/*:refs/bench-repair/*')
+        # Isolate supplements so legacy leaf refs cannot collide with batch ref directories.
+        namespace = 'refs/bench-repair-' + _hash_file(supplement)
+        git(repo, 'fetch', '--no-tags', str(supplement), '+refs/*:' + namespace + '/*')
         for commit in required:
             git(repo, 'cat-file', '-e', commit + '^{commit}')
         complete = Path(folder) / 'complete.bundle'
