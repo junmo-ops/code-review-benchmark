@@ -122,8 +122,8 @@ export function Assets({ repository = false }: { repository?: boolean }) {
   };
   const remove = (id: string, name: string) => {
     const description = repository
-      ? '被案例集或历史批次引用的仓库版本不能删除。'
-      : '删除后不能用于新建测评；已有批次的清单和仓库依赖会保留，仍可恢复和评分。';
+      ? '将删除该仓库及已移除案例集引用的仓库资源。历史批次和已保存结果仍可查看，但依赖这些资源的批次不能续跑检视。'
+      : '将清理案例清单。历史批次、日志和已保存结果仍可查看；依赖它的批次不能续跑检视或重新评分。仓库资源会保留在仓库管理中，供其他案例集复用。';
     const dialog = modal.confirm({
       title: `确认删除“${name}”？`,
       content: description,

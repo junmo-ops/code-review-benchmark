@@ -341,6 +341,11 @@ class CaseAssetStorage(CaseArchiveStorage):
     def archive_dataset(self, suite, digest):
         self._update_dataset_record(suite, digest, {'archived': True})
 
+    def purge_dataset(self, suite, digest):
+        self._update_dataset_record(suite, digest, {'archived': True, 'purged': True})
+        self.client.delete_object(Bucket=self.bucket,
+                                  Key=self._dataset_prefix(suite, digest) + 'dataset.jsonl')
+
     def _update_dataset_record(self, suite, digest, changes):
         path = self._local_record_path(self.data, suite, digest)
         try:
@@ -595,7 +600,8 @@ class CaseAssetStorage(CaseArchiveStorage):
             self._validate_record(record, key)
         except Exception:
             raise RuntimeError('COS 案例资源清单格式无效') from None
-        record = self._migrate_legacy_repository_refs(record, dashboard.data)
+        if not record.get('purged'):
+            record = self._migrate_legacy_repository_refs(record, dashboard.data)
         self._restore_record_files(dashboard, record)
 
     def _migrate_legacy_repository_refs(self, record, data):
@@ -636,6 +642,8 @@ class CaseAssetStorage(CaseArchiveStorage):
         suite, digest = record.get('suite'), record.get('dataset_sha256')
         if 'archived' in record and type(record['archived']) is not bool:
             raise ValueError('案例集移除标记必须为布尔值')
+        if 'purged' in record and type(record['purged']) is not bool:
+            raise ValueError('案例集清理标记必须为布尔值')
         if not self._valid_record_identity(record, suite, digest, key):
             raise ValueError
         from .case_upload import limits
@@ -668,12 +676,30 @@ class CaseAssetStorage(CaseArchiveStorage):
         return True
 
     def _restore_record_files(self, dashboard, record):
-        from runner.cloud import checked_instances
         from .case_assets import _registry
         from .service import save
         suite, digest = record['suite'], record['dataset_sha256']
         folder = dashboard.data / 'case-datasets' / suite / digest
         dataset = folder / 'dataset.jsonl'
+        if record.get('purged'):
+            dataset.unlink(missing_ok=True)
+            self._save_local_record(dashboard.data, record)
+            registry = _registry(dashboard.data)
+            entry = dict(id=f'uploads/{suite}/{digest}.jsonl', suite=suite, name=record['name'],
+                         count=record['count'], dataset_sha256=digest,
+                         file=dataset.relative_to(dashboard.data).as_posix(),
+                         repositories=sorted(record['repositories']), repository_versions=record['repositories'],
+                         archived=True, purged=True)
+            existing = next((row for row in registry['datasets']
+                             if row.get('suite') == suite and row.get('dataset_sha256') == digest), None)
+            if existing:
+                entry['id'] = existing['id']
+                existing.update(entry)
+            else:
+                registry['datasets'].append(entry)
+            save(dashboard.data / 'case-datasets' / 'registry.json', registry)
+            return
+        from runner.cloud import checked_instances
         self._download_object(self._dataset_prefix(suite, digest) + 'dataset.jsonl', dataset,
                               record['dataset_size'], digest)
         cases = checked_instances(dataset, suite)
@@ -686,7 +712,8 @@ class CaseAssetStorage(CaseArchiveStorage):
         entry = dict(id=f'uploads/{suite}/{digest}.jsonl', suite=suite, name=record['name'],
                      count=len(cases), dataset_sha256=digest,
                      file=dataset.relative_to(dashboard.data).as_posix(), repositories=sorted(expected),
-                     repository_versions=versions, archived=bool(record.get('archived', False)))
+                     repository_versions=versions, archived=bool(record.get('archived', False)),
+                     purged=False)
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite and row.get('dataset_sha256') == digest), None)
         if existing:

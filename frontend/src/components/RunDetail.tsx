@@ -310,6 +310,14 @@ export function RunDetail({
       onTab('log', result.job_id);
     });
   const start = (action: string, profile: string, task = '', retry = false) => {
+    if (record?.case_resources_purged && ['review', 'workflow', 'resume', 'recover', 'eval', 'report'].includes(action)) {
+      modal.warning({
+        title: action === 'eval' ? '无法重新评分' : action === 'report' ? '无法重新生成报告' : '无法续跑检视',
+        content: '这个批次依赖的案例集或仓库资源已被永久清理。历史日志、答卷、已保存评分和已生成报告仍可查看，但不能继续检视、补跑失败案例或重新评分。请重新导入对应案例集和仓库版本，并新建批次。',
+        okText: '知道了',
+      });
+      return;
+    }
     if (['review', 'eval', 'report', 'workflow', 'resume', 'compare-martian'].includes(action)) {
       modal.confirm({
         title: `开始${actions[action]}？`,

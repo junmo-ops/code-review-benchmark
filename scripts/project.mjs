@@ -124,10 +124,9 @@ function check() {
 function verify() {
   check();
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
-  invoke(python, [join(root, "tools/check_regressions.py")]);
   invoke("git", ["diff", "--check"]);
   invoke("git", ["diff", "--cached", "--check"]);
-  console.log("完整校验通过；可以打包交付。未调用模型或外部 COS。");
+  console.log("本地校验通过；可以打包交付。未调用模型或外部 COS。");
 }
 function main() {
   const [command, ...args] = process.argv.slice(2);

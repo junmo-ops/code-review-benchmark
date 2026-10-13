@@ -44,7 +44,7 @@ def registered_datasets(data):
 
 def _registered_row_usable(row, data, base):
     from .case_import import dataset_pending
-    if row.get('archived') or dataset_pending(data, row.get('dataset_sha256')):
+    if row.get('archived') or row.get('purged') or dataset_pending(data, row.get('dataset_sha256')):
         return False
     original = Path(data) / row['file']
     path = original.resolve()
@@ -192,7 +192,7 @@ def _rename_dataset(dashboard, registry, row, name):
 
 def _delete_dataset(dashboard, registry, row):
     if _dataset_is_referenced(dashboard.data, row['dataset_sha256']):
-        return _archive_dataset(dashboard, registry, row)
+        return _purge_dataset(dashboard, registry, row)
     dataset = Path(dashboard.data) / row['file']
     base = (Path(dashboard.data) / 'case-datasets').resolve()
     if dataset.is_symlink() or not dataset.resolve().is_relative_to(base):
@@ -209,14 +209,19 @@ def _delete_dataset(dashboard, registry, row):
     return dict(message='案例集已删除。')
 
 
-def _archive_dataset(dashboard, registry, row):
+def _purge_dataset(dashboard, registry, row):
+    dataset = Path(dashboard.data) / row['file']
+    base = (Path(dashboard.data) / 'case-datasets').resolve()
+    if dataset.is_symlink() or not dataset.resolve().is_relative_to(base):
+        raise ValueError('案例集文件路径无效')
     if mode_is_cos():
         from .case_storage import CaseAssetStorage
-        CaseAssetStorage(dashboard.data).archive_dataset(row['suite'], row['dataset_sha256'])
-    row['archived'] = True
+        CaseAssetStorage(dashboard.data).purge_dataset(row['suite'], row['dataset_sha256'])
+    dataset.unlink(missing_ok=True)
+    row.update(archived=True, purged=True)
     from .service import save
     save(_registry_path(dashboard.data), registry)
-    return dict(message='案例集已从管理列表移除；历史批次依赖的清单和仓库版本已保留。')
+    return dict(message='案例集资源已清理，历史批次和已保存结果仍可查看；这些批次不能续跑检视。')
 
 
 def _dataset_is_referenced(data, digest):
@@ -227,9 +232,9 @@ def _dataset_is_referenced(data, digest):
         try:
             config = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
-            return True  # Unknown historical dependencies must not be physically deleted.
+            raise ValueError('无法确认历史批次是否依赖该案例集；为保护历史数据，本次未删除') from None
         if not isinstance(config, dict):
-            return True
+            raise ValueError('历史批次配置格式无效；为保护历史数据，本次未删除')
         if config.get('dataset_sha256') == digest:
             return True
     return False
@@ -246,11 +251,15 @@ def _manage_repository_locked(dashboard, request):
         raise ValueError('仓库资源不存在')
     if action != 'delete':
         raise ValueError('仓库更新请上传新版本资源 ZIP')
-    if _repository_is_referenced(dashboard.data, slug):
-        raise ValueError('该仓库仍被案例集或历史测评批次引用，不能删除其依赖的仓库版本')
     repos = Path(dashboard.data) / 'repos' / slug
     if repos.is_symlink():
         raise ValueError('本地仓库目录不能是符号链接')
+    if _repository_has_active_dataset(dashboard.data, slug):
+        raise ValueError('该仓库仍被可用案例集引用，请先删除该案例集')
+    registry_data = _registry(dashboard.data)
+    _purge_archived_repository_datasets(dashboard, registry_data, slug)
+    if _repository_is_referenced(dashboard.data, slug):
+        raise ValueError('该仓库仍被可用案例集引用，请先删除该案例集')
     versions = row['versions']
     registry['repositories'].pop(slug)
     if mode_is_cos():
@@ -264,8 +273,20 @@ def _manage_repository_locked(dashboard, request):
 
 
 def _repository_is_referenced(data, slug):
-    return any(isinstance(item, dict) and slug in item.get('repositories', [])
+    return any(isinstance(item, dict) and not item.get('purged') and slug in item.get('repositories', [])
                for item in _registry(data)['datasets'])
+
+
+def _repository_has_active_dataset(data, slug):
+    return any(isinstance(item, dict) and not item.get('archived') and not item.get('purged')
+               and slug in item.get('repositories', []) for item in _registry(data)['datasets'])
+
+
+def _purge_archived_repository_datasets(dashboard, registry, slug):
+    for row in registry['datasets']:
+        if (isinstance(row, dict) and row.get('archived') and not row.get('purged')
+                and slug in row.get('repositories', [])):
+            _purge_dataset(dashboard, registry, row)
 
 
 def _remove_unreferenced_repository_files(data, versions, registry):
@@ -584,6 +605,14 @@ def _install_custom(dashboard, archive, progress=None):
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite_id and row.get('dataset_sha256') == digest), None)
         if existing:
+            if existing.get('purged'):
+                upload_rel = f'case-datasets/{suite_id}/{digest}/dataset.jsonl'
+                destination = dashboard.data / upload_rel
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                dataset.replace(destination)
+                existing.update(name=manifest['name'].strip(), count=len(cases), file=upload_rel,
+                                repositories=sorted(slugs), repository_versions=repository_versions)
+                existing.pop('purged', None)
             existing.pop('archived', None)
             save(_registry_path(dashboard.data), registry)
             return dict(status(dashboard.root, dashboard.data), message=f"案例集“{existing['name']}”已导入，可直接选择使用。")
@@ -729,12 +758,8 @@ def _merge_repository_repair(data, slug, supplement, entry, maximum):
 
 
 def submit_repository_upload(dashboard, archive):
-    with zipfile.ZipFile(archive) as source:
-        manifest = _optional_repository_manifest(source)
-    if manifest and manifest.get('repair') is True:
-        from .case_import import submit
-        return 202, submit(dashboard, archive, kind='repository')
-    return 200, install_repositories(dashboard, archive)
+    from .case_import import submit
+    return 202, submit(dashboard, archive, kind='repository')
 
 
 def _import_git_repository_archive(source, data, object_root, maximum):

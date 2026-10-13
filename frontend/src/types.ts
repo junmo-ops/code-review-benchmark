@@ -71,6 +71,7 @@ export interface Run {
   case_jobs?: number;
   max_case_retries?: number;
   repair_executed?: boolean;
+  case_resources_purged?: boolean;
 }
 export interface Job {
   id: string;

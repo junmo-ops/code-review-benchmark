@@ -222,6 +222,8 @@ class Dashboard:
     def compatibility(self, key):
         if (self.run_dir(key)/'comparison-protocol.json').exists():
             return '对比实验分组使用独立一对一协议，请在对比实验中查看；不从单批次入口重跑或覆盖评分。'
+        if self._case_resources_purged(key):
+            return '该批次依赖的案例集或仓库资源已被永久清理，不能续跑检视或重新评分；历史日志、答卷和已生成结果仍可查看。重新导入对应资源后请新建批次。'
         try:
             cfg = self.config(key)
             if key.startswith('ccrab/'):
@@ -258,7 +260,19 @@ class Dashboard:
                     completed=completed, total=total, scored_cases=scored_cases, cases=cases, metrics=summary, artifacts=reports,
                     timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1),
                     max_case_retries=cfg.get('max_case_retries', 1 if cfg.get('reviewer', 'lcr') == 'lcr' else 0),
+                    case_resources_purged=self._case_resources_purged(key, cfg),
                     profile=read(self.state/'profiles.json').get(key) if (self.state/'profiles.json').exists() else None)
+
+    def _case_resources_purged(self, key, config=None):
+        config = config or self.config(key)
+        digest = config.get('dataset_sha256')
+        suite_data = config.get('suite', {})
+        suite = suite_data if isinstance(suite_data, str) else suite_data.get('id') if isinstance(suite_data, dict) else None
+        if not isinstance(digest, str) or not isinstance(suite, str):
+            return False
+        from .case_assets import _registry
+        return any(row.get('suite') == suite and row.get('dataset_sha256') == digest
+                   and row.get('purged') for row in _registry(self.data)['datasets'] if isinstance(row, dict))
 
     def _describe_ccrab(self, key, cfg):
         folder = self.run_dir(key)
