@@ -106,15 +106,17 @@ class DurableDashboard(Dashboard):
         names=('LCR_LLM_MODEL','LCR_LLM_BASE_URL','JUDGE_MODEL','JUDGE_BASE_URL','JUDGE_USE_MOCK')
         return hashlib.sha256(json.dumps({k:env.get(k) for k in names},sort_keys=True).encode()).hexdigest()
     def enqueue(self,job,request,spec):
-        from .case_import import ensure_idle
-        ensure_idle(self)
-        actor=request.get('_actor','local')
-        request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create'}}
-        job['profile_fingerprint']=self.fingerprint(job['profile'])
-        job['submitted_by']=actor
-        self.queue.insert(job,request,spec)
-        self.sync()
-        return dict(job_id=job['id'],key=job['key'])
+        from .case_import import benchmark_submission
+        with benchmark_submission(self):
+            if spec is not None:
+                job['resource_dataset'] = spec.get('dataset')
+            actor=request.get('_actor','local')
+            request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create'}}
+            job['profile_fingerprint']=self.fingerprint(job['profile'])
+            job['submitted_by']=actor
+            self.queue.insert(job,request,spec)
+            self.sync()
+            return dict(job_id=job['id'],key=job['key'])
     def submit(self, request):
         self.sync()
         if request.get('action') != 'resume':

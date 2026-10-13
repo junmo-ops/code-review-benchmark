@@ -40,6 +40,9 @@ def _set_upload_limit():
     if request.path in {'/api/cases/upload', '/api/repositories/upload'}:
         from .case_upload import limits
         request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
+    elif request.path.startswith('/api/uploads/') and '/chunks/' in request.path:
+        from .resumable_uploads import CHUNK_SIZE
+        request.max_content_length = CHUNK_SIZE
 
 
 def _authorize_origin(public, csrf):
@@ -162,6 +165,41 @@ def create_app(dashboard=None):
     def case_import_status():
         from .case_import import current
         return jsonify(task=current(dashboard))
+    @app.post('/api/uploads/start')
+    def start_upload():
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前部署未启用案例资源上传'),404
+        from .resumable_uploads import create
+        return jsonify(create(dashboard, request.get_json(silent=True))), 201
+    @app.get('/api/uploads/<upload_id>')
+    def upload_status(upload_id):
+        from .resumable_uploads import status
+        return jsonify(status(dashboard, upload_id))
+    @app.get('/api/uploads/current')
+    def current_upload():
+        from .resumable_uploads import current
+        return jsonify(current(dashboard, request.args.get('kind', '')))
+    @app.post('/api/uploads/<upload_id>/chunks/<int:index>')
+    def upload_chunk(upload_id, index):
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前部署未启用案例资源上传'),404
+        if request.mimetype != 'application/octet-stream':
+            raise ValueError('上传分块格式无效')
+        from .resumable_uploads import put_chunk
+        result = put_chunk(dashboard, upload_id, index, request.stream, request.content_length)
+        return jsonify(result)
+    @app.post('/api/uploads/<upload_id>/complete')
+    def finish_upload(upload_id):
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前部署未启用案例资源上传'),404
+        from .resumable_uploads import complete
+        return jsonify(complete(dashboard, upload_id)), 202
+    @app.post('/api/uploads/<upload_id>/abort')
+    def cancel_upload(upload_id):
+        if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+            return jsonify(error='当前部署未启用案例资源上传'),404
+        from .resumable_uploads import abort
+        return jsonify(abort(dashboard, upload_id))
     @app.post('/api/repositories/upload')
     def upload_repositories():
         if os.environ.get('BENCH_CASE_UPLOAD') != '1':

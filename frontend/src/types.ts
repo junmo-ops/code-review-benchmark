@@ -162,6 +162,17 @@ export interface UploadReply {
   message: string;
   task?: ImportTask;
 }
+export interface UploadSession {
+  task?: ImportTask;
+  id: string;
+  kind: 'dataset' | 'repository';
+  filename: string;
+  size: number;
+  fingerprint: string;
+  offset: number;
+  chunk_size: number;
+  status: string;
+}
 export interface ModelValues {
   provider: string;
   name: string;

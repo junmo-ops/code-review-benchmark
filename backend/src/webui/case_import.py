@@ -1,5 +1,6 @@
 """Background case imports with a disk-backed status and one worker per data root."""
 import json
+from contextlib import contextmanager
 import logging
 from pathlib import Path
 import threading
@@ -33,6 +34,21 @@ def ensure_idle(dashboard):
         raise ValueError('资源正在后台导入，请等待完成后再操作')
 
 
+@contextmanager
+def benchmark_submission(dashboard):
+    """Serialize job admission with resource mutation across API processes."""
+    with (dashboard.state / 'case-upload.lock').open('a+b') as lock:
+        try:
+            acquire(lock)
+        except BlockingIOError:
+            raise ValueError('资源正在更新，请稍后提交测评任务') from None
+        try:
+            ensure_idle(dashboard)
+            yield
+        finally:
+            release(lock)
+
+
 def dataset_pending(data, digest):
     task = current(SimpleNamespace(state=Path(data) / 'ui-state'))
     return bool(task and task.get('dataset_sha256') == digest
@@ -46,7 +62,7 @@ def _update(dashboard, **changes):
     return task
 
 
-def submit(dashboard, archive, kind="dataset"):
+def submit(dashboard, archive, kind="dataset", upload_id=None):
     folder = _directory(dashboard)
     folder.mkdir(parents=True, exist_ok=True)
     with (dashboard.state / 'case-upload.lock').open('a+b') as lock:
@@ -56,22 +72,22 @@ def submit(dashboard, archive, kind="dataset"):
             raise ValueError('正在提交案例导入，请稍后重试') from None
         try:
             with dashboard.lock:
-                task = _queue_archive(dashboard, archive, folder, kind)
+                task = _queue_archive(dashboard, archive, folder, kind, upload_id)
         finally:
             release(lock)
     start(dashboard)
     return dict(task=task, message='资源包已接收，正在后台导入。')
 
 
-def _queue_archive(dashboard, archive, folder, kind):
-    from .case_assets import _ensure_no_active_jobs
+def _queue_archive(dashboard, archive, folder, kind, upload_id=None):
     ensure_idle(dashboard)
-    _ensure_no_active_jobs(dashboard)
     identifier = uuid.uuid4().hex
     target = folder / (identifier + '.zip')
     Path(archive).replace(target)
     task = dict(id=identifier, kind=kind, status='queued', phase='queued', message='已接收，等待后台校验',
                 completed=0, total=0, created_at=now(), updated_at=now())
+    if upload_id:
+        task['upload_id'] = upload_id
     save(folder / 'current.json', task)
     return task
 

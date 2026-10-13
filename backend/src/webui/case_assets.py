@@ -163,7 +163,6 @@ def _with_resource_lock(dashboard, operation):
 
 
 def _manage_case_dataset_locked(dashboard, request):
-    _ensure_no_active_jobs(dashboard)
     action, identifier = request.get('action'), request.get('id')
     registry = _registry(dashboard.data)
     row = next((item for item in registry['datasets'] if item.get('id') == identifier), None)
@@ -191,6 +190,8 @@ def _rename_dataset(dashboard, registry, row, name):
 
 
 def _delete_dataset(dashboard, registry, row):
+    from .resource_dependencies import ensure_resource_unused
+    ensure_resource_unused(dashboard, dataset_sha256=row['dataset_sha256'])
     if _dataset_is_referenced(dashboard.data, row['dataset_sha256']):
         return _purge_dataset(dashboard, registry, row)
     dataset = Path(dashboard.data) / row['file']
@@ -241,7 +242,6 @@ def _dataset_is_referenced(data, digest):
 
 
 def _manage_repository_locked(dashboard, request):
-    _ensure_no_active_jobs(dashboard)
     slug, action = request.get('slug'), request.get('action')
     if not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slug):
         raise ValueError('仓库标识无效')
@@ -251,6 +251,8 @@ def _manage_repository_locked(dashboard, request):
         raise ValueError('仓库资源不存在')
     if action != 'delete':
         raise ValueError('仓库更新请上传新版本资源 ZIP')
+    from .resource_dependencies import ensure_resource_unused
+    ensure_resource_unused(dashboard, slug=slug)
     repos = Path(dashboard.data) / 'repos' / slug
     if repos.is_symlink():
         raise ValueError('本地仓库目录不能是符号链接')
@@ -689,7 +691,6 @@ def install_repositories(dashboard, archive, background=False, progress=None):
 
 
 def _install_repository_archive(dashboard, archive, progress=None):
-    _ensure_no_active_jobs(dashboard)
     from .case_upload import limits
     maximum = limits()
     if archive.stat().st_size > maximum['upload_max_bytes']:
@@ -972,17 +973,18 @@ def _hash_file(path):
 
 
 def _install_locked(dashboard, archive, progress=None):
-    _ensure_no_active_jobs(dashboard)
     custom = _validate_case_archive(archive)
     if custom:
         return _install_custom(dashboard, archive, progress)
+    # Legacy packages may rebuild shared repository directories.
+    _ensure_no_active_jobs(dashboard)
     return _install_legacy_archive(dashboard, archive)
 
 
 def _ensure_no_active_jobs(dashboard):
     jobs = dashboard.queue.jobs() if hasattr(dashboard, 'queue') else dashboard.jobs
     if any(job['status'] in {'queued', 'running', 'cancelling'} for job in jobs.values()):
-        raise ValueError('请先等待测评任务结束，再准备案例')
+        raise ValueError('旧格式案例包可能重建共享仓库，需等待测评任务结束；请使用仓库 ZIP 或独立案例配置包')
 
 
 def _validate_case_archive(archive):

@@ -5,6 +5,7 @@ from runner.locking import acquire as lock_instance_file
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import tempfile
@@ -77,6 +78,13 @@ def handler_for(app, token):
             if parsed.path == '/api/cases/imports':
                 from .case_import import current
                 return self.send(200, {'task': current(app)})
+            if parsed.path == '/api/uploads/current':
+                from .resumable_uploads import current
+                return self.send(200, current(app, query.get('kind', '')))
+            upload_status = re.fullmatch(r'/api/uploads/([a-f0-9]{32})', parsed.path)
+            if upload_status:
+                from .resumable_uploads import status
+                return self.send(200, status(app, upload_status.group(1)))
             if parsed.path == '/api/log':
                 return self.send(200, app.logs(query['job']))
             if parsed.path == '/api/comparison-case':
@@ -149,6 +157,8 @@ def handler_for(app, token):
                 return
             try:
                 length = int(self.headers.get('Content-Length','0'))
+                if self.path.startswith('/api/uploads/'):
+                    return self._resumable_upload(length)
                 if self.path in {'/api/cases/upload', '/api/repositories/upload'}:
                     return self._upload_case_resource(length)
                 if not 0 < length <= 16384:
@@ -163,6 +173,30 @@ def handler_for(app, token):
                 return self._handle_post_error(exc)
             except Exception:
                 self.send(500, {'error':'操作未完成，请查看日志'})
+
+        def _resumable_upload(self, length):
+            from . import resumable_uploads
+            if os.environ.get('BENCH_CASE_UPLOAD') != '1':
+                return self.send(404, {'error':'当前工作台未启用案例资源上传'})
+            if self.path == '/api/uploads/start':
+                if not 0 < length <= 16384 or self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                    raise ValueError('上传会话参数无效')
+                value = json.loads(self.rfile.read(length))
+                return self.send(201, resumable_uploads.create(app, value))
+            match = re.fullmatch(r'/api/uploads/([a-f0-9]{32})/chunks/(\d+)', self.path)
+            if match:
+                if self.headers.get('Content-Type', '').split(';')[0] != 'application/octet-stream':
+                    raise ValueError('上传分块格式无效')
+                return self.send(200, resumable_uploads.put_chunk(
+                    app, match.group(1), int(match.group(2)), self.rfile, length))
+            match = re.fullmatch(r'/api/uploads/([a-f0-9]{32})/(complete|abort)', self.path)
+            if match:
+                if length:
+                    raise ValueError('请求大小不合法')
+                if match.group(2) == 'complete':
+                    return self.send(202, resumable_uploads.complete(app, match.group(1)))
+                return self.send(200, resumable_uploads.abort(app, match.group(1)))
+            return self.send(404, {'error':'上传操作不存在'})
 
         def _dispatch_post(self, request):
             if self.path == '/api/comparisons':

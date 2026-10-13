@@ -638,19 +638,21 @@ class Dashboard:
                 raise
 
     def enqueue(self, job, request, spec):
-        from .case_import import ensure_idle
-        ensure_idle(self)
-        job_id=job['id'];key=job['key'];profile=job['profile']
-        self.jobs[job_id] = job
-        self.active = job_id
-        self.cancelled.clear()
-        save(self.state/'jobs'/f'{job_id}.json', job)
-        prefs = read(self.state/'profiles.json') if (self.state/'profiles.json').exists() else {}
-        prefs[key] = profile
-        save(self.state/'profiles.json', prefs)
-        self.worker = threading.Thread(target=self.work, args=(job_id, request, spec), daemon=True)
-        self.worker.start()
-        return dict(job_id=job_id, key=key)
+        from .case_import import benchmark_submission
+        with benchmark_submission(self):
+            if spec is not None:
+                job['resource_dataset'] = spec.get('dataset')
+            job_id=job['id'];key=job['key'];profile=job['profile']
+            self.jobs[job_id] = job
+            self.active = job_id
+            self.cancelled.clear()
+            save(self.state/'jobs'/f'{job_id}.json', job)
+            prefs = read(self.state/'profiles.json') if (self.state/'profiles.json').exists() else {}
+            prefs[key] = profile
+            save(self.state/'profiles.json', prefs)
+            self.worker = threading.Thread(target=self.work, args=(job_id, request, spec), daemon=True)
+            self.worker.start()
+            return dict(job_id=job_id, key=key)
 
     def update(self, job_id, **changes):
         with self.lock:

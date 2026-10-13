@@ -15,13 +15,32 @@ import {
 } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
-import { useRef, useState } from 'react';
-import { api, upload } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { api, uploadChunk, uploadFingerprint } from '../api';
 import { useWorkbench } from '../context';
 import { useAction } from '../hooks/useAction';
+import type { BatchItem } from '../hooks/useUploadBatch';
+import { useUploadBatch } from '../hooks/useUploadBatch';
 import { canSubmit, editable, resourceImportTask } from '../presentation';
 import { ErrorAlert, Heading, Status } from '../components/Common';
-import type { Dataset, ImportTask, Repository, UploadReply } from '../types';
+import type { Dataset, ImportTask, Repository, UploadSession } from '../types';
+function validUploadFiles(files: UploadFile[], limit: number) {
+  return files.length > 0 && files.every((file) => file.name.toLowerCase().endsWith('.zip') && (file.size ?? 0) <= limit);
+}
+async function restoreUpload(kind: string, storageKey: string) {
+  const stored = localStorage.getItem(storageKey);
+  if (stored) {
+    {
+      const saved = JSON.parse(stored) as UploadSession;
+      const result = await api<{ upload: UploadSession }>(`/api/uploads/${saved.id}`);
+      if (['receiving', 'queued'].includes(result.upload.status)) return result.upload;
+    }
+    localStorage.removeItem(storageKey);
+  }
+  const result = await api<{ upload: UploadSession | null }>(`/api/uploads/current?kind=${kind}`);
+  if (result.upload) localStorage.setItem(storageKey, JSON.stringify(result.upload));
+  return result.upload;
+}
 async function waitForImport(task: ImportTask, update: (task: ImportTask) => void) {
   let current = task;
   while (['queued', 'running'].includes(current.status)) {
@@ -38,36 +57,111 @@ function ResourceUpload({ repository }: { repository: boolean }) {
   const { state, task, importBusy, setTask, refresh } = useWorkbench();
   const [files, setFiles] = useState<UploadFile[]>([]),
     [percent, setPercent] = useState(0),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    [pending, setPending] = useState<UploadSession | null>(null);
   const { busy, error, run } = useAction();
   const { message } = App.useApp();
   const limit = state.case_assets?.upload_max_bytes ?? 2 * 1024 ** 3;
-  const disabled = !editable(state) || !!state.active || importBusy || busy;
-  const valid =
-    files.length > 0 &&
-    files.every((f) => f.name.toLowerCase().endsWith('.zip') && (f.size ?? 0) <= limit);
+  const disabled = !editable(state) || importBusy || busy;
+  const valid = validUploadFiles(files, limit);
+  const kind = repository ? 'repository' : 'dataset';
+  const storageKey = `bench.upload.session.v1.${kind}`;
+  const batch = useUploadBatch(kind, task);
+  const updateBatch = batch.update;
+  useEffect(() => {
+    let alive = true;
+    void restoreUpload(kind, storageKey)
+      .then((upload) => { if (alive) setPending(upload); })
+      .catch(() => { if (alive) setNotice('无法读取服务端上传进度，请检查连接后重试'); });
+    return () => { alive = false; };
+  }, [kind, storageKey]);
+  useEffect(() => {
+    if (!pending?.task) return;
+    const linked = pending.task;
+    updateBatch({ name: pending.filename, size: pending.size }, { taskId: linked.id, status: 'importing' });
+    setTask(linked);
+    localStorage.removeItem(storageKey);
+    setPending(null);
+  }, [pending, updateBatch, setTask, storageKey]);
+  const persist = (upload: UploadSession | null) => {
+    if (upload) localStorage.setItem(storageKey, JSON.stringify(upload));
+    else localStorage.removeItem(storageKey);
+    setPending(upload);
+  };
+  const startOrResume = async (file: File) => {
+    const fingerprint = await uploadFingerprint(file);
+    const stored = localStorage.getItem(storageKey);
+    let session: UploadSession;
+    if (stored) {
+      const saved = JSON.parse(stored) as UploadSession;
+      if (saved.filename !== file.name || saved.size !== file.size || saved.fingerprint !== fingerprint)
+        throw new Error(`请先选择未完成上传的同一文件：${saved.filename}`);
+      session = (await api<{ upload: UploadSession }>(`/api/uploads/${saved.id}`)).upload;
+    } else {
+      const result = await api<{ upload: UploadSession }>('/api/uploads/start', {
+        filename: file.name,
+        size: file.size,
+        fingerprint,
+        kind,
+      });
+      session = result.upload;
+      localStorage.setItem(storageKey, JSON.stringify(session));
+    }
+    if (session.fingerprint !== fingerprint)
+      throw new Error('所选 ZIP 与服务端未完成的上传文件不一致，请重新选择原文件');
+    if (session.status !== 'receiving') throw new Error('上传会话已结束，请重新选择文件开始上传');
+    setPending(session);
+    let offset = session.offset;
+    while (offset < file.size) {
+      const index = Math.floor(offset / session.chunk_size);
+      const chunk = file.slice(offset, Math.min(file.size, offset + session.chunk_size));
+      await uploadChunk(session.id, index, chunk, (sent) =>
+        setPercent(Math.floor(((offset + sent) / file.size) * 100)),
+      );
+      offset += chunk.size;
+      session = { ...session, offset };
+      localStorage.setItem(storageKey, JSON.stringify(session));
+      setPending(session);
+    }
+    const result = await api<{ task?: ImportTask }>(`/api/uploads/${session.id}/complete`, undefined, 'POST');
+    persist(null);
+    if (result.task) {
+      batch.update(file, { status: 'importing', taskId: result.task.id });
+      setTask(result.task);
+      await waitForImport(result.task, setTask);
+    }
+    batch.update(file, { status: 'succeeded' });
+    await refresh();
+  };
+  const discardPending = async () => {
+    if (pending) await api(`/api/uploads/${pending.id}/abort`, undefined, 'POST');
+    persist(null);
+    batch.clear();
+    setFiles([]);
+    setNotice('已结束本批次，已导入的仓库不受影响');
+  };
   const execute = () =>
     run(async () => {
-      for (let index = 0; index < files.length; index++) {
-        const file = files[index].originFileObj;
-        if (!file) throw new Error('文件不可用，请重新选择');
+      const selected = batch.prepare(files.flatMap((entry) => (entry.originFileObj ? [entry.originFileObj] : [])));
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const saved = JSON.parse(stored) as UploadSession;
+        const match = selected.findIndex((file) => file.name === saved.filename && file.size === saved.size);
+        if (match < 0) throw new Error(`请先选择未完成上传的同一文件：${saved.filename}`);
+        selected.unshift(...selected.splice(match, 1));
+      }
+      for (let index = 0; index < selected.length; index++) {
+        const file = selected[index];
         setPercent(0);
-        setNotice(`第 ${index + 1}/${files.length} 个：${file.name}`);
-        const result = await upload<UploadReply>(
-          repository ? '/api/repositories/upload' : '/api/cases/upload',
-          file,
-          setPercent,
-        );
-        setFiles(files.slice(index + 1));
-        if (result.task) {
-          setTask(result.task);
-          setNotice(`第 ${index + 1}/${files.length} 个：等待后台导入 ${file.name}`);
-          await waitForImport(result.task, setTask);
-        }
-        await refresh();
+        setNotice(`第 ${index + 1}/${selected.length} 个：${file.name}`);
+        batch.update(file, { status: 'uploading', taskId: undefined });
+        try { await startOrResume(file); }
+        catch (failure) { batch.update(file, { status: 'failed' }); throw failure; }
+        setFiles(selected.slice(index + 1).map((next) => files.find((entry) => entry.originFileObj === next)).filter((entry): entry is UploadFile => !!entry));
+        setNotice(`第 ${index + 1}/${selected.length} 个：已导入 ${file.name}`);
       }
       setFiles([]);
-      setNotice('全部导入完成');
+      setNotice('所选文件导入完成；剩余清单见下方');
       message.success('资源已导入');
     });
   if (!state.case_assets || !editable(state))
@@ -80,7 +174,7 @@ function ResourceUpload({ repository }: { repository: boolean }) {
     >
       <UploadPicker
         repository={repository}
-        disabled={disabled}
+        disabled={pickerBlocked(editable(state), false, busy)}
         files={files}
         limitLabel={state.case_assets.upload_max_label ?? '2 GiB'}
         onChange={(list) => {
@@ -89,23 +183,66 @@ function ResourceUpload({ repository }: { repository: boolean }) {
         }}
       />
       <ImportFeedback
-        task={resourceImportTask(task, repository)}
+        task={visibleImportTask(task, repository, batch.items.map((item) => item.taskId), busy, pending)}
         notice={notice}
         busy={busy}
         percent={percent}
         importBusy={importBusy}
         error={error}
       />
+      <BatchFeedback items={batch.items} busy={pickerBlocked(true, importBusy, busy)} onClear={() => void run(discardPending)} />
+      {pending && (
+        <Alert
+          className="section-gap"
+          type="warning"
+          showIcon
+          message={`发现未完成上传：${pending.filename}`}
+          description={`服务端已保存 ${(pending.offset / 1024 / 1024).toFixed(1)} MiB / ${(pending.size / 1024 / 1024).toFixed(1)} MiB。重新选择同一个 ZIP 后继续，只会重传当前未完成分块。`}
+          action={<Button size="small" disabled={busy} onClick={() => void run(discardPending)}>放弃断点</Button>}
+        />
+      )}
+      <Typography.Paragraph type="secondary">
+        {uploadHint(importBusy, files.length)}
+      </Typography.Paragraph>
       <Button
         type="primary"
         loading={busy}
         disabled={disabled || !valid}
         onClick={() => void execute()}
       >
-        {repository ? '导入仓库' : '确认导入'}
+        {uploadLabel(Boolean(pending), repository)}
       </Button>
     </Card>
   );
+}
+function pickerBlocked(allowed: boolean, active: boolean, busy: boolean) { return !allowed || active || busy; }
+function uploadLabel(pending: boolean, repository: boolean) {
+  if (pending) return '继续上传并导入';
+  return repository ? '导入仓库' : '确认导入';
+}
+function visibleImportTask(task: ImportTask | null, repository: boolean, ids: (string | undefined)[], busy: boolean, pending: UploadSession | null) {
+  const relevant = resourceImportTask(task, repository);
+  if (!relevant) return null;
+  if (ids.length) return ids.includes(relevant.id) ? relevant : null;
+  return busy || pending ? null : relevant;
+}
+function uploadHint(importing: boolean, selected: number) {
+  if (importing) return '后端仍在导入资源，可先选择剩余 ZIP，导入结束后继续。';
+  if (!selected) return '请点击上方选择 ZIP；刷新后需要重新选择尚未完成的文件。';
+  return '按清单顺序导入，已保存的上传分块会复用。';
+}
+function BatchFeedback({ items, busy, onClear }: { items: BatchItem[]; busy: boolean; onClear: () => void }) {
+  if (!items.length) return null;
+  const done = items.filter((item) => item.status === 'succeeded').length;
+  const labels = { waiting: '等待选择文件', uploading: '上传未完成，请重新选择', importing: '后端导入中', succeeded: '已导入', failed: '未完成，可重试' };
+  return <Space direction="vertical" className="full-width section-gap">
+    <Alert type={done === items.length ? 'success' : 'info'} showIcon
+      message={`本批次已导入 ${done} / ${items.length} 个 ZIP`}
+      description="刷新不会丢失清单。请重新选择未完成的 ZIP，已导入的文件无需重传。"
+      action={<Button size="small" disabled={busy} onClick={onClear}>结束本批次</Button>} />
+    <Table size="small" pagination={false} dataSource={items} rowKey={(item) => `${item.name}:${item.size}`}
+      columns={[{ title: '文件', dataIndex: 'name' }, { title: '状态', render: (_, item: BatchItem) => labels[item.status] }]} />
+  </Space>;
 }
 export function Assets({ repository = false }: { repository?: boolean }) {
   const { state, importBusy, refresh, newRun } = useWorkbench();
@@ -114,7 +251,7 @@ export function Assets({ repository = false }: { repository?: boolean }) {
     [form] = Form.useForm<{ name: string }>();
   const { run, busy, error, clear } = useAction();
   const uploadRef = useRef<HTMLDivElement>(null);
-  const disabled = !editable(state) || !!state.active || importBusy;
+  const disabled = !editable(state) || importBusy;
   const mutate = async (path: string, data: unknown) => {
     const reply = await api<{ message: string }>(path, data);
     await refresh();

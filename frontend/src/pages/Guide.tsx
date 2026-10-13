@@ -19,6 +19,12 @@ export function Guide() {
             先在仓库管理上传含 .git 的仓库 ZIP，再在案例集管理上传配置
             ZIP。更换案例数量时复用已有仓库。补充包可修复缺失提交，无需重新上传完整仓库。
           </Typography.Paragraph>
+          <Typography.Paragraph>
+            大文件按分块上传并由服务端保存断点。页面刷新或网络中断后，回到对应管理页重新选择同一个 ZIP，即可从已完成的分块继续；服务端完整接收后再开始后台导入。
+          </Typography.Paragraph>
+          <Typography.Paragraph>
+            测评期间可以导入仓库和独立案例配置包。仓库更新保存为新版本，当前测评仍按冻结清单和提交运行；排队、运行或停止中的任务依赖的资源不能删除。旧格式案例包需等待测评结束后导入。
+          </Typography.Paragraph>
         </Card>
         <Card title="单模型与多模型">
           <Typography.Paragraph>

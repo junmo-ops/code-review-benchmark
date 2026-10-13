@@ -92,6 +92,42 @@ export function upload<T>(
     request.send(file);
   });
 }
+export async function uploadFingerprint(file: File): Promise<string> {
+  const chunk = 8 * 1024 * 1024;
+  const first = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.slice(0, chunk).arrayBuffer()));
+  const last = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.slice(Math.max(0, file.size - chunk)).arrayBuffer()));
+  const hex = (value: Uint8Array) => Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const identity = new TextEncoder().encode(`${file.name}\0${file.size}\0${hex(first)}\0${hex(last)}`);
+  const result = new Uint8Array(await crypto.subtle.digest('SHA-256', identity));
+  return hex(result);
+}
+export function uploadChunk(
+  id: string,
+  index: number,
+  chunk: Blob,
+  progress: (sent: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', `/api/uploads/${id}/chunks/${index}`);
+    for (const [key, value] of Object.entries(requestHeaders())) request.setRequestHeader(key, value);
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.upload.onprogress = (event) => progress(event.loaded);
+    request.onload = () => {
+      try {
+        const body = JSON.parse(request.responseText);
+        if (request.status < 200 || request.status >= 300)
+          throw new Error(body.error ?? `上传分块失败（HTTP ${request.status}）`);
+        resolve();
+      } catch (error) {
+        reject(error instanceof SyntaxError ? new Error(`上传分块响应无效（HTTP ${request.status}）`) : error);
+      }
+    };
+    request.onerror = () => reject(new Error('上传连接中断；已完成分块已保存，可重新选择同一 ZIP 续传'));
+    request.onabort = () => reject(new Error('上传已中断；已完成分块已保存，可重新选择同一 ZIP 续传'));
+    request.send(chunk);
+  });
+}
 export function download(name: string, content: string | Blob) {
   const url = URL.createObjectURL(
     content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' }),
