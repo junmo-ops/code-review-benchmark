@@ -111,6 +111,7 @@ function start(development) {
   console.log(`Python 工作台已启动：http://127.0.0.1:${frontendPort}`);
 }
 function check() {
+  invoke(process.execPath, [join(root, "scripts/check-dependencies.mjs")]);
   console.log("检查 Python 语法与复杂度、前端和脚本规范、TypeScript 类型。");
   invoke(python, [join(root, "tools/check_project.py")]);
   invoke("npm", ["--prefix", "frontend", "run", "lint"]);

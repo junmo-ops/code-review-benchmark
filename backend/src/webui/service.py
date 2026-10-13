@@ -337,7 +337,7 @@ class Dashboard:
         from .case_assets import _registry
         if isinstance(dataset_id, str) and dataset_id.startswith('uploads/'):
             upload = next((row for row in _registry(self.data)['datasets']
-                           if row.get('id') == dataset_id), None)
+                           if row.get('id') == dataset_id and not row.get('archived')), None)
             if upload is None:
                 raise ValueError('上传的案例集不存在')
             base = (self.data / 'case-datasets').resolve()

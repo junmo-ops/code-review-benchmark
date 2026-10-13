@@ -336,13 +336,19 @@ class CaseAssetStorage(CaseArchiveStorage):
         return target
 
     def rename_dataset(self, suite, digest, name):
+        self._update_dataset_record(suite, digest, {'name': name})
+
+    def archive_dataset(self, suite, digest):
+        self._update_dataset_record(suite, digest, {'archived': True})
+
+    def _update_dataset_record(self, suite, digest, changes):
         path = self._local_record_path(self.data, suite, digest)
         try:
             record = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
-            raise RuntimeError('找不到案例集的 COS 记录，无法修改名称') from None
+            raise RuntimeError('找不到案例集的 COS 记录，无法更新资源') from None
         self._validate_record(record, self._dataset_prefix(suite, digest) + 'record.json')
-        record['name'] = name
+        record.update(changes)
         encoded = json.dumps(record, ensure_ascii=False, sort_keys=True).encode('utf-8')
         self._put_stream(self._dataset_prefix(suite, digest) + 'record.json', io.BytesIO(encoded), len(encoded),
                          hashlib.sha256(encoded).hexdigest(), 'application/json')
@@ -628,6 +634,8 @@ class CaseAssetStorage(CaseArchiveStorage):
         if not isinstance(record, dict):
             raise ValueError
         suite, digest = record.get('suite'), record.get('dataset_sha256')
+        if 'archived' in record and type(record['archived']) is not bool:
+            raise ValueError('案例集移除标记必须为布尔值')
         if not self._valid_record_identity(record, suite, digest, key):
             raise ValueError
         from .case_upload import limits
@@ -678,7 +686,7 @@ class CaseAssetStorage(CaseArchiveStorage):
         entry = dict(id=f'uploads/{suite}/{digest}.jsonl', suite=suite, name=record['name'],
                      count=len(cases), dataset_sha256=digest,
                      file=dataset.relative_to(dashboard.data).as_posix(), repositories=sorted(expected),
-                     repository_versions=versions)
+                     repository_versions=versions, archived=bool(record.get('archived', False)))
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite and row.get('dataset_sha256') == digest), None)
         if existing:

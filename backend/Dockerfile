@@ -11,7 +11,7 @@ RUN npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
 COPY frontend/ ./
 COPY scripts/ /scripts/
 RUN npm run lint \
-    && node node_modules/eslint/bin/eslint.js /scripts --config /scripts/eslint.config.mjs --max-warnings 0 \
+    && (cd /scripts && node /frontend/node_modules/eslint/bin/eslint.js . --config eslint.config.mjs --max-warnings 0) \
     && npm run build
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1

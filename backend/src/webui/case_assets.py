@@ -44,7 +44,7 @@ def registered_datasets(data):
 
 def _registered_row_usable(row, data, base):
     from .case_import import dataset_pending
-    if dataset_pending(data, row.get('dataset_sha256')):
+    if row.get('archived') or dataset_pending(data, row.get('dataset_sha256')):
         return False
     original = Path(data) / row['file']
     path = original.resolve()
@@ -77,10 +77,12 @@ def _legacy_ready(root, data):
 def status(root, data):
     datasets = registered_datasets(data)
     legacy = _legacy_ready(root, data)
-    ready = bool(datasets) or legacy
+    historical = _historical_datasets_ready(data)
+    ready = bool(datasets) or legacy or historical
     names = [item.get('name', item.get('id', '案例集')) for item in datasets]
     message = f'已导入 {len(names)} 份案例集，可继续上传更多。' if names else (
         '已有案例已准备；可以继续导入其他案例集。' if legacy else
+        '案例集已移除，历史资源已保留；新建测评请重新导入案例集。' if historical else
         '请上传案例 ZIP。导入和准备案例不会调用模型。')
     repositories = repository_entries(data)
     return dict(enabled=True, ready=ready, name='案例集导入', message=message, **limits(),
@@ -88,6 +90,20 @@ def status(root, data):
                 datasets=[{'id': item.get('id'), 'name': item.get('name'), 'suite': item.get('suite'),
                            'count': item.get('count'), 'dataset_sha256': item.get('dataset_sha256')}
                           for item in datasets])
+
+
+def _historical_datasets_ready(data):
+    base = (Path(data) / 'case-datasets').resolve()
+    for row in _registry(data)['datasets']:
+        if not isinstance(row, dict) or not row.get('archived'):
+            continue
+        try:
+            visible = dict(row, archived=False)
+            if _registered_row_usable(visible, data, base):
+                return True
+        except (OSError, ValueError, KeyError):
+            continue
+    return False
 
 
 def repository_registry_path(data):
@@ -153,6 +169,8 @@ def _manage_case_dataset_locked(dashboard, request):
     row = next((item for item in registry['datasets'] if item.get('id') == identifier), None)
     if not row or not isinstance(identifier, str) or not identifier.startswith('uploads/'):
         raise ValueError('只能维护网页导入的案例集')
+    if row.get('archived'):
+        raise ValueError('该案例集已从管理列表移除；如需重新使用，请重新导入')
     if action == 'rename':
         return _rename_dataset(dashboard, registry, row, request.get('name'))
     if action == 'delete':
@@ -173,7 +191,8 @@ def _rename_dataset(dashboard, registry, row, name):
 
 
 def _delete_dataset(dashboard, registry, row):
-    _ensure_dataset_unused(dashboard.data, row['dataset_sha256'])
+    if _dataset_is_referenced(dashboard.data, row['dataset_sha256']):
+        return _archive_dataset(dashboard, registry, row)
     dataset = Path(dashboard.data) / row['file']
     base = (Path(dashboard.data) / 'case-datasets').resolve()
     if dataset.is_symlink() or not dataset.resolve().is_relative_to(base):
@@ -190,14 +209,30 @@ def _delete_dataset(dashboard, registry, row):
     return dict(message='案例集已删除。')
 
 
-def _ensure_dataset_unused(data, digest):
-    for path in (Path(data) / 'runs').rglob('run-config.json'):
+def _archive_dataset(dashboard, registry, row):
+    if mode_is_cos():
+        from .case_storage import CaseAssetStorage
+        CaseAssetStorage(dashboard.data).archive_dataset(row['suite'], row['dataset_sha256'])
+    row['archived'] = True
+    from .service import save
+    save(_registry_path(dashboard.data), registry)
+    return dict(message='案例集已从管理列表移除；历史批次依赖的清单和仓库版本已保留。')
+
+
+def _dataset_is_referenced(data, digest):
+    from runner.evidence import evidence_files
+    for path in evidence_files(Path(data) / 'runs'):
+        if path.name not in {'run-config.json', 'experiment.json'}:
+            continue
         try:
             config = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
-            continue
-        if isinstance(config, dict) and config.get('dataset_sha256') == digest:
-            raise ValueError('该案例集已被测评批次引用，请保留它以便后续评分和恢复')
+            return True  # Unknown historical dependencies must not be physically deleted.
+        if not isinstance(config, dict):
+            return True
+        if config.get('dataset_sha256') == digest:
+            return True
+    return False
 
 
 def _manage_repository_locked(dashboard, request):
@@ -212,7 +247,7 @@ def _manage_repository_locked(dashboard, request):
     if action != 'delete':
         raise ValueError('仓库更新请上传新版本资源 ZIP')
     if _repository_is_referenced(dashboard.data, slug):
-        raise ValueError('该仓库仍被案例集引用，请先删除相关案例集')
+        raise ValueError('该仓库仍被案例集或历史测评批次引用，不能删除其依赖的仓库版本')
     repos = Path(dashboard.data) / 'repos' / slug
     if repos.is_symlink():
         raise ValueError('本地仓库目录不能是符号链接')
@@ -549,6 +584,8 @@ def _install_custom(dashboard, archive, progress=None):
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite_id and row.get('dataset_sha256') == digest), None)
         if existing:
+            existing.pop('archived', None)
+            save(_registry_path(dashboard.data), registry)
             return dict(status(dashboard.root, dashboard.data), message=f"案例集“{existing['name']}”已导入，可直接选择使用。")
         identifier = digest
         upload_rel = f'case-datasets/{suite_id}/{identifier}/dataset.jsonl'
