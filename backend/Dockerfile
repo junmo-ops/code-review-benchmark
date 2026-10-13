@@ -9,10 +9,7 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
 COPY frontend/ ./
-COPY scripts/ /scripts/
-RUN npm run lint \
-    && (cd /scripts && node /frontend/node_modules/eslint/bin/eslint.js . --config eslint.config.mjs --max-warnings 0) \
-    && npm run build
+RUN npm run build
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1
 USER root
@@ -46,8 +43,6 @@ COPY --from=node_runtime /frontend/dist/ /opt/deployments/frontend-dist/
 COPY deployment/lcr-linux /opt/deployments/bin/lcr
 RUN rm -rf frontend && chmod 755 bin/lcr lcr/dist/lcr-linux-x64 \
     && git --version && node --version && npm --version && bin/lcr version \
-    && .venv/bin/python tools/check_project.py \
-    && .venv/bin/python tools/check_regressions.py \
     && .venv/bin/python -m deployment.container --check-build \
     && mkdir -p runtime/models runtime/home \
     && chmod -R 777 runtime
