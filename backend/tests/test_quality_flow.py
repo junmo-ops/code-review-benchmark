@@ -75,3 +75,11 @@ class QualityFlowTests(unittest.TestCase):
                 self.pack.build_archive(target, ['source.py'], [])
         self.assertFalse(target.exists())
         self.assertFalse(target.with_suffix('.zip.part').exists())
+
+    def test_selected_delivery_excludes_unrelated_changes(self):
+        names, deleted = self.pack.select_changes(['changed.py', 'new.ts', 'unrelated.py'],
+                                                   ['removed.py'], ['changed.py', 'new.ts'])
+        self.assertEqual(names, ['changed.py', 'new.ts'])
+        self.assertEqual(deleted, [])
+        with self.assertRaises(ValueError):
+            self.pack.select_changes(['changed.py'], [], ['unknown.py'])
