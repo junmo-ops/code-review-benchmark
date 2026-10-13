@@ -319,15 +319,20 @@ def compose_roles(dashboard, review_id, judge_id, needs_judge=True):
 
 def save_run_profile(dashboard, config):
     import uuid
+    from runner.diagnostics import event, phase
+    event('profile.save.begin')
     filename = 'model.run-' + uuid.uuid4().hex + '.local.json'
     dashboard.configs.mkdir(parents=True,exist_ok=True)
     fd=os.open(dashboard.configs/filename,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     try:
         with os.fdopen(fd,'w',encoding='utf-8') as handle:
             json.dump(config,handle,ensure_ascii=False,indent=2)
+        event('profile.local_saved')
         from deployment.model_storage import persist_profile
-        persist_profile(dashboard.root, filename)
+        with phase('profile.persist'):
+            persist_profile(dashboard.root, filename)
     except Exception:
         (dashboard.configs / filename).unlink(missing_ok=True)
         raise
+    event('profile.save.end')
     return filename

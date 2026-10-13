@@ -8,6 +8,8 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
+from runner.diagnostics import event, phase
 
 from runner.paths import PROJECT_ROOT as ROOT
 
@@ -52,6 +54,7 @@ def _launch(command, children):
 
 def _wait_preparation(stop, children):
     process = _launch([sys.executable, '-m', 'deployment.container', '--prepare'], children)
+    event('container.child_started', child_pid=process.pid, stage='prepare')
     while process.poll() is None and not stop.wait(.2):
         pass
     return process.returncode, stop.is_set()
@@ -71,12 +74,16 @@ def _start_synchronizer(role):
 def _start_services(role, port, children):
     services = []
     if role in {'all', 'worker'}:
-        services.append(_launch([sys.executable, '-m', 'webui.worker'], children))
+        child = _launch([sys.executable, '-m', 'webui.worker'], children)
+        services.append(child)
+        event('container.child_started', child_pid=child.pid, stage='worker')
     if role in {'all', 'web'}:
         command = [sys.executable, '-m', 'gunicorn', '--bind', f'0.0.0.0:{port}',
                    '--workers', '1', '--threads', '4', '--timeout', '120',
                    '--access-logfile', '-', 'webui.wsgi:create_app()']
-        services.append(_launch(command, children))
+        child = _launch(command, children)
+        services.append(child)
+        event('container.child_started', child_pid=child.pid, stage='web')
     return services
 
 
@@ -84,6 +91,7 @@ def _monitor_services(stop, services):
     while not stop.wait(.2):
         for process in services:
             if process.poll() is not None:
+                event('container.child_exit', child_pid=process.pid, exit_code=process.returncode)
                 print(f'服务进程退出：pid={process.pid}，exit_code={process.returncode}；停止本容器其余进程。', flush=True)
                 return process.returncode or 1
     return 0
@@ -162,14 +170,23 @@ def main():
     port = int(os.environ.get('PORT', '8080'))
     if not 1 <= port <= 65535:
         raise ValueError('PORT 须为 1–65535')
+    os.environ['BENCH_DIAGNOSTIC_BOOT_ID'] = uuid.uuid4().hex
+    event('container.start')
+    from .resource_monitor import ResourceMonitor
+    monitor = ResourceMonitor()
+    monitor.start()
     stop = threading.Event()
     previous = {}
+    def stop_container(signum, frame):
+        event('container.signal', signal=signum)
+        stop.set()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        previous[sig] = signal.signal(sig, lambda *_: stop.set())
+        previous[sig] = signal.signal(sig, stop_container)
     children = []
     synchronizer = None
     try:
-        preparation_code, stopped = _wait_preparation(stop, children)
+        with phase('container.prepare'):
+            preparation_code, stopped = _wait_preparation(stop, children)
         if stopped:
             return 0
         if preparation_code:
@@ -182,9 +199,15 @@ def main():
         if os.environ.get('BENCH_STORAGE_MODE') == 'ephemeral':
             print('试运行：容器重建会丢失进度、配置和结果，请及时导出。', flush=True)
         services = _start_services(role, port, children)
+        event('container.services_started')
         return _monitor_services(stop, services)
     finally:
-        _shutdown(children, synchronizer, previous)
+        try:
+            with phase('container.shutdown'):
+                _shutdown(children, synchronizer, previous)
+        finally:
+            monitor.stop()
+            event('container.end')
 
 
 if __name__ == '__main__':

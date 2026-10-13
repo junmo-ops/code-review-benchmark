@@ -106,16 +106,24 @@ class DurableDashboard(Dashboard):
         names=('LCR_LLM_MODEL','LCR_LLM_BASE_URL','JUDGE_MODEL','JUDGE_BASE_URL','JUDGE_USE_MOCK')
         return hashlib.sha256(json.dumps({k:env.get(k) for k in names},sort_keys=True).encode()).hexdigest()
     def enqueue(self,job,request,spec):
+        from runner.diagnostics import event, phase
+        event('queue.enqueue.begin', job_id=job['id'], key=job['key'])
         from .case_import import benchmark_submission
         with benchmark_submission(self):
             if spec is not None:
                 job['resource_dataset'] = spec.get('dataset')
             actor=request.get('_actor','local')
             request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create'}}
-            job['profile_fingerprint']=self.fingerprint(job['profile'])
+            with phase('queue.fingerprint', job_id=job['id']):
+                job['profile_fingerprint']=self.fingerprint(job['profile'])
             job['submitted_by']=actor
-            self.queue.insert(job,request,spec)
-            self.sync()
+            with phase('queue.insert', job_id=job['id'], key=job['key']):
+                self.queue.insert(job,request,spec)
+            with phase('queue.refresh', job_id=job['id']):
+                self.sync()
+            event('queue.enqueue.end', job_id=job['id'], key=job['key'],
+                  queued=sum(j['status'] == 'queued' for j in self.jobs.values()),
+                  running=sum(j['status'] == 'running' for j in self.jobs.values()))
             return dict(job_id=job['id'],key=job['key'])
     def submit(self, request):
         self.sync()

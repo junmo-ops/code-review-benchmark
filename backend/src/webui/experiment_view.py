@@ -16,7 +16,10 @@ def submit_named(app,data,comparison=False):
     if comparison:
         from comparison.service import create
         result=create(app,data)
-    else:result=app.submit(data)
+    else:
+        from runner.diagnostics import phase
+        with phase('benchmark.submit'):
+            result=app.submit(data)
     if label and (comparison or data.get('action')=='create'):
         with app.lock:
             path=app.state/'display-names.json'

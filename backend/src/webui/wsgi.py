@@ -309,4 +309,6 @@ def create_app(dashboard=None):
         dashboard.stop(data['job'],actor=g.bench_user[:200]);return jsonify(ok=True)
     from .case_import import start
     start(dashboard)
+    from runner.diagnostics import install_request_diagnostics
+    install_request_diagnostics(app)
     return app

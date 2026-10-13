@@ -376,7 +376,9 @@ class Dashboard:
         if row and suite and digest:
             from .case_storage import CaseAssetStorage
             try:
-                CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest)
+                from runner.diagnostics import phase
+                with phase('benchmark.prepare_repositories', key=key):
+                    CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest)
             except RuntimeError as error:
                 raise ValueError(str(error)) from None
 
@@ -760,7 +762,11 @@ class Dashboard:
     def _run_work_stage(self, job_id, job, request, steps, index, stage, task, init, log):
         label = stage + (' · ' + task if task else '')
         self.update(job_id, step=label, step_started_at=now(), completed_steps=index)
-        code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
+        from runner.diagnostics import phase, event
+        with phase('benchmark.stage', job_id=job_id, key=job['key'], stage=stage):
+            code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
+        event('benchmark.stage.result', job_id=job_id, stage=stage, exit_code=code,
+              status='timeout' if timed_out else 'exited')
         self.update(job_id, exit_code=code)
         if self.cancelled.is_set():
             return 'cancelled'

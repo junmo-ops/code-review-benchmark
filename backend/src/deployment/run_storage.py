@@ -225,7 +225,9 @@ class RunDataStorage:
             if '.leancodereview' in path.parts:
                 from .session_checkpoint import sanitize_checkpoint
                 try:
-                    sanitize_checkpoint(snapshot, getattr(self, 'checkpoint_secrets', ()))
+                    from runner.diagnostics import phase
+                    with phase('backup.sanitize_checkpoint', bytes=snapshot.stat().st_size):
+                        sanitize_checkpoint(snapshot, getattr(self, 'checkpoint_secrets', ()))
                 except (ValueError, UnicodeError):
                     self.checkpoint_errors = getattr(self, 'checkpoint_errors', 0) + 1
                     print('LCR 会话检查点损坏，保留旧备份；答卷与任务日志继续同步。', flush=True)
@@ -289,12 +291,16 @@ class RunDataStorage:
         self.checkpoint_secrets = credential_values(config_root(ROOT))
         self.checkpoint_errors = 0
         changed = 0
-        snapshot = self._queue_snapshot()
+        from runner.diagnostics import phase
+        with phase('backup.queue_snapshot'):
+            snapshot = self._queue_snapshot()
         try:
             for group, root in self._groups():
-                changed += bool(self._commit_group(group, root, force))
+                with phase('backup.group', group=group):
+                    changed += bool(self._commit_group(group, root, force))
             if snapshot:
-                changed += bool(self._commit_group('state/queue', snapshot, True))
+                with phase('backup.queue_commit'):
+                    changed += bool(self._commit_group('state/queue', snapshot, True))
         finally:
             if snapshot:
                 shutil.rmtree(snapshot.parent, ignore_errors=True)
@@ -453,8 +459,12 @@ class RunDataSynchronizer:
 
     def sync_once(self, force=False):
         try:
-            self.storage.sync(force=force)
-        except Exception:
+            from runner.diagnostics import phase
+            with phase('backup.sync'):
+                self.storage.sync(force=force)
+        except Exception as error:
+            from runner.diagnostics import event
+            event('backup.failed', error_type=type(error).__name__)
             self.storage._write_status({'enabled': True, 'status': 'error', 'last_error_at': _now(),
                                         'message': 'COS 运行数据同步失败；本地数据仍在当前容器中，请勿重建容器'})
             print('COS 运行数据同步失败；本地数据仍在当前容器中，请勿重建容器。', flush=True)
