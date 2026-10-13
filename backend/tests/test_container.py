@@ -58,13 +58,15 @@ class ContainerAccessTests(unittest.TestCase):
                                          headers=self.headers).status_code, 403)
 
     def test_minimal_public_health_and_honest_storage_state(self):
-        response = self.client.get('/healthz')
+        self.assertEqual(self.client.get('/healthz').json, {'status': 'alive'})
+        response = self.client.get('/readyz')
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json, {'status': 'worker_unavailable'})
         self.dashboard.queue.meta('heartbeat', time.time())
         self.assertEqual(self.client.get('/healthz').status_code, 200)
         self.dashboard.queue.meta('recovery_required', True)
-        self.assertEqual(self.client.get('/healthz').status_code, 503)
+        self.assertEqual(self.client.get('/healthz').status_code, 200)
+        self.assertEqual(self.client.get('/readyz').status_code, 503)
         response = self.client.get('/api/state', base_url='https://review.test',
                                    headers=self.headers)
         self.assertEqual(response.json['storage_mode'], 'ephemeral')

@@ -249,7 +249,7 @@ def review_case(item, run, preview, stop):
         out = run / "results" / (item.safe_id + ".json")
         if _skip_or_archive_existing_answer(item, run, out, preview):
             return None
-        resume_session_id = None
+        resume_session_id = None if preview else _initial_resume_session(item, run)
         for attempt in range(1, (1 if preview else MAX_CASE_RETRIES + 1) + 1):
             raw = None
             try:
@@ -306,6 +306,7 @@ def _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_
         execution = json.loads((run / "raw" / (item.safe_id + ".execution.json")).read_text(encoding="utf-8"))
         answer["duration_seconds"] = execution["elapsed_seconds"]
         save(out, answer)
+        _request_checkpoint_sync()
         if retries:
             save(run / "raw" / (item.safe_id + ".outcome.json"),
                  {"status": "recovered_after_retry", "attempt_count": attempt, "retry_history": retries})
@@ -314,6 +315,18 @@ def _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_
     except (ValueError, OSError) as error:
         error.raw_output = raw
         raise
+
+
+def _request_checkpoint_sync():
+    if os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').lower() != 'cos':
+        return
+    from deployment.run_storage import request_run_sync
+    from runner.runtime import data_root
+    try:
+        request_run_sync(data_root(ROOT))
+    except OSError as error:
+        # A backup scheduling error must never turn a complete answer into failure.
+        print('答卷已保存，但 COS 同步请求写入失败：', type(error).__name__, file=sys.stderr)
 
 
 def _resume_id_from_result(raw):
@@ -345,6 +358,20 @@ def _resume_id_from_saved_logs(run, safe_id):
     except OSError:
         return None
     return _resume_id_from_output(stdout, stderr)
+
+
+def _initial_resume_session(item, run):
+    session_id = _resume_id_from_saved_logs(run, item.safe_id)
+    if not session_id:
+        path = run / 'raw' / (item.safe_id + '.execution.json')
+        if path.exists():
+            try:
+                execution = json.loads(path.read_text(encoding='utf-8'))
+                matched = collect_session(item, run, execution, None, redact)
+                session_id = matched.get('session_id') if matched.get('match') == 'matched' else None
+            except (OSError, ValueError):
+                pass
+    return session_id if session_id and _session_has_completed_items(item, run, session_id) else None
 
 
 def _retry_session(item, run, error, raw, previous_session_id):

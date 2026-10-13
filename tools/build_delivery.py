@@ -1,6 +1,7 @@
 """Build deliveries from the current project only. Excludes local secrets/history/runtime."""
 from pathlib import Path
 import hashlib,io,json,tarfile,zipfile
+import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "backend/src"))
@@ -50,6 +51,7 @@ def delivery_sources():
     return source, aacr_bundles
 
 def main():
+    subprocess.run(['node', str(ROOT / 'scripts/project.mjs'), 'verify'], cwd=ROOT, check=True)
     assets = delivery_assets()
     manifest={name:hashlib.sha256(data).hexdigest() for name,(data,mode) in sorted(assets.items())}
     (ROOT/'assets-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')

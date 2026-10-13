@@ -55,7 +55,7 @@ def _authorize_origin(public, csrf):
 
 
 def _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_password):
-    if request.path == '/healthz' and request.method == 'GET':
+    if request.path in {'/healthz', '/readyz'} and request.method == 'GET':
         return None
     if request.host != parsed.netloc:
         return jsonify(error='请求域名与 BENCH_PUBLIC_URL 不一致'), 403
@@ -207,10 +207,14 @@ def create_app(dashboard=None):
         return jsonify(ok=True)
     @app.get('/healthz')
     def health():
+        return jsonify(status='alive'), 200
+
+    @app.get('/readyz')
+    def readiness():
         import time
         ready = os.environ.get('BENCH_CONTAINER_ROLE', 'web') != 'all' or time.time() - (dashboard.queue.meta('heartbeat') or 0) < 15
         status = 'recovery_required' if dashboard.queue.meta('recovery_required') else 'ready'
-        return jsonify(status=status if ready else 'worker_unavailable'), 200 if ready else 503
+        return jsonify(status=status if ready else 'worker_unavailable'), 200 if ready and status == 'ready' else 503
     @app.get('/api/session')
     def session():
         return jsonify(csrf_token=csrf, access_role=g.bench_role)

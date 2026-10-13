@@ -1,5 +1,7 @@
 """Validate source layout, Python syntax and complexity of changed functions."""
 import ast
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -44,17 +46,9 @@ class Complexity(ast.NodeVisitor):
 
 
 def functions(tree):
-    return {ast.dump(node, include_attributes=False): node for node in ast.walk(tree)
+    # Python 3.12 adds an empty type_params field; keep baseline fingerprints portable.
+    return {ast.dump(node, include_attributes=False).replace(', type_params=[]', ''): node for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
-
-
-def previous_source(name):
-    for candidate in dict.fromkeys([name, name.removeprefix('backend/src/')]):
-        result = subprocess.run(['git', 'show', 'HEAD:' + candidate], cwd=ROOT,
-                                capture_output=True, text=True, encoding='utf-8')
-        if result.returncode == 0:
-            return result.stdout
-    return ''
 
 
 def check_python(path, git_available):
@@ -62,11 +56,12 @@ def check_python(path, git_available):
     source = path.read_text(encoding='utf-8-sig')
     tree = ast.parse(source, filename=name)
     compile(tree, name, 'exec')
-    old = previous_source(name) if git_available else ''
-    unchanged = functions(ast.parse(old)) if old else {}
+    baseline = json.loads((ROOT / 'tools/quality/python-complexity-baseline.json').read_text())
+    allowed = set(baseline['functions'].get(name, []))
     errors = []
     for fingerprint, function in functions(tree).items():
-        if name not in STRICT and (fingerprint in unchanged or not git_available):
+        digest = hashlib.sha256(fingerprint.encode()).hexdigest()
+        if name not in STRICT and digest in allowed:
             continue
         counter = Complexity()
         for statement in function.body:
@@ -102,9 +97,9 @@ def main():
             count += 1
     if errors:
         raise SystemExit('\n'.join(errors))
-    print(f'目录与 {count} 个 Python 文件语法通过；改动函数复杂度不超过 15。')
+    print(f'目录与 {count} 个 Python 文件语法通过；除已冻结历史基线外，函数复杂度不超过 15。')
     if not git_available:
-        print('无 Git 基线，仅校验关键模块的复杂度；其余文件已校验语法。')
+        print('无 Git 目录，使用冻结历史基线检查复杂度，不跳过新增函数。')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "source_commit": "dfc180f14eac2c85af803d659ce454fdc33c8741",
+  "functions": {
+    "backend/src/comparison/report.py": [
+      "c9c7c2475bb27ca7f0ae987031479e99f1bf927b8de848fa4efc00141c2c5c76"
+    ],
+    "backend/src/comparison/runner.py": [
+      "52638664cf8e1b1215b7f328348ed3204c8b9e2801f79c26d0bf5c71fb346ae4"
+    ],
+    "backend/src/comparison/scorer.py": [
+      "eda146e4880355702f54cdcb2cbb316b6adae455ba8afc318b3f467d7854dcbb"
+    ],
+    "backend/src/comparison/service.py": [
+      "fd36add2f81ead9cf0c243016c110194c68b3320c61bb08445cd3ce83d31c45f"
+    ],
+    "backend/src/evaluators/martian.py": [
+      "05fad8a90b023659046fcd2ebc345fafdc15e6d8bc3759ec2f0034aa24fd30db"
+    ],
+    "backend/src/multiround/cli.py": [
+      "e57ce695504937da180d3019bda2eeb7d6d52165c31e2545b36b536f805fffd6",
+      "cf320264e2412580bbd343f3d97c7adafbcf02e7643f9df8cc79bdbae72a0655"
+    ],
+    "backend/src/multiround/core.py": [
+      "f90b082a1bbb2cd37926ca3f4352004a8715b6f9cebe23c73144e4889fe32222"
+    ],
+    "backend/src/reviewers/cline_skill/adapter.py": [
+      "aed5c8206641bf01a1c64c16e399119fe592b7513bf61c62efb7b5dc43226eda"
+    ],
+    "backend/src/reviewers/lcr/adapter.py": [
+      "a065237acaa9e23c9523a94fb9992b073477942a719f9d212114fe634006a3f6"
+    ],
+    "backend/src/reviewers/lcr/logs.py": [
+      "55aa9b3dbb59d0041e85e28ea9218c587e31e9b0cbd6e5cafa151c8974e06859",
+      "63a2238fa1d573d11a138b86342bbaabb8774c94f89f625add56c1667225e0f9"
+    ],
+    "backend/src/reviewers/lcr/session_logs.py": [
+      "c8ccbb35af2391031243769edb682658b3f73743033e43406c45ebac148f98a0"
+    ],
+    "backend/src/reviewers/server_agent/adapter.py": [
+      "2d3441f73c3ae8054cda2365a9cfbb2d0fc0319bb324caaffa14dc28ab28e59d",
+      "51b6c8322d29d799580da4920ea883f5d272c9f8b90aa48428927eb71d75e3a9",
+      "6f9f64f22899fb0fb0837773beb4ffcb14365873e5edbf934b2d6920b2a8f0ff"
+    ],
+    "backend/src/runner/cloud.py": [
+      "b6a41f4396cc4cbd7042ba64047a44450a5ec12e25dd81c574c4f615ad19188b",
+      "9590185ac4f99b38e6d1f4199d39526eb24d4effa2c691859fe0e85a5af2490e"
+    ],
+    "backend/src/runner/process.py": [
+      "49912414769fe615a2902c76c8ad658ea419f3a907977e3445e52fecd9cc0939"
+    ],
+    "backend/src/scoring/martian.py": [
+      "c77234c85cee4eba54f406968b70dce210b347b7ea062643cd1e0ba5278c4974"
+    ],
+    "backend/src/suites/aacr/evaluator.py": [
+      "5fcba82706c1d0bbbca40b5d4555d19706c410b5a405f3f08e3c06ee8943ab05"
+    ],
+    "backend/src/suites/aacr/report.py": [
+      "91e9ad0ddfdd89c51a0b951f082fe4ea2e7f3cf5b221f81b822122529eebf21b"
+    ],
+    "backend/src/suites/codefuse_cr/adapter.py": [
+      "47a54e21cd5b475d1fa0b3cd17984be8537f43abd3a650526d84e6e04b31ac1d"
+    ],
+    "backend/src/suites/swe_prbench/evaluator.py": [
+      "7bfb97b70578786f7ddcbb92b655f302fe5c0b6b37466bf88a0af23de3318018"
+    ],
+    "backend/src/webui/experiment_view.py": [
+      "9bb524b296dfda0e1201860e40e72d571d42fda780037e8246ef8a782bd534ea"
+    ],
+    "backend/src/webui/service.py": [
+      "d81f8f18752115ab9a528f67df7f33a33c83fe6cb2b2b259b9246cc9dafeda5d",
+      "70621a21a23e283f0a892f1b199ee37081dd05bff6ebe6ae3f009c709a41f437"
+    ],
+    "tools/compare_requests.py": [
+      "f8f450186329a0f8bbb486d32338ff5a2ac28a1032ee8c346cc274678ac76533",
+      "f58029e24d7115ba771519b17a11229914c73ce1437b310fc27673fc4979537f"
+    ],
+    "tools/configure_openai.py": [
+      "c424e13c22ea4b5adba1740d4da45d0544eb7f1d998eafc3608dc79533375f5a"
+    ],
+    "tools/configure_qwen.py": [
+      "31c924580e86f855b57d9c7be61607947a64ab50ca0ca50735c3e98e4ba5b7ab"
+    ],
+    "tools/import_codefuse.py": [
+      "ad5e2e8bb1711badaac3b4289e55908435d1fc43eb9af4fe147607c4a501e581"
+    ],
+    "tools/prepare_assets.py": [
+      "f155998eb4273c897232d26f1fd64628111d01f27c801077df73a5e58ba9af21"
+    ],
+    "tools/prepare_case_archive.py": [
+      "0fc8bb8078b0b93af1b1289fb51c4f3ce9acc670ca823c5425c5ea2a8df9aab4"
+    ]
+  }
+}

@@ -291,7 +291,7 @@ export function RunDetail({
   const profile = selectedProfile ?? profileForRun(record, state.profiles);
   const jobs = state.jobs.filter((j) => j.key === runKey),
     latest = jobs.find((j) => active(j.status)) ?? jobs[0];
-  const choice = primary(record, latest);
+  const choice = primary(record, latest, state.queue_mode);
   const execute = (action: string, profile: string, task: string, retry: boolean) =>
     perform(async () => {
       if (!record || actionBlocked(state, record, action) || importBusy)
@@ -304,15 +304,16 @@ export function RunDetail({
         profile,
         task: task || undefined,
         retry: record.suite === 'ccrab' ? false : retry,
+        confirmed: action === 'resume' ? true : undefined,
       });
       await refresh();
       onTab('log', result.job_id);
     });
   const start = (action: string, profile: string, task = '', retry = false) => {
-    if (['review', 'eval', 'report', 'workflow', 'compare-martian'].includes(action)) {
+    if (['review', 'eval', 'report', 'workflow', 'resume', 'compare-martian'].includes(action)) {
       modal.confirm({
         title: `开始${actions[action]}？`,
-        content: `执行范围：${action === 'eval' ? '所有完整答卷；未完成案例排除' : task || '全部案例 / 轮次'}。将调用模型，可能产生 API 用量。`,
+        content: action === 'resume' ? '请确认旧扫描进程和容器已停止。将解除队列暂停，跳过完整答卷，续跑未完成案例并评分；可能产生模型用量。' : `执行范围：${action === 'eval' ? '所有完整答卷；未完成案例排除' : task || '全部案例 / 轮次'}。将调用模型，可能产生 API 用量。`,
         okText: '开始执行',
         cancelText: '取消',
         onOk: () => execute(action, profile, task, retry),

@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "setup": "node scripts/project.mjs setup",
     "dev": "node scripts/project.mjs dev",
@@ -12,6 +14,9 @@
     "frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "check": "node scripts/project.mjs check",
-    "cli": "node scripts/project.mjs cli"
+    "cli": "node scripts/project.mjs cli",
+    "verify": "node scripts/project.mjs verify",
+    "package:changes": "node scripts/project.mjs package",
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }

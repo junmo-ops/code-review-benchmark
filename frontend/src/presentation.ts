@@ -1,4 +1,4 @@
-import type { Job, Run, Snapshot } from './types';
+import type { ImportTask, Job, Run, Snapshot } from './types';
 export const labels: Record<string, string> = {
   pending: '待运行',
   partial: '部分完成',
@@ -38,6 +38,7 @@ export const actions: Record<string, string> = {
   export: '生成归档',
   recover: '从已有输出恢复结果',
   workflow: '检视并评分',
+  resume: '继续未完成案例并评分',
   'compare-martian': 'Martian 对照',
   create: '创建批次',
   comparison: '模型对比实验',
@@ -63,11 +64,13 @@ export const suiteName = (state: Snapshot, id: string) =>
 export const editable = (state: Snapshot) => state.access_role !== 'viewer';
 export const canSubmit = (state: Snapshot) =>
   editable(state) && (state.queue_mode || !state.active) && state.case_assets?.ready !== false;
-export function primary(run: Run | undefined, job: Job | undefined) {
+export function primary(run: Run | undefined, job: Job | undefined, queueMode = false) {
   if (job && active(job.status)) return { tab: 'log', label: '查看运行进度' };
   if (!run) return { tab: 'log', label: '查看创建进度' };
   if (['scored', 'partial_scored', 'complete', 'complete_no_findings'].includes(run.status))
     return { tab: 'report', label: '查看结果' };
+  if (canResumeBatch(run, job, queueMode))
+    return { action: 'resume', label: '继续未完成案例并评分' };
   if (job && ['failed', 'cancelled', 'interrupted'].includes(job.status))
     return { tab: 'log', label: '查看原因与日志' };
   if (['failed', 'partial', 'unreadable'].includes(run.status))
@@ -93,4 +96,15 @@ export function caseLabel(status: string, live: boolean) {
   if (!live && ['reviewing', 'scoring'].includes(status)) return '已中断 · 需检查';
   if (!live && status === 'pending') return '未执行';
   return labels[status] ?? status;
+}
+
+export function resourceImportTask(task: ImportTask | null, repository: boolean) {
+  const kind = repository ? 'repository' : 'dataset';
+  return task?.kind === kind ? task : null;
+}
+
+function canResumeBatch(run: Run, job: Job | undefined, queueMode: boolean) {
+  if (!queueMode || job?.status !== 'interrupted') return false;
+  if (run.compatibility_warning || run.reviewer !== 'lcr') return false;
+  return !['mcr', 'ccrab'].includes(run.suite);
 }

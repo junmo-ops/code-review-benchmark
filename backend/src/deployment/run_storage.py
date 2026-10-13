@@ -54,6 +54,22 @@ def _digest(path):
     return value.hexdigest()
 
 
+def _trim_jsonl_snapshot(path):
+    with path.open('r+b') as stream:
+        stream.seek(0, 2)
+        end = stream.tell()
+        while end > 0:
+            start = max(0, end - 8192)
+            stream.seek(start)
+            chunk = stream.read(end - start)
+            newline = chunk.rfind(b'\n')
+            if newline >= 0:
+                stream.truncate(start + newline + 1)
+                return
+            end = start
+        stream.truncate(0)
+
+
 class RunDataStorage:
     def __init__(self, root=ROOT):
         from webui.case_storage import CaseArchiveStorage
@@ -83,11 +99,14 @@ class RunDataStorage:
             return True
         if len(parts) == 3 and parts[0] == 'runs' and parts[1] in {'mcr', 'ccrab'} and RUN_ID.fullmatch(parts[2]):
             return True
-        if group == 'state/queue':
+        if group in {'state/queue', 'state/lcr-sessions'}:
             return True
         return len(parts) == 2 and parts[0] == 'jobs' and JOB_ID.fullmatch(parts[1]) is not None
 
     def _groups(self):
+        sessions = self.data / 'home/.leancodereview/sessions'
+        if sessions.is_dir():
+            yield 'state/lcr-sessions', sessions
         runs = self.data / 'runs'
         yield from self._run_groups(runs)
         jobs = self.data / 'ui-state' / 'jobs'
@@ -124,7 +143,8 @@ class RunDataStorage:
         if root.is_file():
             yield group, root, root.name
             return
-        for path in sorted(root.rglob('*')):
+        from runner.evidence import evidence_files
+        for path in evidence_files(root):
             if path.is_symlink() or not path.is_file() or path.name in SKIP_NAMES or path.name.endswith('.tmp'):
                 continue
             relative = path.relative_to(root)
@@ -194,12 +214,22 @@ class RunDataStorage:
             snapshot.unlink(missing_ok=True)
 
     def _sync_file(self, path, previous, force):
-        appendable = path.name.endswith(('.log', '.stdout.json', '.stdout.txt', '.stderr.txt'))
+        appendable = path.name.endswith(('.log', '.stdout.json', '.stdout.txt', '.stderr.txt', '.jsonl'))
         if not appendable and not self._stable(path, force):
             return None
         with self._file_snapshot(path, appendable) as snapshot:
             if snapshot is None:
                 return None
+            if path.suffix == '.jsonl':
+                _trim_jsonl_snapshot(snapshot)
+            if '.leancodereview' in path.parts:
+                from .session_checkpoint import sanitize_checkpoint
+                try:
+                    sanitize_checkpoint(snapshot, getattr(self, 'checkpoint_secrets', ()))
+                except (ValueError, UnicodeError):
+                    self.checkpoint_errors = getattr(self, 'checkpoint_errors', 0) + 1
+                    print('LCR 会话检查点损坏，保留旧备份；答卷与任务日志继续同步。', flush=True)
+                    return None
             digest = _digest(snapshot)
             record = {'sha256': digest, 'size': snapshot.stat().st_size}
             if previous != record:
@@ -254,6 +284,10 @@ class RunDataStorage:
             return result
 
     def _sync_locked(self, force):
+        from .session_checkpoint import credential_values
+        from runner.runtime import config_root
+        self.checkpoint_secrets = credential_values(config_root(ROOT))
+        self.checkpoint_errors = 0
         changed = 0
         snapshot = self._queue_snapshot()
         try:
@@ -264,8 +298,9 @@ class RunDataStorage:
         finally:
             if snapshot:
                 shutil.rmtree(snapshot.parent, ignore_errors=True)
-        self._write_status({'enabled': True, 'status': 'ready', 'last_sync_at': _now(),
-                            'groups': len(self.manifests), 'updated_groups': changed})
+        self._write_status({'enabled': True, 'status': 'warning' if self.checkpoint_errors else 'ready',
+                            'message': '部分 LCR 会话检查点损坏，答卷和日志已同步；受影响案例可能需要重跑。' if self.checkpoint_errors else '',
+                            'last_sync_at': _now(), 'groups': len(self.manifests), 'updated_groups': changed})
         return changed
 
     def restore(self):
@@ -302,6 +337,8 @@ class RunDataStorage:
         parts = group.split('/')
         if parts[0] == 'runs':
             return self.data / 'runs' / Path(*parts[1:])
+        if group == 'state/lcr-sessions':
+            return self.data / 'home/.leancodereview/sessions'
         if parts[0] == 'state':
             return self.data / 'ui-state'
         return self.data / 'ui-state/jobs'
@@ -406,8 +443,13 @@ class RunDataSynchronizer:
         self.thread.start()
 
     def _run(self):
-        while not self.stopping.wait(self.interval):
-            self.sync_once()
+        deadline = time.monotonic() + self.interval
+        requests = self.storage.data / 'ui-state/run-sync-requests'
+        while not self.stopping.wait(1):
+            requested = requests.exists() and next(requests.glob('*.json'), None) is not None
+            if requested or time.monotonic() >= deadline:
+                self.sync_once()
+                deadline = time.monotonic() + self.interval
 
     def sync_once(self, force=False):
         try:

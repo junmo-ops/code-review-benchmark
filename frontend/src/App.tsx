@@ -1,4 +1,4 @@
-import { Alert, App as AntApp, Button, Layout, Menu, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, App as AntApp, Button, Layout, Menu, Space, Spin, Switch, Tag, Typography } from 'antd';
 import {
   DatabaseOutlined,
   ExperimentOutlined,
@@ -12,6 +12,7 @@ import {
 import { lazy, Suspense, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { WorkbenchContext } from './context';
+import { useAppearance } from './theme';
 import { useDashboard } from './hooks/useDashboard';
 import { useAction } from './hooks/useAction';
 import { api } from './api';
@@ -55,9 +56,11 @@ function RuntimeNote({ state }: { state: Snapshot }) {
   const storage = state.run_storage;
   if (storage?.status === 'error')
     return <Alert type="error" message={storage.message ?? 'COS 同步异常，请勿重建容器。'} />;
+  if (storage?.status === 'warning')
+    return <Alert type="warning" message={storage.message ?? '部分会话检查点未备份，请查看服务日志。'} />;
   if (storage?.status === 'pending')
     return <Alert type="warning" message="等待保存到 COS，请暂缓更新服务。" />;
-  return <Typography.Text type="secondary">运行记录与任务日志自动备份到 COS。</Typography.Text>;
+  return <Typography.Text type="secondary">运行记录、任务日志与 LCR 会话自动备份到 COS。最近同步：{storage?.last_sync_at ? new Date(storage.last_sync_at).toLocaleString('zh-CN', { hour12: false }) : '尚无成功记录'}。</Typography.Text>;
 }
 function RuntimeAlerts({ state, refresh }: { state: Snapshot; refresh: () => Promise<void> }) {
   const action = useAction(),
@@ -65,8 +68,8 @@ function RuntimeAlerts({ state, refresh }: { state: Snapshot; refresh: () => Pro
   const recover = () =>
     modal.confirm({
       title: '确认旧任务已经停止？',
-      content: '确认后恢复队列。请先确认没有旧 Worker 或任务仍在执行。',
-      okText: '恢复队列',
+      content: '确认后仅解除队列暂停，不会继续已中断批次。要续跑，请打开原批次点击“继续未完成案例并评分”。请先确认旧任务已停止。',
+      okText: '解除队列暂停',
       cancelText: '取消',
       onOk: () =>
         action.run(async () => {
@@ -83,14 +86,14 @@ function RuntimeAlerts({ state, refresh }: { state: Snapshot; refresh: () => Pro
           type="warning"
           message={
             state.recovery_required
-              ? 'Worker 曾中断，队列已暂停。历史结果仍可查看。'
+              ? 'Worker 曾中断，队列已暂停。打开中断批次，点击“继续未完成案例并评分”；仅解除暂停不会续跑。'
               : 'Worker 尚未就绪，任务保留在队列中。'
           }
           action={
             state.recovery_required &&
             state.access_role !== 'viewer' && (
               <Button loading={action.busy} onClick={recover}>
-                恢复队列
+                解除队列暂停
               </Button>
             )
           }
@@ -100,6 +103,8 @@ function RuntimeAlerts({ state, refresh }: { state: Snapshot; refresh: () => Pro
   );
 }
 export default function App() {
+  const { dark, setDark } = useAppearance();
+  const menuTheme = dark ? 'dark' : 'light';
   const dashboard = useDashboard(),
     { state, error, refresh } = dashboard;
   const location = useLocation(),
@@ -127,17 +132,17 @@ export default function App() {
   if (dashboard.loginRequired) return <Login login={dashboard.login} error={error} />;
   return (
     <Layout className="app-layout">
-      <Layout.Sider width={232} breakpoint="lg" collapsedWidth={0} className="sidebar">
+      <Layout.Sider width={232} breakpoint="lg" collapsedWidth={0} theme={menuTheme} className="sidebar">
         <div className="brand">
           <span className="brand-mark">RL</span>
           <div>
             Review Lab<small>代码检视测评</small>
           </div>
         </div>
-        <Typography.Text className="sidebar-caption">WORKSPACE</Typography.Text>
+        <Typography.Text type="secondary" className="sidebar-caption">WORKSPACE</Typography.Text>
         <Menu
           mode="inline"
-          theme="dark"
+          theme={menuTheme}
           selectedKeys={[path]}
           items={navigation}
           onClick={(item) => navigate(item.key)}
@@ -148,7 +153,11 @@ export default function App() {
         <Layout.Header className="topbar">
           <Typography.Text>工作空间 / {title}</Typography.Text>
           <Space>
-            <Tag color={error ? 'error' : state ? 'success' : 'default'}>
+            <Space size="small">
+              <Typography.Text>暗色</Typography.Text>
+              <Switch aria-label="暗色主题" checked={dark} onChange={setDark} />
+            </Space>
+            <Tag color={connectionColor(error, Boolean(state))}>
               {connectionLabel(error, Boolean(state))}
             </Tag>
             <Button aria-label="刷新" icon={<ReloadOutlined />} onClick={() => void refresh()} />
@@ -171,8 +180,8 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<Runs />} />
                   <Route path="/jobs" element={<Jobs />} />
-                  <Route path="/cases" element={<Assets />} />
-                  <Route path="/repositories" element={<Assets repository />} />
+                  <Route path="/cases" element={<Assets key="cases" />} />
+                  <Route path="/repositories" element={<Assets key="repositories" repository />} />
                   <Route path="/models" element={<Models />} />
                   <Route path="/experiments" element={<Experiments />} />
                   <Route path="/comparisons" element={<Experiments results />} />
@@ -231,4 +240,9 @@ function detailTab(params: URLSearchParams) {
 function connectionLabel(error: string, connected: boolean) {
   if (error) return '连接中断';
   return connected ? '服务已连接' : '正在连接';
+}
+
+function connectionColor(error: string, connected: boolean) {
+  if (error) return 'error';
+  return connected ? 'success' : 'default';
 }

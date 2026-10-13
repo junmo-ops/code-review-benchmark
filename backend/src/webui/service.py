@@ -289,7 +289,8 @@ class Dashboard:
         root = self.run_dir(key)
         result = []
         # Expose only text evidence from a known run; no arbitrary filesystem read endpoint.
-        for p in sorted(root.rglob('*')):
+        from runner.evidence import evidence_files
+        for p in evidence_files(root):
             if not p.is_file() or p.suffix not in {'.md', '.json', '.jsonl', '.txt', '.patch', '.log'}:
                 continue
             rel = p.relative_to(root)

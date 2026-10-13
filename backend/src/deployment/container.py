@@ -84,7 +84,7 @@ def _monitor_services(stop, services):
     while not stop.wait(.2):
         for process in services:
             if process.poll() is not None:
-                print('Web 或 Worker 已退出；停止本容器其余进程。', flush=True)
+                print(f'服务进程退出：pid={process.pid}，exit_code={process.returncode}；停止本容器其余进程。', flush=True)
                 return process.returncode or 1
     return 0
 

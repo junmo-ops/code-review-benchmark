@@ -115,8 +115,21 @@ class DurableDashboard(Dashboard):
         self.queue.insert(job,request,spec)
         self.sync()
         return dict(job_id=job['id'],key=job['key'])
-    def submit(self,request):self.sync();return super().submit(request)
+    def submit(self, request):
+        self.sync()
+        if request.get('action') != 'resume':
+            return super().submit(request)
+        from .resume import prepare_resume
+        prepared = prepare_resume(self, request)
+        result = super().submit(prepared)
+        # Enqueue first: invalid requests must not silently unblock the queue.
+        if self.queue.meta('recovery_required'):
+            self.acknowledge_recovery(request.get('_actor', 'local'))
+        return result
     def update(self,id,**changes):
+        if changes.get('status') == 'cancelled' and self.stopping and not self.queue.cancelled(id):
+            changes.update(status='interrupted', message='服务停止，批次已中断；确认旧进程停止后可继续未完成案例并评分')
+            self.queue.meta('recovery_required', True)
         self.jobs[id]=self.queue.update(id,changes)
     def describe(self,key):
         out=super().describe(key)

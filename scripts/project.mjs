@@ -110,6 +110,24 @@ function start(development) {
   launch(python, [join(root, "backend/src/ui.py"), "--no-open", "--port", String(frontendPort)]);
   console.log(`Python 工作台已启动：http://127.0.0.1:${frontendPort}`);
 }
+function check() {
+  console.log("检查 Python 语法与复杂度、前端和脚本规范、TypeScript 类型。");
+  invoke(python, [join(root, "tools/check_project.py")]);
+  invoke("npm", ["--prefix", "frontend", "run", "lint"]);
+  invoke(process.execPath, [
+    "frontend/node_modules/eslint/bin/eslint.js", "scripts",
+    "--config", "scripts/eslint.config.mjs", "--max-warnings", "0",
+  ]);
+  invoke("npm", ["--prefix", "frontend", "run", "typecheck"]);
+}
+function verify() {
+  check();
+  invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
+  invoke(python, [join(root, "tools/check_regressions.py")]);
+  invoke("git", ["diff", "--check"]);
+  invoke("git", ["diff", "--cached", "--check"]);
+  console.log("完整校验通过；可以打包交付。未调用模型或外部 COS。");
+}
 function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "setup") return setup();
@@ -123,20 +141,13 @@ function main() {
     ]);
   if (command === "cli")
     return launch(python, [join(root, "backend/src/local.py"), ...args]);
-  if (command === "check") {
-    invoke(python, [join(root, "tools/check_project.py")]);
-    invoke("npm", ["--prefix", "frontend", "run", "lint"]);
-    return invoke(process.execPath, [
-      "frontend/node_modules/eslint/bin/eslint.js",
-      "scripts",
-      "--config",
-      "scripts/eslint.config.mjs",
-      "--max-warnings",
-      "0",
-    ]);
+  if (command === "check") return check();
+  if (command === "verify") return verify();
+  if (command === "package") {
+    return invoke(python, [join(root, "tools/package_changes.py"), ...args]);
   }
   throw new Error(
-    "使用 npm run setup/dev/start/backend/frontend/build/check/cli",
+    "使用 npm run setup/dev/start/backend/frontend/build/check/verify/package:changes/cli",
   );
 }
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => stop(0));

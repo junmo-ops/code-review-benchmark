@@ -19,7 +19,7 @@ import { useRef, useState } from 'react';
 import { api, upload } from '../api';
 import { useWorkbench } from '../context';
 import { useAction } from '../hooks/useAction';
-import { canSubmit, editable } from '../presentation';
+import { canSubmit, editable, resourceImportTask } from '../presentation';
 import { ErrorAlert, Heading, Status } from '../components/Common';
 import type { Dataset, ImportTask, Repository, UploadReply } from '../types';
 async function waitForImport(task: ImportTask, update: (task: ImportTask) => void) {
@@ -89,7 +89,7 @@ function ResourceUpload({ repository }: { repository: boolean }) {
         }}
       />
       <ImportFeedback
-        task={task}
+        task={resourceImportTask(task, repository)}
         notice={notice}
         busy={busy}
         percent={percent}
@@ -120,19 +120,36 @@ export function Assets({ repository = false }: { repository?: boolean }) {
     await refresh();
     message.success(reply.message);
   };
-  const remove = (id: string, name: string) =>
-    modal.confirm({
+  const remove = (id: string, name: string) => {
+    const description = '被案例集或已创建批次引用的资源不能删除。';
+    const dialog = modal.confirm({
       title: `确认删除“${name}”？`,
-      content: '被案例集或已创建批次引用的资源不能删除。',
+      content: description,
       okText: '确认删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () =>
-        mutate(
-          repository ? '/api/repositories/manage' : '/api/cases/manage',
-          repository ? { action: 'delete', slug: id } : { action: 'delete', id },
-        ),
+      onOk: async () => {
+        try {
+          await mutate(
+            repository ? '/api/repositories/manage' : '/api/cases/manage',
+            repository ? { action: 'delete', slug: id } : { action: 'delete', id },
+          );
+        } catch (failure) {
+          const detail = failure instanceof Error ? failure.message : String(failure);
+          dialog.update({
+            content: (
+              <>
+                <p>{description}</p>
+                <ErrorAlert error={detail} />
+              </>
+            ),
+          });
+          // Keep the confirmation open and let Ant Design reset its loading state.
+          throw failure;
+        }
+      },
     });
+  };
   const uploaded = new Map(state.case_assets?.datasets?.map((d) => [d.id, d]));
   const datasets = state.catalog.flatMap((s) =>
     s.datasets.map((d) => ({ ...d, suite: s.name, suiteId: s.id })),

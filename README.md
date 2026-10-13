@@ -93,3 +93,5 @@ npm start
 详见 [单服务部署](deployment/单服务部署.md)。从旧项目更新时，根目录 Python 入口及 Dockerfile 已迁移，需要同步移除行内仓库的旧文件，并把流水线 Dockerfile 路径改为 `backend/Dockerfile`。
 
 历史批次的运行记录与日志保留。适配器源文件位置调整后，旧批次可能触发既有版本一致性保护；新测评使用新目录冻结版本，不自动放宽旧批次评分校验。
+
+开发校验和 ZIP 交付统一流程见 [开发校验与交付](docs/开发校验与交付.md)：改动后运行 `npm run check`，发布前运行 `npm run verify`，未提交改动包使用 `npm run package:changes`。

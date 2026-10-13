@@ -286,12 +286,33 @@ def _review_all_lcr_cases(args, cfg, suite, items, snapshot, run):
     pending = _pending_review_items(args, cfg, items, snapshot, run)
     _check_pending_repositories(pending, cfg, suite, run)
     _check_review_deadline(args, cfg, pending)
+    if args.retry:
+        _clear_interrupted_workspaces(pending, cfg, run)
     try:
         if pending:
             adapter._stage_review(pending, run, False)
     finally:
         adapter.write_summary(items, run)
         save(run / 'cloud-status.json', states(items, run))
+
+
+def _clear_interrupted_workspaces(items, cfg, run):
+    # Caller holds the batch execution lock and has explicitly authorized retry.
+    import shutil
+    import subprocess
+    for item in items:
+        workspace = run / 'workspaces' / item.safe_id
+        if not workspace.exists():
+            continue
+        if workspace.is_symlink():
+            raise ValueError('中断工作区不能是链接：' + item.instance_id)
+        source = repo_path(cfg['repos_root'], item)
+        subprocess.run(['git', '-C', str(source), 'worktree', 'remove', '--force', str(workspace)],
+                       capture_output=True, timeout=60, check=False)
+        if workspace.exists():
+            shutil.rmtree(workspace)
+        subprocess.run(['git', '-C', str(source), 'worktree', 'prune'],
+                       capture_output=True, timeout=60, check=False)
 
 
 def _pending_review_items(args, cfg, items, snapshot, run):

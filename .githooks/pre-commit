@@ -1,0 +1,3 @@
+#!/bin/sh
+# Fast local gate; the delivery and CI gates additionally build and test.
+exec npm run check
