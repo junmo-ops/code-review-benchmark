@@ -121,6 +121,12 @@ def _linked_task(folder, manifest):
             return current
     except (OSError, ValueError, AttributeError):
         pass  # No current import is available; retain the saved task snapshot.
+    try:
+        identifier = task.get('id') if isinstance(task, dict) else None
+        if identifier and IDENTIFIER.fullmatch(identifier):
+            return json.loads((folder.parent.parent / 'case-imports' / (identifier + '.json')).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        pass  # Older installations did not retain individual task records.
     return task
 
 
@@ -264,7 +270,7 @@ def complete(dashboard, identifier):
             save(folder / 'manifest.json', value)
             return {'task': existing, 'message': '资源包已接收，正在后台导入。'}
         if value['status'] == 'queued' and value.get('task'):
-            return {'task': value['task'], 'message': '资源包已接收，正在后台导入。'}
+            return {'task': _linked_task(folder, value), 'message': '资源包已接收，请查看导入结果。'}
         if value['status'] != 'receiving':
             raise ValueError('该上传任务已结束，请重新选择 ZIP 开始上传')
         offset, _ = _committed_chunks(folder, value)

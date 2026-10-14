@@ -559,8 +559,12 @@ class CaseAssetStorage(CaseArchiveStorage):
 
     def _download_object(self, key, target, size, digest):
         target.parent.mkdir(parents=True, exist_ok=True)
-        if target.is_file() and target.stat().st_size == size and _sha256(target) == digest:
+        from runner.verified_files import verified_file
+        from runner.diagnostics import event
+        if verified_file(target, size, digest):
+            event("repository.bundle_cache.hit", key=digest, bytes=size)
             return
+        event("repository.bundle_cache.miss", key=digest, bytes=size)
         temporary = target.with_name(target.name + '.part')
         total, checksum = 0, hashlib.sha256()
         try:
@@ -724,30 +728,52 @@ class CaseAssetStorage(CaseArchiveStorage):
             registry['datasets'].append(entry)
         save(dashboard.data / 'case-datasets' / 'registry.json', registry)
 
-    def prepare_dataset_repositories(self, data, suite, digest):
+    def prepare_dataset_repositories(self, data, suite, digest, progress=None):
         from runner.cloud import checked_instances
-        from .case_assets import _prepare_repositories
         path = self._local_record_path(data, suite, digest)
         try:
             record = json.loads(path.read_text(encoding='utf-8'))
             self._validate_record(record, self._dataset_prefix(suite, digest) + 'record.json')
         except (OSError, ValueError, KeyError, TypeError):
             raise RuntimeError('找不到该案例集在 COS 中的仓库资源清单；请确认案例集已成功导入') from None
-        dataset = self._registered_dataset_path(data, suite, digest)
-        cases = checked_instances(dataset, suite)
+        cases = checked_instances(self._registered_dataset_path(data, suite, digest), suite)
+        by_slug = {}
+        for case in cases:
+            by_slug.setdefault(case.repo.replace('/', '__'), []).append(case)
         with tempfile.TemporaryDirectory(prefix='case-assets-', dir=data) as name:
-            staging = Path(name)
-            for slug, item in record['repositories'].items():
-                cached_bundle = self.asset_cache / (item['sha256'] + '.bundle')
-                object_key = (self._repository_pool_key(slug, item['sha256'])
-                              if item.get('source') == 'repository-pool'
-                              else self._repository_key(slug, item['sha256']))
-                self._download_object(object_key, cached_bundle,
-                                      item['size'], item['sha256'])
-                repo_bundle = staging / 'bundles' / (slug + '.bundle')
-                repo_bundle.parent.mkdir(parents=True, exist_ok=True)
-                repo_bundle.symlink_to(cached_bundle)
-            _prepare_repositories(cases, staging / 'bundles', Path(data) / 'repos')
+            for index, (slug, repo_cases) in enumerate(sorted(by_slug.items()), 1):
+                item = record['repositories'][slug]
+                self._prepare_runtime_repository(data, slug, repo_cases, item, Path(name),
+                                                 index, len(by_slug), progress)
+
+    def _prepare_runtime_repository(self, data, slug, cases, item, staging, index, total, progress):
+        from runner.diagnostics import phase
+        from .case_assets import _prepare_one_repository, _validate_repository_cases, _notify
+        destination = Path(data) / 'repos' / slug
+
+        def report(stage, message):
+            _notify(progress, stage, f'[{index}/{total}] {slug}：{message}', index - 1, total)
+
+        report('check', '检查本地案例提交')
+        with phase('repository.check', key=slug):
+            ready = _runtime_repository_ready(destination, cases, _validate_repository_cases)
+        if ready:
+            report('ready', '本地提交校验通过，复用仓库，无需读取或下载 bundle')
+            return
+        report('download', '校验 bundle 缓存，缺失或失效时从 COS 下载')
+        cached = self.asset_cache / (item['sha256'] + '.bundle')
+        object_key = (self._repository_pool_key(slug, item['sha256'])
+                      if item.get('source') == 'repository-pool'
+                      else self._repository_key(slug, item['sha256']))
+        with phase('repository.bundle', key=slug):
+            self._download_object(object_key, cached, item['size'], item['sha256'])
+        bundle = staging / (slug + '.bundle')
+        bundle.symlink_to(cached)
+        report('prepare', '恢复 Git 历史并校验案例提交')
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with phase('repository.restore', key=slug):
+            _prepare_one_repository(slug, cases, staging, destination.parent)
+        report('ready', '仓库准备完成')
 
     @staticmethod
     def _registered_dataset_path(data, suite, digest):
@@ -783,3 +809,15 @@ def restore_case_archives(root=ROOT):
     count = asset_count + archive_count
     print(f'COS 案例资源恢复完成：{asset_count} 份拆分案例集和 {archive_count} 份旧 ZIP；未调用模型。', flush=True)
     return count
+
+
+def _runtime_repository_ready(destination, cases, validate):
+    if destination.is_symlink() or destination.parent.is_symlink():
+        raise ValueError('案例仓库目录不能为符号链接')
+    if not (destination / '.git').is_dir():
+        return False
+    try:
+        validate(cases, destination)
+        return True
+    except ValueError:
+        return False

@@ -287,7 +287,7 @@ def _review_all_lcr_cases(args, cfg, suite, items, snapshot, run):
     _check_pending_repositories(pending, cfg, suite, run)
     _check_review_deadline(args, cfg, pending)
     if args.retry:
-        _clear_interrupted_workspaces(pending, cfg, run)
+        _clear_interrupted_workspaces(items, cfg, run)
     try:
         if pending:
             adapter._stage_review(pending, run, False)
@@ -298,21 +298,35 @@ def _review_all_lcr_cases(args, cfg, suite, items, snapshot, run):
 
 def _clear_interrupted_workspaces(items, cfg, run):
     # Caller holds the batch execution lock and has explicitly authorized retry.
-    import shutil
-    import subprocess
     for item in items:
         workspace = run / 'workspaces' / item.safe_id
-        if not workspace.exists():
-            continue
-        if workspace.is_symlink():
+        if workspace.parent.is_symlink() or workspace.is_symlink():
             raise ValueError('中断工作区不能是链接：' + item.instance_id)
         source = repo_path(cfg['repos_root'], item)
-        subprocess.run(['git', '-C', str(source), 'worktree', 'remove', '--force', str(workspace)],
-                       capture_output=True, timeout=60, check=False)
-        if workspace.exists():
-            shutil.rmtree(workspace)
-        subprocess.run(['git', '-C', str(source), 'worktree', 'prune'],
-                       capture_output=True, timeout=60, check=False)
+        if not source.exists() and not workspace.exists():
+            continue  # A completed case may no longer need its deleted repository.
+        _remove_interrupted_workspace(source, workspace)
+
+
+def _remove_interrupted_workspace(source, workspace):
+    import shutil
+    import subprocess
+    # A killed checkout can leave a locked registration even without a directory.
+    # Two force flags allow Git to remove that exact owned worktree registration.
+    command = ['git', '-C', str(source), 'worktree', 'remove', '--force', '--force', str(workspace)]
+    subprocess.run(command, capture_output=True, timeout=60, check=False)
+    if workspace.exists():
+        shutil.rmtree(workspace)
+        # A half-deleted directory may have lost its .git file, so the first
+        # Git removal cannot recognize it. Remove its registration after rmtree.
+        subprocess.run(command, capture_output=True, timeout=60, check=False)
+    listing = subprocess.run(['git', '-c', 'core.quotePath=false', '-C', str(source),
+                              'worktree', 'list', '--porcelain'],
+                             capture_output=True, text=True, encoding='utf-8', errors='surrogateescape',
+                             timeout=30, check=False)
+    registered = {Path(line[9:]).resolve() for line in listing.stdout.splitlines() if line.startswith('worktree ')}
+    if listing.returncode or workspace.resolve() in registered:
+        raise ValueError('无法清理中断工作区的 Git 记录：' + str(workspace))
 
 
 def _pending_review_items(args, cfg, items, snapshot, run):

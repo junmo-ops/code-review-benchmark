@@ -15,10 +15,11 @@ import {
   Tabs,
   Typography,
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api, download, downloadExport, query } from '../api';
 import { useWorkbench } from '../context';
 import { useAction } from '../hooks/useAction';
+import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
 import {
   actionBlocked,
@@ -82,6 +83,7 @@ function TextFile({ kind, run }: { kind: string; run: Run }) {
 }
 function Logs({ jobs, initial }: { jobs: Job[]; initial?: string }) {
   const [choice, setChoice] = useState(initial);
+  const save = useAction();
   useEffect(() => setChoice(initial), [initial]);
   const job = jobs.find((j) => j.id === choice) ?? jobs[0];
   const reply = useRemote<TextReply>(job ? query('/api/log', { job: job.id }) : undefined, 2000);
@@ -97,14 +99,17 @@ function Logs({ jobs, initial }: { jobs: Job[]; initial?: string }) {
           }))}
           onChange={setChoice}
         />
-        <Button disabled={!reply.data} onClick={() => download('execution.log', reply.data!.text)}>
+        <Button disabled={!job} loading={save.busy} onClick={() => void save.run(async () => {
+          const latest = await api<TextReply>(query('/api/log', { job: job!.id }));
+          download('execution.log', latest.text);
+        })}>
           保存日志
         </Button>
       </Space>
       <Typography.Paragraph type="secondary">
         {job?.message} · {job?.step}
       </Typography.Paragraph>
-      <ErrorAlert error={reply.error} />
+      <ErrorAlert error={save.error || reply.error} />
       {reply.data?.truncated && (
         <Alert type="info" message="仅展示最近部分日志，完整日志仍保留。" />
       )}
@@ -155,6 +160,7 @@ function ActionControls({
   setProfile: (value: string) => void;
 }) {
   const { state } = useWorkbench();
+  const controlId = useId();
   const [task, setTask] = useState(''),
     [retry, setRetry] = useState(false);
   const profiles = state.profiles.filter((p) => !p.internal || p.id === profile);
@@ -168,8 +174,9 @@ function ActionControls({
           children: (
             <>
               <Form layout="vertical">
-                <Form.Item label="运行配置（需与批次模型一致）">
+                <Form.Item label="运行配置（需与批次模型一致）" htmlFor={controlId + "-profile"}>
                   <Select
+                    id={controlId + "-profile"}
                     value={profile}
                     onChange={setProfile}
                     disabled={state.profiles.find((p) => p.id === profile)?.internal}
@@ -181,8 +188,9 @@ function ActionControls({
                 </Form.Item>
                 {run.suite !== 'ccrab' && (
                   <>
-                    <Form.Item label="执行范围">
+                    <Form.Item label="执行范围" htmlFor={controlId + "-scope"}>
                       <Select
+                        id={controlId + "-scope"}
                         value={task}
                         onChange={setTask}
                         options={[
@@ -195,8 +203,8 @@ function ActionControls({
                       />
                     </Form.Item>
                     {run.reviewer !== 'server_agent' && (
-                      <Form.Item label="允许重跑所选未完成案例（可能产生费用）">
-                        <Switch checked={retry} onChange={setRetry} />
+                      <Form.Item label="允许重跑所选未完成案例（可能产生费用）" htmlFor={controlId + "-retry"}>
+                        <Switch id={controlId + "-retry"} checked={retry} onChange={setRetry} />
                       </Form.Item>
                     )}
                   </>
@@ -242,6 +250,9 @@ function Overview({
         message={`${run.completed}/${run.total} 份完整答卷已保存`}
         description={`评分覆盖 ${run.scored_cases ?? '以评分文件为准'}；未完成案例不视为零分。${latest?.message ?? ''}`}
       />
+      {run.score_locked_reason && (
+        <Alert className="section-gap" type={run.status === 'partial_scored' ? 'warning' : 'info'} message={run.score_locked_reason} />
+      )}
       <Metrics run={run} />
       <ActionControls
         run={run}
@@ -286,6 +297,7 @@ export function RunDetail({
   const { state, refresh, importBusy } = useWorkbench();
   const { modal } = App.useApp();
   const { run: perform, busy, error } = useAction();
+  const ownRequest = useRequestScope(runKey);
   const record = state.runs.find((r) => r.key === runKey);
   const [selectedProfile, setProfile] = useState<string>();
   const profile = selectedProfile ?? profileForRun(record, state.profiles);
@@ -294,6 +306,7 @@ export function RunDetail({
   const choice = primary(record, latest, state.queue_mode);
   const execute = (action: string, profile: string, task: string, retry: boolean) =>
     perform(async () => {
+      const current = ownRequest();
       if (!record || actionBlocked(state, record, action) || importBusy)
         throw new Error('当前批次不可执行，请检查任务和版本状态');
       if (action === 'workflow' && task)
@@ -307,7 +320,7 @@ export function RunDetail({
         confirmed: action === 'resume' ? true : undefined,
       });
       await refresh();
-      onTab('log', result.job_id);
+      if (current()) onTab('log', result.job_id);
     });
   const start = (action: string, profile: string, task = '', retry = false) => {
     if (record?.case_resources_purged && ['review', 'workflow', 'resume', 'recover', 'eval', 'report'].includes(action)) {
@@ -321,7 +334,7 @@ export function RunDetail({
     if (['review', 'eval', 'report', 'workflow', 'resume', 'compare-martian'].includes(action)) {
       modal.confirm({
         title: `开始${actions[action]}？`,
-        content: action === 'resume' ? '请确认旧扫描进程和容器已停止。将解除队列暂停，跳过完整答卷，续跑未完成案例并评分；可能产生模型用量。' : `执行范围：${action === 'eval' ? '所有完整答卷；未完成案例排除' : task || '全部案例 / 轮次'}。将调用模型，可能产生 API 用量。`,
+        content: actionDescription(action, task, record?.score_locked_reason),
         okText: '开始执行',
         cancelText: '取消',
         onOk: () => execute(action, profile, task, retry),
@@ -354,7 +367,13 @@ export function RunDetail({
             })
           }
         />
-      )}{' '}
+      )}
+      {!record && latest && (
+        <PendingRun latest={latest} busy={busy} onStop={() => void perform(async () => {
+          await api('/api/stop', { job: latest.id });
+          await refresh();
+        })} />
+      )}
       <Tabs
         activeKey={currentTab}
         onChange={(tab) => onTab(tab)}
@@ -396,6 +415,19 @@ export function RunDetail({
 function detailTitle(record?: Run) {
   return record?.display_name ?? record?.name ?? '正在保存测评配置';
 }
+function PendingRun({ latest, busy, onStop }: { latest: Job; busy: boolean; onStop: () => void }) {
+  const { state } = useWorkbench();
+  if (!active(latest.status)) return null;
+  return (
+    <Space className="section-gap">
+      <Typography.Text>{latest.message}</Typography.Text>
+      <Button danger loading={busy} disabled={state.access_role === 'viewer' || latest.status === 'cancelling'} onClick={onStop}>
+        {latest.status === 'queued' ? '取消排队' : '停止任务'}
+      </Button>
+    </Space>
+  );
+}
+
 function RunHeader({
   record,
   latest,
@@ -445,4 +477,12 @@ function RunHeader({
 
 function profileForRun(record: Run | undefined, profiles: { id: string; review_model: string }[]) {
   return record?.profile ?? profiles.find((p) => p.review_model === record?.model)?.id ?? '';
+}
+
+function actionDescription(action: string, task: string, scoreLock?: string) {
+  if (action === 'resume')
+    return '请确认旧扫描进程和容器已停止。将解除队列暂停，跳过完整答卷，继续未完成案例；尚未评分时完成后评分。可能产生模型用量。' + (scoreLock ?? '');
+  const scope = action === 'eval' ? '所有完整答卷；未完成案例排除' : task || '全部案例 / 轮次';
+  const warning = ['review', 'workflow'].includes(action) ? scoreLock ?? '' : '';
+  return `执行范围：${scope}。将调用模型，可能产生 API 用量。${warning}`;
 }

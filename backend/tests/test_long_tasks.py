@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 import threading
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -60,6 +61,8 @@ class LongTaskTests(unittest.TestCase):
         self.assertEqual(prepared['action'], 'workflow')
         self.assertTrue(prepared['retry'])
         app.jobs['old']['status'] = 'cancelled'
+        self.assertEqual(prepare_resume(app, request)['action'], 'workflow')
+        app.jobs['old']['status'] = 'queued'
         with self.assertRaises(ValueError):
             prepare_resume(app, request)
 
@@ -170,14 +173,23 @@ class LongTaskTests(unittest.TestCase):
 
     def test_interrupted_workspace_is_removed_only_for_pending_cases(self):
         pending = SimpleNamespace(repo='owner/repo', safe_id='pending', instance_id='pending')
-        for name in ['pending', 'complete']:
-            path = self.root / 'workspaces' / name
-            path.mkdir(parents=True)
-            (path / 'code.ts').write_text('code')
-        with patch('subprocess.run'):
-            _clear_interrupted_workspaces([pending], {'repos_root': str(self.root)}, self.root)
+        repo = self.root / 'owner__repo'
+        repo.mkdir()
+        subprocess.run(['git', '-C', str(repo), 'init', '--quiet'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=offline', '-c', 'user.email=offline@example.invalid',
+                        'commit', '--quiet', '--allow-empty', '-m', 'fixture'], check=True, capture_output=True)
+        workspace = self.root / 'workspaces/pending'
+        subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '--detach', str(workspace)], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'worktree', 'lock', str(workspace)], check=True, capture_output=True)
+        complete = self.root / 'workspaces/complete'
+        complete.mkdir()
+        (complete / 'code.ts').write_text('code')
+        # Verify the real locked Git registration, not just shutil.rmtree.
+        _clear_interrupted_workspaces([pending], {'repos_root': str(self.root)}, self.root)
         self.assertFalse((self.root / 'workspaces/pending').exists())
         self.assertTrue((self.root / 'workspaces/complete/code.ts').exists())
+        listing = subprocess.check_output(['git', '-C', str(repo), 'worktree', 'list', '--porcelain']).decode()
+        self.assertNotIn(str(workspace.resolve()), listing)
 
     def test_service_shutdown_is_interrupted_but_user_stop_stays_cancelled(self):
         with patch.dict(os.environ, {'BENCH_DATA_ROOT': str(self.root / 'data'),

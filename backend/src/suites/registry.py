@@ -23,13 +23,21 @@ AACR_COMPATIBLE_REVISIONS = {
         },
     },
     "backend/src/suites/aacr/evaluator.py": {
-        "previous": {"881c95275bea4f9c860fb6d9a5d617cc1f1267392c935b7f92055798fed7a81b"},
-        "current": {"72a75921d544b7ecbfd35db16c3650223b9838863adc7c9d8b79da056c76de0a"},
+        "previous": {"881c95275bea4f9c860fb6d9a5d617cc1f1267392c935b7f92055798fed7a81b",
+                     "72a75921d544b7ecbfd35db16c3650223b9838863adc7c9d8b79da056c76de0a"},
+        "current": {"ac4dd894636b5682b5a127a8c4b10819ef48edafd3ca389a50ec2b19b091c9d9"},
     },
     "backend/src/suites/aacr/report.py": {
         "previous": {"f701e07ae5cd4f44dfcaed5da09e74816e83304502babf0ea860282bc81f0edb"},
         "current": {"fc729a96fc120bf1ff3bfed46b7ad463a2c01a617c107f4cd70895ca33c53c4b"},
     },
+}
+
+# Transport retries and request replay preserve the native matching/scoring
+# parameters. Only these exact additions may accompany an approved migration.
+AACR_SCORING_ADDITIONS = {
+    'backend/src/suites/aacr/judge_transport.py': '82eddcbf39a10b4d2ba2f6b3345335e1eceaa46393136e8177b19f29513d0929',
+    'backend/src/suites/aacr/evaluation_resume.py': 'f080fee006e8ab2bc379418e294bd0fd47803f2983492cfe7a0edb60b32de29f',
 }
 
 
@@ -54,14 +62,19 @@ def _same_identity_metadata(frozen, current, previous_files, current_files):
         return False
     previous_meta = {key: value for key, value in frozen.items() if key != "files"}
     current_meta = {key: value for key, value in current.items() if key != "files"}
-    return previous_meta == current_meta and set(previous_files) == set(current_files)
+    additions = set(current_files) - set(previous_files)
+    allowed = not additions or additions == set(AACR_SCORING_ADDITIONS)
+    return previous_meta == current_meta and set(previous_files) <= set(current_files) and allowed
 
 
 def _has_only_compatible_aacr_changes(previous_files, current_files):
     changed = False
     for name, current_hash in current_files.items():
-        previous_hash = previous_files[name]
+        previous_hash = previous_files.get(name)
         if previous_hash == current_hash:
+            continue
+        if previous_hash is None and AACR_SCORING_ADDITIONS.get(name.replace('\\', '/')) == current_hash:
+            changed = True
             continue
         revisions = AACR_COMPATIBLE_REVISIONS.get(name.replace("\\", "/"))
         if not revisions or previous_hash not in revisions["previous"] or current_hash not in revisions["current"]:

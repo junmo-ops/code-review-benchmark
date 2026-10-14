@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportTask } from '../types';
+import { api } from '../api';
 export interface BatchItem {
   name: string;
   size: number;
@@ -34,6 +35,30 @@ export function useUploadBatch(kind: string, task: ImportTask | null) {
     const item = current.current.find((entry) => entry.taskId === task.id && entry.status === 'importing');
     if (item) update(item, { status: task.status === 'succeeded' ? 'succeeded' : 'failed' });
   }, [task, update]);
+  useEffect(() => {
+    let alive = true;
+    let checking = false;
+    const reconcile = async () => {
+      const pending = current.current.filter((item) => item.status === 'importing' && item.taskId);
+      for (const item of pending) {
+        const { task: saved } = await api<{ task: ImportTask | null }>(`/api/cases/imports?id=${item.taskId}`);
+        const stillPending = current.current.some((entry) => entry.taskId === item.taskId && entry.status === 'importing');
+        if (alive && stillPending && saved && saved.id === item.taskId && !['queued', 'running'].includes(saved.status))
+          update(item, { status: saved.status === 'succeeded' ? 'succeeded' : 'failed' });
+      }
+    };
+    // The global status only describes the latest import, possibly of another kind.
+    const poll = async () => {
+      if (checking) return;
+      checking = true;
+      try { await reconcile(); }
+      catch { /* Retain progress during transient connection failures. */ }
+      finally { checking = false; }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [key, update]);
   const prepare = (selected: File[]) => {
     const active = current.current.filter((item) => item.status !== 'succeeded');
     if (!active.length) {

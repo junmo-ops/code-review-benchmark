@@ -70,9 +70,10 @@ export function primary(run: Run | undefined, job: Job | undefined, queueMode = 
   if (['scored', 'partial_scored', 'complete', 'complete_no_findings'].includes(run.status))
     return { tab: 'report', label: '查看结果' };
   if (canResumeBatch(run, job, queueMode))
-    return { action: 'resume', label: '继续未完成案例并评分' };
+    return { action: 'resume', label: run.score_locked_reason ? '继续未完成案例' : '继续未完成案例并评分' };
   if (job && ['failed', 'cancelled', 'interrupted'].includes(job.status))
     return { tab: 'log', label: '查看原因与日志' };
+  if (partialReviewReady(run, job)) return { action: 'eval', label: '评分已有答卷' };
   if (['failed', 'partial', 'unreadable'].includes(run.status))
     return { tab: 'log', label: '查看原因与日志' };
   if (run.compatibility_warning) return { tab: 'report', label: '查看历史结果' };
@@ -88,6 +89,7 @@ export function runStages(run: Run) {
   );
 }
 export function actionBlocked(state: Snapshot, run: Run, action: string) {
+  if (action === 'eval' && run.score_locked_reason) return true;
   if (!editable(state) || (!state.queue_mode && state.active)) return true;
   if (run.compatibility_warning && (action !== 'export' || run.suite === 'mcr')) return true;
   return run.suite === 'ccrab' && action === 'workflow' && !run.can_run;
@@ -104,7 +106,11 @@ export function resourceImportTask(task: ImportTask | null, repository: boolean)
 }
 
 function canResumeBatch(run: Run, job: Job | undefined, queueMode: boolean) {
-  if (!queueMode || job?.status !== 'interrupted') return false;
+  if (!queueMode || !['interrupted', 'cancelled'].includes(job?.status ?? '')) return false;
   if (run.compatibility_warning || run.reviewer !== 'lcr') return false;
   return !['mcr', 'ccrab'].includes(run.suite);
+}
+
+function partialReviewReady(run: Run, job?: Job) {
+  return !run.compatibility_warning && run.status === 'partial' && run.completed > 0 && job?.status === 'succeeded' && job.action === 'review';
 }

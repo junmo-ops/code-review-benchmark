@@ -60,6 +60,7 @@ export interface Run {
   total: number;
   completed: number;
   scored_cases?: number;
+  score_locked_reason?: string;
   created?: string;
   profile?: string;
   metrics?: Metrics;

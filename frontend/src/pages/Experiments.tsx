@@ -16,12 +16,14 @@ import {
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { api, download, query } from '../api';
+import { creationName, submitCreation } from '../creation';
 import { useWorkbench } from '../context';
 import { useAction } from '../hooks/useAction';
+import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
 import { active, availableProfiles, canSubmit, caseLabel, pct } from '../presentation';
 import { ErrorAlert, Heading, Status } from '../components/Common';
-import type { Case, Comparison, Evidence, JobReply, TextReply } from '../types';
+import type { Case, Comparison, Evidence, TextReply } from '../types';
 interface ExperimentValues {
   name: string;
   display_name?: string;
@@ -101,6 +103,7 @@ function CreateExperiment({ open, close }: { open: boolean; close: () => void })
   const [form] = Form.useForm<ExperimentValues>(),
     values = Form.useWatch([], form) ?? {};
   const { busy, error, run, clear } = useAction();
+  const ownRequest = useRequestScope(open);
   const suites = state.catalog.filter((s) =>
     ['aacr', 'swe_prbench_llm', 'codefuse_cr'].includes(s.id),
   );
@@ -117,7 +120,7 @@ function CreateExperiment({ open, close }: { open: boolean; close: () => void })
     form.resetFields();
     clear();
     form.setFieldsValue({
-      name: 'models-' + new Date().toISOString().replace(/\D/g, '').slice(0, 14),
+      name: creationName('models'),
       suite: suites[0]?.id,
       dataset: suites[0]?.datasets[0]?.id,
       models: [],
@@ -128,9 +131,11 @@ function CreateExperiment({ open, close }: { open: boolean; close: () => void })
   const enabled = canSubmit(state) && !importBusy && profiles.length >= 2;
   const submit = (values: ExperimentValues) =>
     run(async () => {
-      const reply = await api<JobReply>('/api/comparisons', values);
-      close();
+      const current = ownRequest();
+      const reply = await submitCreation('/api/comparisons', values, 'compare-' + values.name, 'comparison');
       await refresh();
+      if (!current()) return;
+      close();
       openExperiment(reply.key);
     });
   return (

@@ -1,8 +1,9 @@
 """AACR-specific grading integration and request audit, isolated from the runner."""
 import asyncio,hashlib,json,os,sys
 from types import SimpleNamespace
-from runner.storage import ROOT,save,safe_json,validate_answer
-from reviewers.lcr.adapter import answer_session_failures
+from runner.storage import ROOT,save,safe_json
+from .evaluation_resume import prepare_scope, prepare_state, evaluate_rounds
+from .judge_transport import JudgeTransport, REQUEST_TIMEOUT, RETRY_DELAYS
 from .upstream import activate
 activate()
 from schema import load_instances
@@ -29,26 +30,7 @@ def load_judge_config():
 
 
 def stage_eval(instances, run, config):
-    # Use suite-owned references, never the runner input handed to LCR. Score
-    # every structurally complete saved answer and retain an explicit scope for
-    # the report; unfinished cases are excluded rather than treated as zero.
-    all_instances = load_instances(run / "dataset.jsonl")
-    instances = []
-    excluded = []
-    for item in all_instances:
-        answer_path = run / "results" / (item.safe_id + ".json")
-        try:
-            answer = validate_answer(item, answer_path)
-        except (OSError, ValueError) as error:
-            excluded.append({"instance_id": item.instance_id,
-                             "reason": ("缺少完整答卷" if isinstance(error, FileNotFoundError)
-                                        else "答卷无法读取或未通过完整性校验")})
-        else:
-            if answer_session_failures(item, run, answer):
-                excluded.append({"instance_id": item.instance_id,
-                                 "reason": "LCR 会话记录了失败条目"})
-                continue
-            instances.append(item)
+    instances = prepare_scope(load_instances(run / 'dataset.jsonl'), run)
     if not instances:
         raise SystemExit("没有可评分的完整答卷；请先完成至少一个案例。")
     load_judge_config()
@@ -61,66 +43,44 @@ def stage_eval(instances, run, config):
     if endpoint_hash and endpoint_hash != hashlib.sha256(os.environ["JUDGE_BASE_URL"].encode()).hexdigest():
         raise ValueError("裁判接口与批次冻结配置不同，请使用新批次")
     os.environ["JUDGE_USE_MOCK"] = "false"
-    if (run / "metrics").exists():
-        raise SystemExit("评分目录已存在，避免覆盖。请先检查已有结果。")
-    save(run / "evaluation-config.json", {"suite_id":"aacr",
-         "suite_identity":config.get("suite", {}).get("identity"),
-         "judge_model":os.environ["JUDGE_MODEL"],
-         "judge_endpoint_sha256":hashlib.sha256(os.environ["JUDGE_BASE_URL"].encode()).hexdigest(),
-         "eval_rounds":config.get("eval_rounds",3), "line_k":config.get("line_k",1)})
-    included = [i.instance_id for i in instances]
-    save(run / "evaluation-scope.json", {"included": included,
-        "excluded": excluded,
-        "note": (f"本轮共 {len(all_instances)} 例，其中 {len(included)} 例有完整答卷并纳入评分；"
-                 "其余案例不计零分，结论仅适用于纳入评分的案例。")})
+    effective = dict(config, judge_model=os.environ['JUDGE_MODEL'],
+                     judge_endpoint_sha256=hashlib.sha256(os.environ['JUDGE_BASE_URL'].encode()).hexdigest())
+    prepare_state(instances, run, effective)
+    _evaluate_with_transport(instances, run, config)
+    stage_report(run, config)
+
+
+def _evaluate_with_transport(instances, run, config):
     import judge  # noqa: E402
-    import pipeline  # noqa: E402
     if judge.USE_MOCK_LLM:
         raise SystemExit("裁判误设为 Mock，停止评分")
-    from openai import AsyncOpenAI
-    records = []
-
-    async def create(**kwargs):
-        record = {"prompt_sha256": hashlib.sha256(json.dumps(kwargs["messages"]).encode()).hexdigest()}
-        records.append(record)
-        try:
-            async with AsyncOpenAI(api_key=os.environ["JUDGE_API_KEY"],
-                                   base_url=os.environ["JUDGE_BASE_URL"],
-                                   timeout=180, max_retries=0) as client:
-                response = await client.chat.completions.create(**kwargs)
-            record.update(status="success", answer=response.choices[0].message.content,
-                          usage=response.usage.model_dump() if response.usage else None)
-            return response
-        except Exception as error:
-            record.update(status="failed", error_type=type(error).__name__)
-            raise
-        finally:
-            save(run / "judge-requests.json", records)
-
-    judge._llm_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    original = judge.match_semantic
+    transport = JudgeTransport(run)
+    original, client = judge.match_semantic, judge._llm_client
 
     async def checked_match(reference, generated):
+        transport.last_record = None
         decision = await original(reference, generated)
-        if records and (records[-1].get("status") != "success" or
-                        not (records[-1].get("answer") or "").strip()):
-            raise RuntimeError("裁判调用失败或空回答，停止评分")
+        if transport.last_error or not transport.last_record or transport.last_record.get('status') != 'success':
+            raise RuntimeError('裁判请求失败或证据校验失败，进度已保存；可再次点击评分续评')
         return decision
 
+    judge._llm_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=transport.create)))
     judge.match_semantic = checked_match
     status = "failed"
     try:
-        # Inherited AACR pipeline; OCR-shaped wrapper is an input compatibility layer.
-        pipeline.run_eval_stage(instances, "ocr", run / "results", run / "metrics",
-                                line_k=config.get("line_k", 1), limit_for_eval=None, eval_rounds=config.get("eval_rounds", 3))
+        evaluate_rounds(instances, run, config, transport)
         status = "complete"
     finally:
-        usage = {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
-                 for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
-        save(run / "judge-audit.json", {"status": status, "mock": False,
-             "judge_model": os.environ["JUDGE_MODEL"], "judge_usage_only": usage,
-             "requests": records, "semantic_matches": [], "eval_rounds": config.get("eval_rounds", 3)})
-    stage_report(run, config)
+        judge.match_semantic, judge._llm_client = original, client
+        _save_audit(run, config, transport.records, status)
+
+
+def _save_audit(run, config, records, status):
+    usage = {key: sum((r.get('usage') or {}).get(key, 0) for r in records)
+             for key in ('prompt_tokens', 'completion_tokens', 'total_tokens')}
+    save(run / 'judge-audit.json', dict(status=status, mock=False, judge_model=os.environ['JUDGE_MODEL'],
+         judge_usage_only=usage, requests=records, semantic_matches=[], eval_rounds=config.get('eval_rounds', 3),
+         transport=dict(request_timeout_seconds=REQUEST_TIMEOUT, retry_delays_seconds=list(RETRY_DELAYS))))
 
 
 def stage_report(run, config):

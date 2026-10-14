@@ -16,14 +16,17 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { useRef, useState } from 'react';
 import { api } from '../api';
+import { modelEndpointRule } from '../modelEndpoint';
 import { useWorkbench } from '../context';
 import { availableProfiles, editable } from '../presentation';
 import { ErrorAlert, Heading, TestResults } from '../components/Common';
 import { useAction } from '../hooks/useAction';
+import { useConfirmAction } from '../hooks/useConfirmAction';
 import type { Connection, ModelValues, Profile } from '../types';
 export function Models() {
   const { state, refresh } = useWorkbench();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const confirm = useConfirmAction();
   const [editing, setEditing] = useState<Profile | null | undefined>();
   const [form] = Form.useForm<ModelValues>();
   const save = useAction(),
@@ -33,6 +36,8 @@ export function Models() {
   const generation = useRef(0);
   const invalidate = () => {
     generation.current++;
+    test.clear();
+    save.clear();
     setDraftResult(undefined);
   };
   const open = (profile: Profile | null) => {
@@ -68,24 +73,25 @@ export function Models() {
     });
   const submit = (values: ModelValues) =>
     save.run(async () => {
+      const version = generation.current;
       await api(
         editing ? '/api/profiles/' + encodeURIComponent(editing.id) : '/api/profiles',
         modelData(values),
         editing ? 'PUT' : 'POST',
       );
-      invalidate();
-      setEditing(undefined);
+      if (version === generation.current) {
+        invalidate();
+        setEditing(undefined);
+      }
       await refresh();
       message.success('配置已保存，未调用模型；已有批次保留原配置。');
     });
   const remove = (profile: Profile) =>
-    modal.confirm({
+    confirm({
       title: `删除“${profile.label}”？`,
       content: '已有批次保留创建时的配置快照。',
       okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: async () => {
+      action: async () => {
         await api('/api/profiles/' + encodeURIComponent(profile.id), undefined, 'DELETE');
         await refresh();
         message.success('模型配置已删除');
@@ -193,7 +199,7 @@ export function Models() {
           <Form.Item
             name="base_url"
             label="接口根地址（Base URL）"
-            rules={[{ required: true }, { type: 'url' }]}
+            rules={[{ required: true }, modelEndpointRule]}
             extra="不包含 /chat/completions"
           >
             <Input />

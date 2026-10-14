@@ -49,3 +49,6 @@ case-datasets
 case-repositories
 case-packaging
 retry-rehearsals
+
+# Browser acceptance runs locally only
+scripts/e2e

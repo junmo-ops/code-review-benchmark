@@ -17,6 +17,11 @@
     "cli": "node scripts/project.mjs cli",
     "verify": "node scripts/project.mjs verify",
     "package:changes": "node scripts/project.mjs package",
-    "hooks:install": "git config core.hooksPath .githooks"
+    "hooks:install": "git config core.hooksPath .githooks",
+    "e2e": "node scripts/e2e/run.mjs",
+    "e2e:setup": "npm install --prefix scripts/e2e && npm exec --prefix scripts/e2e -- playwright install chromium",
+    "e2e:explore": "node scripts/e2e/run.mjs --explore",
+    "e2e:container": "node scripts/e2e/run.mjs --container",
+    "e2e:container:build": "node scripts/e2e/build-container.mjs"
   }
 }

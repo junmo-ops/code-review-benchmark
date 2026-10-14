@@ -6,9 +6,23 @@ import argparse,datetime,json,os,signal,subprocess,sys,time
 from runner.paths import PROJECT_ROOT as ROOT
 ALLOWED={'LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','LCR_LLM_STREAM','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL','JUDGE_USE_MOCK'}
 
-def descendants(pid):
+def process_parents():
+    if sys.platform.startswith('linux'):
+        pairs=[]
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():continue
+            try:
+                # The command name may contain spaces or parentheses.
+                fields=(entry/'stat').read_text().rsplit(')',1)[1].split()
+                pairs.append((int(entry.name),int(fields[1])))
+            except (OSError,ValueError,IndexError):
+                continue  # A child may exit while the process tree is sampled.
+        return pairs
     listing=subprocess.run(['ps','-axo','pid=,ppid='],capture_output=True,text=True,check=True)
-    pairs=[tuple(map(int,line.split())) for line in listing.stdout.splitlines() if line.strip()]
+    return [tuple(map(int,line.split())) for line in listing.stdout.splitlines() if line.strip()]
+
+def descendants(pid):
+    pairs=process_parents()
     found={pid}
     while True:
         expanded=found | {child for child,parent in pairs if parent in found}

@@ -89,7 +89,7 @@ def main():
                                    cwd=ROOT, capture_output=True).returncode == 0
     errors = check_layout()
     count = 0
-    for folder in ['backend/src', 'tools']:
+    for folder in ['backend/src', 'tools', 'scripts/e2e']:
         for path in (ROOT / folder).rglob('*.py'):
             if '__pycache__' in path.parts:
                 continue

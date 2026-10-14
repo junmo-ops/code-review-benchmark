@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, AuthenticationRequired, bootstrap, setAuthentication } from '../api';
 import type { ImportTask, Snapshot } from '../types';
+import { parseSnapshot } from '../snapshot';
 export function useDashboard() {
   const [state, setState] = useState<Snapshot>();
   const [task, setTask] = useState<ImportTask | null>(null);
@@ -14,7 +15,7 @@ export function useDashboard() {
     stateRequest.current = true;
     try {
       await bootstrap();
-      const incoming = await api<Snapshot>('/api/state');
+      const incoming = parseSnapshot(await api<unknown>('/api/state'));
       if (alive.current) {
         setState(incoming);
         setError('');

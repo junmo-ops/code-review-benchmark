@@ -24,7 +24,7 @@ REPO = ROOT / "repos"
 CASE_JOBS = 2
 FILE_CONCURRENCY = 1
 REPOS_ROOT = ROOT / "repos"
-CASE_REPOS = {}
+WORKSPACE_LOCK = threading.Lock()
 WORKER = threading.local()
 
 LCR_TIMEOUT_MINUTES = 10
@@ -243,12 +243,15 @@ def review_case(item, run, preview, stop):
     retries = []
     try:
         if REPOS_ROOT is not None:
-            WORKER.repo = CASE_REPOS.get(item.safe_id, Path(REPOS_ROOT) / item.repo.replace("/", "__"))
+            WORKER.repo = run / "workspaces" / item.safe_id
         if cancellation_requested():
             return item.instance_id
         out = run / "results" / (item.safe_id + ".json")
         if _skip_or_archive_existing_answer(item, run, out, preview):
             return None
+        _prepare_case_workspace(item, run)
+        if cancellation_requested():
+            raise CancelledError("工作区准备完成后收到停止请求")
         resume_session_id = None if preview else _initial_resume_session(item, run)
         for attempt in range(1, (1 if preview else MAX_CASE_RETRIES + 1) + 1):
             raw = None
@@ -274,7 +277,10 @@ def review_case(item, run, preview, stop):
               "attempt_count": len(retries) + 1, "retry_history": retries})
         return item.instance_id
     finally:
-        WORKER.__dict__.clear()
+        try:
+            _cleanup_case_workspace(item)
+        finally:
+            WORKER.__dict__.clear()
 
 
 def _skip_or_archive_existing_answer(item, run, out, preview):
@@ -420,56 +426,53 @@ def _create_case_workspace(source, workspace, item):
         raise
 
 
-def _prepare_case_workspaces(instances, run):
-    global CASE_REPOS
-    CASE_REPOS = {}
+def _check_case_source(source, item):
+    if not (source / ".git").is_dir():
+        raise ValueError(f"缺少案例仓库：{source}")
+    commands = [("cat-file", "-e", commit + "^{commit}")
+                for commit in (item.base_commit, item.head_commit)]
+    commands.append(("merge-base", item.base_commit, item.head_commit))
+    for command in commands:
+        result = subprocess.run(["git", "-C", str(source), *command],
+                                capture_output=True, timeout=30, check=False)
+        if result.returncode:
+            raise ValueError(f"案例提交缺失或历史不完整：{item.instance_id}")
+
+
+def _prepare_case_workspace(item, run):
     if REPOS_ROOT is None:
-        check_repos(instances)
-    else:
-        checked = set()
-        for item in instances:
-            path = Path(REPOS_ROOT) / item.repo.replace("/", "__")
-            if path in checked:
-                continue
-            checked.add(path)
-            if not (path / ".git").exists():
-                raise SystemExit(f"缺少包含 .git 的案例仓库：{path}")
-            previous = REPO
-            try:
-                globals()["REPO"] = path
-                check_repos([item])
-            finally:
-                globals()["REPO"] = previous
-        workspace_root = run / "workspaces"
-        workspace_root.mkdir(parents=True, exist_ok=True)
-        created = []
-        try:
-            for item in instances:
-                source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
-                workspace = workspace_root / item.safe_id
-                _create_case_workspace(source, workspace, item)
-                created.append((source, workspace))
-                CASE_REPOS[item.safe_id] = workspace
-        except BaseException:
-            for source, workspace in reversed(created):
-                subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
-                               capture_output=True, text=True, timeout=60, check=False)
-            CASE_REPOS = {}
-            raise
+        return
+    source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
+    workspace = run / "workspaces" / item.safe_id
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    with WORKSPACE_LOCK:
+        if cancellation_requested():
+            raise CancelledError("准备工作区前收到停止请求")
+        print(f"正在准备案例工作区：{item.instance_id}", flush=True)
+        _check_case_source(source, item)
+        _create_case_workspace(source, workspace, item)
+        WORKER.workspace_source = source
+        WORKER.workspace = workspace
+    print(f"案例工作区已就绪：{item.instance_id}", flush=True)
 
 
-def _cleanup_case_workspaces(instances):
-    global CASE_REPOS
-    for item in reversed(instances):
-        workspace = CASE_REPOS.get(item.safe_id)
-        if workspace is None:
-            continue
-        source = Path(REPOS_ROOT) / item.repo.replace("/", "__")
-        result = subprocess.run(["git", "-C", str(source), "worktree", "remove", "--force", str(workspace)],
-                                capture_output=True, text=True, timeout=60, check=False)
+def _cleanup_case_workspace(item):
+    workspace = getattr(WORKER, "workspace", None)
+    if workspace is None:
+        return
+    # LCR sessions live in ~/.leancodereview; answers and logs live under run.
+    # Keep the deterministic workspace path when recreating it for --resume.
+    try:
+        with WORKSPACE_LOCK:
+            result = subprocess.run(["git", "-C", str(WORKER.workspace_source), "worktree",
+                                     "remove", "--force", str(workspace)],
+                                    capture_output=True, text=True, timeout=60, check=False)
         if result.returncode:
             print(f"独立工作区清理失败：{workspace}；{(result.stderr or result.stdout).strip()}", file=sys.stderr, flush=True)
-    CASE_REPOS = {}
+        else:
+            print(f"案例工作区已清理：{item.instance_id}", flush=True)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"独立工作区清理失败：{workspace}；{redact(error)}", file=sys.stderr, flush=True)
 
 
 def _wait_review_futures(futures, stop, interrupted):
@@ -501,7 +504,8 @@ def _wait_review_futures(futures, stop, interrupted):
 def _stage_review(instances, run, preview):
     if (run / "stop-request.json").exists():
         raise SystemExit("本轮已有停止请求，不再启动任务。核对日志后使用新轮次。")
-    _prepare_case_workspaces(instances, run)
+    if REPOS_ROOT is None:
+        check_repos(instances)
     if not instances:
         return
     stop = threading.Event()
@@ -536,7 +540,6 @@ def _stage_review(instances, run, preview):
         finally:
             for signum, handler in previous_handlers.items():
                 signal.signal(signum, handler)
-            _cleanup_case_workspaces(instances)
     if interrupted.is_set():
         raise KeyboardInterrupt
     if failures:

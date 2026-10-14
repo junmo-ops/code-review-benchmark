@@ -210,10 +210,13 @@ class Dashboard:
             status = 'partial_scored'
         return status, covered
 
-    def _existing_score_message(self, key):
+    def _score_lock_reason(self, key, cases, summary):
+        return self._existing_score_message(key, cases) if summary else None
+
+    def _existing_score_message(self, key, cases=None):
         scope = self._score_scope(key)
         if scope is not None:
-            cases = self.cases(key)
+            cases = self.cases(key) if cases is None else cases
             total = len(cases)
             if len(scope) < total:
                 return f'已有部分评分，覆盖 {len(scope)}/{total} 个案例；评分证据不可覆盖，新完成的答卷未纳入。若需全量评分，请新建批次。'
@@ -258,6 +261,7 @@ class Dashboard:
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
                     status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else score_status,
                     completed=completed, total=total, scored_cases=scored_cases, cases=cases, metrics=summary, artifacts=reports,
+                    score_locked_reason=self._score_lock_reason(key, cases, summary),
                     timeout_minutes=cfg.get('timeout_minutes', 10), concurrency=cfg.get('case_jobs', 1),
                     max_case_retries=cfg.get('max_case_retries', 1 if cfg.get('reviewer', 'lcr') == 'lcr' else 0),
                     case_resources_purged=self._case_resources_purged(key, cfg),
@@ -366,7 +370,7 @@ class Dashboard:
             raise ValueError('案例集文件不可用')
         return path
 
-    def prepare_case_repositories(self, spec, key, action):
+    def prepare_case_repositories(self, spec, key, action, progress=None):
         from .case_storage import mode
         if action in {'report', 'export', 'eval', 'recover'} or mode() != 'cos':
             return
@@ -378,7 +382,7 @@ class Dashboard:
             try:
                 from runner.diagnostics import phase
                 with phase('benchmark.prepare_repositories', key=key):
-                    CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest)
+                    CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest, progress=progress)
             except RuntimeError as error:
                 raise ValueError(str(error)) from None
 
@@ -474,6 +478,8 @@ class Dashboard:
     def _agent_command(self, stage, run_id, env, cfg, init, task):
         args=[stage,'--run-id',run_id,'--runs-root',str(self.data/'runs')]
         limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
+        if stage == 'eval':
+            limit = self._scoring_budget(cfg, self.data/'runs'/run_id)
         if init is not None:
             args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
         if task:args+=['--instance',task]
@@ -514,9 +520,18 @@ class Dashboard:
             args += ['--instance', task]
         if stage == 'review':
             limit = self._review_budget(key, cfg, task)
+        if stage == 'eval':
+            limit = self._scoring_budget(cfg, self.run_dir(key))
         if retry:
             args.append('--retry')
         return entry, args, limit
+
+    @staticmethod
+    def _scoring_budget(cfg, run):
+        if cfg.get('suite', {}).get('id') == 'aacr' and cfg.get('evaluator', {}).get('id', 'original') == 'original':
+            from suites.aacr.evaluation_resume import scoring_budget
+            return scoring_budget(run, cfg)
+        return 900
 
     def _review_budget(self, key, cfg, task):
         # Bound one batch review command by the slowest case, since cases run concurrently.
@@ -761,7 +776,7 @@ class Dashboard:
 
     def _run_work_stage(self, job_id, job, request, steps, index, stage, task, init, log):
         label = stage + (' · ' + task if task else '')
-        self.update(job_id, step=label, step_started_at=now(), completed_steps=index)
+        self.update(job_id, step=label, step_started_at=now(), completed_steps=index, message="正在执行")
         from runner.diagnostics import phase, event
         with phase('benchmark.stage', job_id=job_id, key=job['key'], stage=stage):
             code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
@@ -784,6 +799,15 @@ class Dashboard:
         self.update(job_id, completed_steps=index+1)
         return 'complete'
 
+    def _prepare_job_repositories(self, job_id, job, spec, log):
+        def progress(stage, message, completed=0, total=0, **details):
+            if self.cancelled.is_set():
+                raise ValueError('准备仓库期间收到停止请求')
+            log.write(f'[{now()}] {message}\n')
+            log.flush()
+            self.update(job_id, message=message)
+        self.prepare_case_repositories(spec, job['key'], job['action'], progress=progress)
+
     def work(self, job_id, request, spec):
         partial_review = False
         log_path = self.state/'jobs'/f'{job_id}.log'
@@ -792,7 +816,7 @@ class Dashboard:
             steps = self.plan(job, request, spec)
             self.update(job_id, status='running', started_at=now(), total_steps=len(steps), message='正在执行')
             with log_path.open('a', encoding='utf-8', buffering=1) as log:
-                self.prepare_case_repositories(spec, job['key'], job['action'])
+                self._prepare_job_repositories(job_id, job, spec, log)
                 for index, (stage, task, init) in enumerate(steps):
                     if self.cancelled.is_set():
                         break

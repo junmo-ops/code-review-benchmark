@@ -77,7 +77,7 @@ def handler_for(app, token):
                 return self.send(200, app.snapshot())
             if parsed.path == '/api/cases/imports':
                 from .case_import import current
-                return self.send(200, {'task': current(app)})
+                return self.send(200, {'task': current(app, query.get('id'))})
             if parsed.path == '/api/uploads/current':
                 from .resumable_uploads import current
                 return self.send(200, current(app, query.get('kind', '')))
@@ -103,7 +103,7 @@ def handler_for(app, token):
             return self.send(404, {'error':'页面不存在'})
 
         def _frontend(self, path):
-            root=(ROOT/'frontend'/'dist').resolve()
+            root=Path(os.environ.get('BENCH_FRONTEND_DIST', ROOT/'frontend'/'dist')).resolve()
             pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
             normalized=path.rstrip('/') or '/'
             if normalized in pages:
@@ -126,7 +126,7 @@ def handler_for(app, token):
             return self.send(404,{'error':'页面不存在'})
 
         def _frontend(self, path):
-            root=(ROOT/'frontend'/'dist').resolve()
+            root=Path(os.environ.get('BENCH_FRONTEND_DIST', ROOT/'frontend'/'dist')).resolve()
             pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
             normalized=path.rstrip('/') or '/'
             if normalized in pages:

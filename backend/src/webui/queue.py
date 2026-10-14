@@ -127,6 +127,8 @@ class DurableDashboard(Dashboard):
             return dict(job_id=job['id'],key=job['key'])
     def submit(self, request):
         self.sync()
+        if request.get('action') == 'eval' and self.summary(request.get('key')):
+            raise ValueError(self._existing_score_message(request['key']))
         if request.get('action') != 'resume':
             return super().submit(request)
         from .resume import prepare_resume

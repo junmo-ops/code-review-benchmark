@@ -2,6 +2,9 @@ let csrf = '';
 let authorization = '';
 let session: Promise<void> | undefined;
 export class AuthenticationRequired extends Error {}
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) { super(message); }
+}
 export function setAuthentication(username: string, password: string) {
   const bytes = new TextEncoder().encode(username + ':' + password);
   authorization = 'Basic ' + btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
@@ -35,7 +38,7 @@ async function parse<T>(response: Response): Promise<T> {
     throw new AuthenticationRequired(body.error ?? '请登录测评工作台');
   }
   if (response.status === 403 && body.error === '页面会话失效，请刷新') csrf = '';
-  if (!response.ok) throw new Error(body.error ?? `操作失败（HTTP ${response.status}）`);
+  if (!response.ok) throw new ApiError(response.status, body.error ?? `操作失败（HTTP ${response.status}）`);
   return body;
 }
 export async function api<T>(

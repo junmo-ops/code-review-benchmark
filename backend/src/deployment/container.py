@@ -157,10 +157,13 @@ def main():
     args = parser.parse_args()
     if args.check_build:
         check_build()
-        return 0
-    if args.prepare:
+    elif args.prepare:
         prepare()
-        return 0
+    else:
+        raise SystemExit(_run_container())
+
+
+def _run_container():
     role = os.environ.get('BENCH_CONTAINER_ROLE', 'all')
     if role not in {'all', 'web', 'worker'}:
         raise ValueError('BENCH_CONTAINER_ROLE 须为 all、web 或 worker')
@@ -211,4 +214,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    main()

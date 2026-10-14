@@ -1,11 +1,12 @@
 import { Alert, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
 import { useEffect, useRef } from 'react';
-import { api } from '../api';
+import { creationName, submitCreation } from '../creation';
 import { useWorkbench } from '../context';
 import { availableProfiles, canSubmit } from '../presentation';
 import { useAction } from '../hooks/useAction';
+import { useRequestScope } from '../hooks/useRequestScope';
 import { ErrorAlert } from './Common';
-import type { JobReply, Snapshot } from '../types';
+import type { Snapshot } from '../types';
 interface Values {
   suite: string;
   dataset: string;
@@ -20,10 +21,7 @@ interface Values {
   max_case_retries: number;
   max_tokens: number;
 }
-const identifier = (suite: string) =>
-  (suite === 'swe_prbench_llm' ? 'swe' : suite) +
-  '-' +
-  new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+const identifier = (suite: string) => creationName(suite === 'swe_prbench_llm' ? 'swe' : suite);
 function defaults(state: Snapshot, suiteId?: string, datasetId?: string): Values {
   const suite = state.catalog.find((s) => s.id === suiteId) ??
     state.catalog[0] ?? { id: '', datasets: [] };
@@ -151,6 +149,7 @@ export function CreateRun({
   const values = Form.useWatch([], form) ?? {};
   const { run, busy, error, clear } = useAction();
   const initialized = useRef<typeof selection>(undefined);
+  const ownRequest = useRequestScope(selection);
   useEffect(() => {
     if (!selection) {
       initialized.current = undefined;
@@ -166,17 +165,20 @@ export function CreateRun({
     dataset = suite?.datasets.find((d) => d.id === values.dataset);
   const submit = (start: boolean) =>
     run(async () => {
+      const current = ownRequest();
       const data = await form.validateFields();
-      const result = await api<JobReply>('/api/jobs', {
+      const key = ['mcr', 'ccrab'].includes(data.suite) ? data.suite + '/' + data.name : data.name;
+      const result = await submitCreation('/api/jobs', {
         ...data,
         action: 'create',
         start_after_create: start,
         case_jobs: data.reviewer === 'lcr' ? data.case_jobs : 1,
         max_case_retries: data.reviewer === 'lcr' ? data.max_case_retries : 0,
         ...(data.suite === 'ccrab' ? { judge_profile: undefined } : {}),
-      });
-      close();
+      }, key, 'create');
       await refresh();
+      if (!current()) return;
+      close();
       openRun(result.key, result.job_id);
     });
   const changeSuite = (id: string) => {

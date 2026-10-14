@@ -2,6 +2,7 @@
 import json
 from contextlib import contextmanager
 import logging
+import re
 from pathlib import Path
 import threading
 import time
@@ -21,8 +22,14 @@ def _directory(dashboard):
     return dashboard.state / 'case-imports'
 
 
-def current(dashboard):
-    path = _directory(dashboard) / 'current.json'
+def current(dashboard, identifier=None):
+    if identifier is not None and not re.fullmatch(r'[a-f0-9]{32}', identifier):
+        raise ValueError('导入任务标识无效')
+    if identifier:
+        latest = current(dashboard)
+        if latest and latest.get('id') == identifier:
+            return latest  # Also supports the current record from older versions.
+    path = _directory(dashboard) / ((identifier or 'current') + '.json')
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding='utf-8'))
@@ -58,8 +65,14 @@ def dataset_pending(data, digest):
 def _update(dashboard, **changes):
     task = current(dashboard)
     task.update(changes, updated_at=now())
-    save(_directory(dashboard) / 'current.json', task)
+    _save_task(dashboard, task)
     return task
+
+
+def _save_task(dashboard, task):
+    # Keep completed imports addressable after another resource import starts.
+    save(_directory(dashboard) / (task['id'] + '.json'), task)
+    save(_directory(dashboard) / 'current.json', task)
 
 
 def submit(dashboard, archive, kind="dataset", upload_id=None):
@@ -88,7 +101,7 @@ def _queue_archive(dashboard, archive, folder, kind, upload_id=None):
                 completed=0, total=0, created_at=now(), updated_at=now())
     if upload_id:
         task['upload_id'] = upload_id
-    save(folder / 'current.json', task)
+    _save_task(dashboard, task)
     return task
 
 
