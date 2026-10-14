@@ -1,4 +1,4 @@
-import { Markdown } from './Markdown';
+import { ReportView } from './ReportView';
 import {
   Alert,
   App,
@@ -36,7 +36,7 @@ import {
 import { ErrorAlert, Status } from './Common';
 import type { Case, Job, JobReply, Run, TextReply } from '../types';
 function TextFile({ kind, run }: { kind: string; run: Run }) {
-  const artifacts = kind === 'report' ? run.artifacts.filter((a) => a.report) : run.artifacts;
+  const artifacts = kind === 'report' ? run.artifacts.filter((a) => a.report).sort((a, b) => Number(b.path === 'report.zh-CN.md') - Number(a.path === 'report.zh-CN.md')) : run.artifacts;
   const [chosen, setChosen] = useState('');
   const path = artifacts.some((a) => a.path === chosen) ? chosen : artifacts[0]?.path;
   const reply = useRemote<TextReply>(
@@ -55,7 +55,7 @@ function TextFile({ kind, run }: { kind: string; run: Run }) {
           placeholder="暂无文件"
         />
         <Button
-          disabled={!reply.data}
+          disabled={!reply.data || reply.data.truncated}
           onClick={() => download(path?.split('/').pop() ?? 'result.txt', reply.data!.text)}
         >
           保存文件
@@ -74,7 +74,7 @@ function TextFile({ kind, run }: { kind: string; run: Run }) {
         <Alert type="info" message="仅展示部分内容，完整文件保留在批次中。" />
       )}
       {kind === 'report' ? (
-        <Markdown text={reply.data?.text ?? '还没有生成报告。'} />
+        <ReportView key={run.key + path} run={run} reply={reply.data} path={path} />
       ) : (
         <pre className="code-view">{reply.data?.text ?? '选择文件查看。'}</pre>
       )}

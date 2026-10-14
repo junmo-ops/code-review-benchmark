@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { reportSummaryScenario } from './report-summary.mjs';
 import { join } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -162,7 +163,7 @@ async function deletion({ page }) {
 }
 export const scenarios = [
   ['theme-and-navigation', theme], ['model-crud', models], ['repository-refresh', repositories], ['case-crud', cases],
-  ['error-isolation-and-delete-feedback', errors], ['full-workflow', workflow],
+  ['error-isolation-and-delete-feedback', errors], ['full-workflow', workflow], ['report-summary-and-details', reportSummaryScenario],
   ['queue-cancel-and-import-during-run', queue], ['partial-failure-scoring', partial],
   ['504-retry', retry], ['worker-interruption-resume', recovery], ['resource-deletion-history', deletion],
 ];
