@@ -4,7 +4,7 @@
 
 ## 运行条件
 
-- Windows 10/11 x64、Python 3.11 或更新版本、Git、Node.js 20 或更新版本。
+- Windows 10/11 x64、Python 3.12、Git、Node.js 22.22 或更新兼容版本。
 - 可访问的 LCR 检视模型和裁判接口。模型令牌仅保存在本地模型配置中。
 - 可访问公司的 npm 源和 Python 包源。
 - AACR 案例 Git bundle，包含五例所需提交历史。
@@ -13,7 +13,7 @@ Mac `.venv` 不能复用到 Windows；运行时由行内包源安装。
 
 ## 准备 Windows 资源
 
-Windows 运行时从公司 npm 源安装固定版本的 LCR；Python 依赖按 `requirements.txt` 中的包名从公司 Python 包源解析可用版本，避免内部镜像尚未同步 Mac 环境锁定的新版本。无需另行交叉编译或制作 wheelhouse。LCR 版本记录在 `reviewers/lcr/windows-runtime.json`。
+Windows 运行时从公司 npm 源安装固定版本的 LCR；Python 依赖统一使用 `backend/requirements.txt` 中的版本范围，由公司包源解析。无需另行交叉编译或制作 wheelhouse。LCR 版本记录在 `backend/src/reviewers/lcr/windows-runtime.json`。
 
 在工程根目录运行 `tools/build_delivery.py`，生成 `code-review-benchmark-source.zip`。该 ZIP 包含源码和 AACR 五例所需的 Cline Git 历史，不含模型配置或令牌。将这个文件带入行内电脑即可。
 
@@ -27,7 +27,7 @@ py -3.12 tools/prepare_windows.py
 
 复制 `examples/model.local.example.json` 为工程根目录的 `model.local.json`，再填写可访问的模型检视与裁判接口及令牌，并限制本机文件访问权限。不要提交配置文件或粘贴到命令行。
 
-双击 `打开测评工作台.bat`。工作台打开后，创建 AACR 单模型批次，选择 `pilot5.jsonl`，先运行检查，再启动测评。任务进度、日志、答卷、报告保存在本机 `ui-state/`、`runs/` 和 `local-command-logs/`。
+先执行 `npm run setup` 和 `npm run build`，然后双击 `打开测评工作台.bat`，在浏览器打开 `http://127.0.0.1:4173`。开发时可直接执行 `npm run dev`，访问 5173 端口。工作台打开后，创建 AACR 单模型批次，选择 `pilot5.jsonl`，先运行检查，再启动测评。任务进度、日志、答卷、报告保存在本机 `ui-state/`、`runs/` 和 `local-command-logs/`。
 
 完成后可在批次详情查看中文报告。要迁移到行内服务器时，重新打包源码并使用 Linux x86_64 / Python 3.11 资源包；Windows 的 `.venv`、LCR 可执行文件和运行批次不能直接当作 Linux 部署资源。
 

@@ -9,6 +9,13 @@ import subprocess
 import tempfile
 from urllib.parse import urlsplit
 import zipfile
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
+sys.path.insert(0, str(ROOT))
+from runner.git_bundles import create_complete_bundle
 
 
 def repository_name(path):
@@ -44,10 +51,7 @@ def add_repository(path, name, archive, records, repos):
         raise ValueError('仓库名称无效或重复：' + name)
     with tempfile.TemporaryDirectory(prefix='repo-bundle-') as folder:
         bundle = Path(folder) / (slug + '.bundle')
-        result = subprocess.run(['git', '-C', str(path), 'bundle', 'create', str(bundle), '--all'],
-                                capture_output=True, text=True, timeout=3600)
-        if result.returncode:
-            raise ValueError('创建完整 Git bundle 失败：' + name + '；' + result.stderr[-500:])
+        create_complete_bundle(path, bundle)
         digest = hashlib.sha256()
         with bundle.open('rb') as stream:
             for block in iter(lambda: stream.read(1024 * 1024), b''):

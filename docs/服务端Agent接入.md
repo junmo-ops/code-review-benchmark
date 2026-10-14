@@ -107,7 +107,7 @@ cp -n agent.example.json agent.local.json
 另一个终端运行工作台：
 
 ```bash
-.venv/bin/python ui.py --no-open
+.venv/bin/python backend/src/ui.py --no-open
 ```
 
 新建单模型测评，选择 AACR 单案例清单、服务端 Agent；模型和裁判沿用已配置选项。模拟服务仅模拟任务进度，返回空意见，不读取仓库、不调用任何模型；模拟批次自动跳过评分，也禁止手动评分。
@@ -120,7 +120,7 @@ cp -n agent.example.json agent.local.json
 .venv/bin/python -m unittest tests.test_server_agent -v
 ```
 
-此测试含临时本机 HTTP 服务及真实 cloud.py 子进程的 init/check/preview/review/status 流程；同时确认模拟评分被拒绝。不访问公司接口、不调用模型。
+此测试含临时本机 HTTP 服务及真实 backend/src/cloud.py 子进程的 init/check/preview/review/status 流程；同时确认模拟评分被拒绝。不访问公司接口、不调用模型。
 
 ## 超时、恢复与证据
 

@@ -35,6 +35,7 @@ ui-state/
 # 浏览器验收产物
 .playwright-cli/
 output/playwright/
+output/container-image-context/
 
 # Server-only dependencies, data and credentials
 server-wheelhouse/
@@ -47,3 +48,23 @@ server.env
 runtimes/
 .runtime/
 windows-wheelhouse/
+
+# React frontend dependencies and TypeScript cache
+frontend/node_modules/
+frontend/*.tsbuildinfo
+frontend/dist/
+
+# Python packaging and service runtime
+**/*.egg-info/
+backend/build/
+backend/dist/
+runtime/
+case-datasets/
+case-repositories/
+case-packaging/
+
+# Legacy archive metadata generated locally
+requirements-container.resolved.txt
+
+# Optional browser regression dependencies
+scripts/e2e/node_modules/

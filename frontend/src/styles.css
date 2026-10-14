@@ -1,0 +1,129 @@
+/* Layout and content only. Component colors, sizes and radii come from Ant Design. */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bench-scrollbar) transparent;
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: var(--bench-scrollbar); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+#root, .app-layout { min-height: 100vh; }
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  border-right: 1px solid var(--bench-split);
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 24px 20px 20px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.brand small {
+  display: block;
+  margin-top: 4px;
+  color: var(--bench-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.brand-mark { font-size: 20px; }
+.sidebar-caption { display: block; padding: 12px 20px 8px; }
+.runtime-note { margin: 24px 16px 16px; }
+
+.topbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--bench-split);
+  background: var(--bench-container);
+}
+
+.workspace {
+  width: 100%;
+  max-width: 1720px;
+  min-width: 0;
+  min-height: calc(100vh - 64px);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.page-heading h2 { margin: 0 0 8px; }
+.section-gap { margin-top: 16px; margin-bottom: 16px; }
+.full-width { width: 100%; }
+.muted { color: var(--bench-secondary); font-size: 12px; word-break: break-all; }
+.selected-card { border-color: var(--bench-primary); }
+.upload-icon { font-size: 36px; }
+.metrics { padding: 16px 0; }
+
+.code-view {
+  max-height: 55vh;
+  min-height: 160px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  border: 1px solid var(--bench-border);
+  background: var(--bench-fill);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.file-select { width: min(500px, 65vw); }
+.evidence-text {
+  overflow-wrap: anywhere;
+  padding: 16px;
+  border: 1px solid var(--bench-border);
+  background: var(--bench-fill);
+  font: inherit;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.markdown { overflow-wrap: anywhere; line-height: 1.8; }
+.markdown pre { overflow: auto; padding: 16px; background: var(--bench-fill); }
+.markdown table { display: block; width: 100%; overflow: auto; border-collapse: collapse; }
+.markdown td, .markdown th { padding: 8px; border: 1px solid var(--bench-border); }
+.markdown img { max-width: 100%; }
+
+/* Keep long dialogs scrollable and prevent scroll from reaching the page underneath. */
+.ant-modal-body { max-height: 75vh; overflow: auto; overscroll-behavior: contain; }
+.ant-modal-wrap { overscroll-behavior: contain; }
+.ant-modal-mask { touch-action: none; }
+.ant-checkbox-group { display: flex; flex-direction: column; gap: 12px; }
+.loading { display: grid; min-height: 50vh; place-items: center; }
+.login-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; }
+.login-page .ant-card { width: min(440px, 100%); }
+
+@media (max-width: 768px) {
+  .workspace { padding: 16px; }
+  .page-heading { align-items: flex-start; flex-direction: column; }
+  .topbar { height: 58px; padding: 0 16px; }
+}

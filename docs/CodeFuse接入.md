@@ -16,12 +16,12 @@ AACR 主测；SWE-PRBench 和 CodeFuse-CR-Bench 辅测，分别报告。CodeFuse
 
 ```bash
 run="codefuse-one-$(date +%Y%m%d-%H%M%S)"
-.venv/bin/python local.py --timeout-seconds 60 init --suite codefuse_cr --evaluator martian --run-id "$run" --dataset data/codefuse-pilot1.jsonl --timeout-minutes 10
-.venv/bin/python local.py --timeout-seconds 60 check --run-id "$run"
-.venv/bin/python local.py --timeout-seconds 60 preview --run-id "$run" --instance 'psf__requests-5711@9484e13'
-.venv/bin/python local.py --timeout-seconds 800 review --run-id "$run" --instance 'psf__requests-5711@9484e13'
-.venv/bin/python local.py --timeout-seconds 600 eval --run-id "$run"
-.venv/bin/python local.py --timeout-seconds 60 export --run-id "$run"
+.venv/bin/python backend/src/local.py --timeout-seconds 60 init --suite codefuse_cr --evaluator martian --run-id "$run" --dataset data/codefuse-pilot1.jsonl --timeout-minutes 10
+.venv/bin/python backend/src/local.py --timeout-seconds 60 check --run-id "$run"
+.venv/bin/python backend/src/local.py --timeout-seconds 60 preview --run-id "$run" --instance 'psf__requests-5711@9484e13'
+.venv/bin/python backend/src/local.py --timeout-seconds 800 review --run-id "$run" --instance 'psf__requests-5711@9484e13'
+.venv/bin/python backend/src/local.py --timeout-seconds 600 eval --run-id "$run"
+.venv/bin/python backend/src/local.py --timeout-seconds 60 export --run-id "$run"
 ```
 
 check/preview/review 会核对实际 merge-base diff 与官方 patch；仅忽略 Git index 哈希缩写和 hunk 标题的函数文字差异，不忽略改动内容。发现差异就停止。该例的 base 不是 head 的直接祖先，不能用简单的 base..head diff 替代 merge-base diff。
@@ -38,7 +38,7 @@ check/preview/review 会核对实际 merge-base diff 与官方 patch；仅忽略
 
 资源包包含 `bundles/psf__requests.git.tar.gz`，保留浅历史边界，无需在内网 clone。
 
-运行入口改为 `.venv/bin/python cloud.py`；阶段和参数同上，去掉 local.py 专属 `--timeout-seconds`，review 增加 `--external-timeout-seconds 800`，平台工具自身 timeout 设置为至少 800 秒。每条命令都显式指定同一个 run-id，不依赖跨命令保留 shell 变量。真实接口令牌从平台环境变量提供，不放入仓库。
+运行入口改为 `.venv/bin/python backend/src/cloud.py`；阶段和参数同上，去掉 backend/src/local.py 专属 `--timeout-seconds`，review 增加 `--external-timeout-seconds 800`，平台工具自身 timeout 设置为至少 800 秒。每条命令都显式指定同一个 run-id，不依赖跨命令保留 shell 变量。真实接口令牌从平台环境变量提供，不放入仓库。
 
 Mac 完成不等于 Cloud 验收，仍须在平台验证时限、持久化和日志下载。
 

@@ -26,13 +26,29 @@ output
 wheelhouse
 server-wheelhouse
 windows-wheelhouse
-tests
+backend/tests
 *.zip
 *.tgz
 *.tar.gz
 bundles
 
 # The source adapter shares a name with the root LCR installation.
-!reviewers/lcr/
-!reviewers/lcr/*.py
-!reviewers/lcr/windows-runtime.json
+!backend/src/reviewers/lcr/
+!backend/src/reviewers/lcr/*.py
+!backend/src/reviewers/lcr/windows-runtime.json
+
+frontend/node_modules
+frontend/*.tsbuildinfo
+
+frontend/dist
+webui/static
+
+**/*.egg-info
+
+case-datasets
+case-repositories
+case-packaging
+retry-rehearsals
+
+# Browser acceptance runs locally only
+scripts/e2e

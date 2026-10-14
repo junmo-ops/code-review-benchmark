@@ -7,6 +7,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 JUDGE_KEYS = ('JUDGE_BASE_URL', 'JUDGE_API_KEY', 'JUDGE_MODEL')
 
 

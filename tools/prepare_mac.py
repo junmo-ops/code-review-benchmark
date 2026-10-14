@@ -2,6 +2,8 @@
 from pathlib import Path
 import argparse,json,platform,shutil,subprocess
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 LAUNCHER='''#!/usr/bin/env python3
 from pathlib import Path
 import os,sys

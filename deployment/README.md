@@ -1,8 +1,10 @@
+> 项目结构和日常启动已统一，见 [项目 README](../README.md)。容器单服务部署见 [Python 单服务部署](单服务部署.md)；本页保留 systemd 单机部署配置。
+
 # 单机内网部署
 
 Python 3.12 行内容器试运行参见 [容器试运行](容器试运行.md)。下文仍是有持久化目录的 systemd 部署流程。
 
-状态：服务器模式已实现；本机做代码与进程验证。目标 Linux、公司认证、Docker x86 镜像和真实模型接口仍须在行内验收。现有 `ui.py` 保持本机模式，不会自动切换到服务器队列。
+状态：服务器模式已实现；本机做代码与进程验证。目标 Linux、公司认证、Docker x86 镜像和真实模型接口仍须在行内验收。现有 `backend/src/ui.py` 保持本机模式，不会自动切换到服务器队列。
 
 ## 运行结构
 
@@ -10,7 +12,7 @@ Python 3.12 行内容器试运行参见 [容器试运行](容器试运行.md)。
 
 一个代码仓库，两个 systemd 服务；第一版只有一个 Worker，多个批次排队，单个案例顺序执行。同一批次不能重复排队。Web 和 Worker 不共享内存状态。Web 重启不停止 Worker；关闭浏览器不影响任务。不开启自动付费重试。
 
-Web API 仅绑定 127.0.0.1:8766，由反向代理对外提供 HTTPS。`ui.py` 是本机工具，不作为服务器入口。当前所有已认证用户共享项目结果；不是多租户平台。
+Web API 仅绑定 127.0.0.1:8766，由反向代理对外提供 HTTPS。`backend/src/ui.py` 是本机工具，不作为服务器入口。当前所有已认证用户共享项目结果；不是多租户平台。
 
 ## 目录与前提
 
@@ -57,7 +59,7 @@ sudo systemctl status review-lab-worker review-lab-web
 - 目标架构重新构建 Python 测试镜像，或通过获准的内网镜像仓库/镜像离线包导入；ARM 镜像不能当作 x86 验收结果。
 - `repos/networkx__networkx` 放在数据目录，包含 base/head/reference 所需提交。
 - 固定素材 `data/sources/ccrab` 和 `history/ccrab-upstream` 必须齐全。后者未包含在常规源码包，缺失会导致检查失败；其上游许可尚未确认，不在本次自动扩大发布范围。未获准交付该素材时，先验收其他案例集。
-- 完成依赖后，在导出 server.env 的终端执行 `ccrab.py check`。镜像构建需要内网可达的基础镜像和 Python 依赖源。
+- 完成依赖后，在导出 server.env 的终端执行 `backend/src/ccrab.py check`。镜像构建需要内网可达的基础镜像和 Python 依赖源。
 - 停止或异常后检查 Docker 容器。systemd 能清理子进程，但 Docker daemon 中的容器需要额外核实。
 
 ## 停止、中断与恢复

@@ -45,8 +45,8 @@ python3 tools/setup.py
 在仓库根目录执行：
 
 ```bash
-.venv/bin/python cloud.py init --suite aacr --run-id cloud-pilot-01 --dataset data/pilot5.jsonl --model "$LCR_LLM_MODEL" --timeout-minutes 30
-.venv/bin/python cloud.py check --run-id cloud-pilot-01
+.venv/bin/python backend/src/cloud.py init --suite aacr --run-id cloud-pilot-01 --dataset data/pilot5.jsonl --model "$LCR_LLM_MODEL" --timeout-minutes 30
+.venv/bin/python backend/src/cloud.py check --run-id cloud-pilot-01
 ```
 
 init只执行一次，冻结数据范围、工具及规则哈希、模型和超时。check不调用模型，会列出各例需要的平台命令时限。默认结果保存在本仓库runs/；Git忽略并不代表平台持久化。平台有持久化目录时，所有cloud.py命令统一追加 --runs-root /实际持久化目录。
@@ -56,7 +56,7 @@ init只执行一次，冻结数据范围、工具及规则哈希、模型和超�
 首先确认平台单条工具命令允许2000000ms，任务生命周期也足够。五分钟测试没有验证这一上限。在工具timeout真实设为2000000ms的同步命令中运行：
 
 ```bash
-.venv/bin/python cloud.py review --run-id cloud-pilot-01 --instance 'cline__cline@419534c' --external-timeout-seconds 2000
+.venv/bin/python backend/src/cloud.py review --run-id cloud-pilot-01 --instance 'cline__cline@419534c' --external-timeout-seconds 2000
 ```
 
 external-timeout-seconds只校验声明，不能延长平台限制。LCR单文件超时30分钟；案例外层按文件数计算，最长五例预算可达122分钟。不要用 &、nohup 或后台子进程，平台已验证会清理它们。
@@ -64,14 +64,14 @@ external-timeout-seconds只校验声明，不能延长平台限制。LCR单文�
 ## 五、逐例执行、检查、恢复
 
 ```bash
-.venv/bin/python cloud.py next --run-id cloud-pilot-01
-.venv/bin/python cloud.py status --run-id cloud-pilot-01
+.venv/bin/python backend/src/cloud.py next --run-id cloud-pilot-01
+.venv/bin/python backend/src/cloud.py status --run-id cloud-pilot-01
 ```
 
 next返回下一尚未尝试案例；逐例调用review，按check设置工具实际timeout和声明时限。已完整答卷自动跳过，失败不自动无限重试。若状态为recoverable_check_required，先recover：
 
 ```bash
-.venv/bin/python cloud.py recover --run-id cloud-pilot-01 --instance '实际案例ID'
+.venv/bin/python backend/src/cloud.py recover --run-id cloud-pilot-01 --instance '实际案例ID'
 ```
 
 恢复只检查已有输出，不调用模型。失败案例先看raw和diagnostics，确认旧执行已终止后，在review命令追加--retry。这里是案例重跑，不是自动恢复CLI session内部步骤。同批次文件锁禁止同时启动多个命令。
@@ -81,8 +81,8 @@ next返回下一尚未尝试案例；逐例调用review，按check设置工具�
 五例答卷全部完整后：
 
 ```bash
-.venv/bin/python cloud.py eval --run-id cloud-pilot-01
-.venv/bin/python cloud.py export --run-id cloud-pilot-01
+.venv/bin/python backend/src/cloud.py eval --run-id cloud-pilot-01
+.venv/bin/python backend/src/cloud.py export --run-id cloud-pilot-01
 ```
 
 评分会调用真实裁判三轮，生成中文报告；为评分另设足够工具时限。目前整批评分不支持逐案例断点恢复，100+例正式评分前应验证耗时是否适配平台。export生成runs/cloud-pilot-01-results.tar.gz，用平台提供的下载或持久化方式保存；结果不提交Git。

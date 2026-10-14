@@ -2,6 +2,8 @@
 from pathlib import Path
 import argparse, hashlib, json, os, platform, subprocess, sys
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 sys.path.insert(0,str(ROOT))
 from runner.cloud import checked_instances
 from tools.repo_snapshot import restore_snapshot
@@ -49,7 +51,7 @@ def main():
         if platform.system()!='Linux' or platform.machine() not in ('x86_64','AMD64') or sys.version_info[:2]!=(3,11):
             raise SystemExit('本离线依赖包要求 Linux x86_64、Python 3.11；其他环境请重新准备依赖包')
         command(sys.executable,'-m','venv',ROOT/'.venv')
-        command(ROOT/'.venv/bin/python','-m','pip','install','--disable-pip-version-check','--no-index','--find-links',ROOT/'wheelhouse','-r',ROOT/'requirements.txt')
+        command(ROOT/'.venv/bin/python','-m','pip','install','--disable-pip-version-check','--no-index','--find-links',ROOT/'wheelhouse','-r',ROOT/'backend/requirements.txt')
         for f in ['bin/lcr','lcr/dist/lcr-linux-x64']:(ROOT/f).chmod(0o755)
         command(ROOT/'bin/lcr','version')
     restore_repositories(cases)

@@ -42,12 +42,12 @@ npm install --prefix runtimes/cline --save-exact --ignore-scripts cline@3.0.68
 
 ```bash
 run="cline-skill-$(date +%Y%m%d-%H%M%S)"
-./.venv/bin/python local.py --timeout-seconds 120 init --run-id "$run" --reviewer cline_skill --suite aacr --dataset data/pilot1.jsonl --timeout-minutes 10
-./.venv/bin/python local.py --timeout-seconds 120 check --run-id "$run"
-./.venv/bin/python local.py --timeout-seconds 700 review --run-id "$run" --instance 'cline__cline@419534c'
-./.venv/bin/python local.py --timeout-seconds 600 eval --run-id "$run"
+./.venv/bin/python backend/src/local.py --timeout-seconds 120 init --run-id "$run" --reviewer cline_skill --suite aacr --dataset data/pilot1.jsonl --timeout-minutes 10
+./.venv/bin/python backend/src/local.py --timeout-seconds 120 check --run-id "$run"
+./.venv/bin/python backend/src/local.py --timeout-seconds 700 review --run-id "$run" --instance 'cline__cline@419534c'
+./.venv/bin/python backend/src/local.py --timeout-seconds 600 eval --run-id "$run"
 ```
 
 命令默认读取 model.local.json。模型令牌不放命令行。review、eval 会真实调用配置的模型；check 不调用。
 
-实现：`reviewers/cline_skill/adapter.py`；Skill：`reviewers/cline_skill/skills/benchmark-review/SKILL.md`。输出字段为 path/start_line/end_line/content，继续复用原有案例集及裁判。
+实现：`backend/src/reviewers/cline_skill/adapter.py`；Skill：`backend/src/reviewers/cline_skill/skills/benchmark-review/SKILL.md`。输出字段为 path/start_line/end_line/content，继续复用原有案例集及裁判。

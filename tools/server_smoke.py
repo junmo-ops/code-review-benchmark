@@ -2,6 +2,8 @@
 import json,os,secrets,signal,socket,subprocess,sys,tempfile,time,urllib.request
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 sys.path.insert(0,str(ROOT))
 from local import terminate
 
@@ -11,7 +13,7 @@ def main():
         (cfg/'model.local.json').write_text(json.dumps(dict(LCR_LLM_MODEL='smoke-no-network',LCR_LLM_TOKEN='test-only',LCR_LLM_BASE_URL='https://invalid.example',JUDGE_MODEL='smoke-no-network',JUDGE_API_KEY='test-only',JUDGE_BASE_URL='https://invalid.example')))
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         proxy=secrets.token_urlsafe(40);csrf=secrets.token_urlsafe(40)
-        env=dict(os.environ,BENCH_SERVER_MODE='1',BENCH_DATA_ROOT=str(base/'data'),BENCH_CONFIG_ROOT=str(cfg),BENCH_PUBLIC_URL='https://review.test',BENCH_PROXY_TOKEN=proxy,BENCH_CSRF_TOKEN=csrf)
+        env=dict(os.environ, PYTHONPATH=str(ROOT/'backend/src')+os.pathsep+str(ROOT),BENCH_SERVER_MODE='1',BENCH_DATA_ROOT=str(base/'data'),BENCH_CONFIG_ROOT=str(cfg),BENCH_PUBLIC_URL='https://review.test',BENCH_PROXY_TOKEN=proxy,BENCH_CSRF_TOKEN=csrf)
         env.pop('GUNICORN_CMD_ARGS',None)
         processes=[];worker=None
         def launch(command,name):

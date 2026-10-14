@@ -3,6 +3,8 @@ from pathlib import Path
 import argparse,getpass,json,os
 from urllib.parse import urlsplit
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 
 def main():
  p=argparse.ArgumentParser(description='新增 OpenAI 检视配置，裁判继续使用原配置')

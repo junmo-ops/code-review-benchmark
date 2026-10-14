@@ -2,6 +2,8 @@
 from pathlib import Path,PurePosixPath
 import argparse,hashlib,json,tarfile,shutil
 ROOT=Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--archive',required=True);args=p.parse_args()

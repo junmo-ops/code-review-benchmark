@@ -8,6 +8,8 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "backend/src"))
 
 
 def stage(archive, manifest, destination_root=None):
