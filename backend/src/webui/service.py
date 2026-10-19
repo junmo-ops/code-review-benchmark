@@ -503,7 +503,7 @@ class Dashboard:
         if task:
             args += ['--task', task]
         if stage == 'review':
-            limit = 780 if cfg['reviewer'] == 'lcr' else 900
+            limit = ((cfg.get('lcr_options', {}).get('case_timeout_seconds') or 720) + 60) if cfg['reviewer'] == 'lcr' else 900
         if retry:
             args.append('--retry')
         return entry, args, limit
@@ -546,7 +546,8 @@ class Dashboard:
             repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
             base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
             files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-            one_attempt = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 120
+            from reviewers.lcr.options import case_timeout
+            one_attempt = case_timeout(cfg.get('lcr_options', {}), len([v for v in files.split(b'\0') if v]), cfg['timeout_minutes'])
             limits.append(one_attempt * attempts + backoff)
         case_jobs = max(1, cfg.get('case_jobs', 1))
         batch_budget = sum(max(limits[offset:offset + case_jobs])

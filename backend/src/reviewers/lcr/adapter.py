@@ -17,6 +17,7 @@ import sys
 
 from runner.storage import ROOT, save, safe_json, validate_answer
 from runner.process import capture_process
+from .options import freeze_options, command_options, case_timeout
 from .session_logs import collect_session
 from .logs import parse_lcr_output, redact, write_summary
 
@@ -29,6 +30,7 @@ WORKER = threading.local()
 
 LCR_TIMEOUT_MINUTES = 10
 MAX_CASE_RETRIES = 1
+LCR_OPTIONS = {}
 PROCESS_TIMEOUT_POLICY = "changed_files * 600 + 120 seconds"
 
 
@@ -58,7 +60,7 @@ def process_timeout(item):
         raise ValueError("无法计算案例进程时限：文件清单读取失败")
     # Count every changed file conservatively, including files LCR may exclude.
     count = len([path for path in diff.stdout.split("\0") if path])
-    return max(1, count) * LCR_TIMEOUT_MINUTES * 60 + 120
+    return case_timeout(LCR_OPTIONS, count, LCR_TIMEOUT_MINUTES)
 
 
 def case_execution_timeout(item):
@@ -66,8 +68,14 @@ def case_execution_timeout(item):
     return process_timeout(item) * (MAX_CASE_RETRIES + 1) + backoff
 
 
+def _check_budget(result):
+    if result.get('status') == 'budget_exceeded':
+        raise ValueError('budget_exceeded：Token 预算耗尽；部分结果已保留，不自动重试')
+
+
 def convert(item, result):
     state = result.get("status")
+    _check_budget(result)
     if state not in ("success", "completed"):
         raise ValueError(f"状态 {state!r}；请检查原始结果，不将部分成功计入完整答卷")
     if any(isinstance(w, dict) and w.get("type") == "subtask_error" for w in (result.get("warnings") or [])):
@@ -80,27 +88,7 @@ def convert(item, result):
         raise ValueError("summary 不是对象")
     if "comments" in summary and summary["comments"] != len(comments):
         raise ValueError("summary.comments 与实际意见数不一致")
-    adapted = []
-    for index, comment in enumerate(comments, 1):
-        if not isinstance(comment, dict):
-            raise ValueError(f"第 {index} 条意见不是对象")
-        path = comment.get("filePath")
-        line = comment.get("startLine")
-        end = comment.get("endLine", line)
-        description = comment.get("description")
-        suggestion = comment.get("fixSuggestion")
-        if (not isinstance(path, str) or not path or path.startswith(("/", "\\"))
-                or ":" in path or ".." in Path(path).parts
-                or not isinstance(line, int) or isinstance(line, bool) or line < 1
-                or not isinstance(end, int) or isinstance(end, bool) or end < line
-                or not isinstance(description, str) or not description.strip()):
-            raise ValueError(f"第 {index} 条意见的位置或描述无效")
-        if suggestion is not None and not isinstance(suggestion, str):
-            raise ValueError(f"第 {index} 条意见的 fixSuggestion 无效")
-        adapted.append({"path": path.replace("\\", "/"), "start_line": line,
-                        "end_line": end,
-                        "content": description.strip() + (("\n" + suggestion.strip()) if suggestion and suggestion.strip() else ""),
-                        "source_issue_key": comment.get("issueKey")})
+    adapted = [_convert_comment(index, comment) for index, comment in enumerate(comments, 1)]
     return {"instance_id": item.instance_id, "repo": item.repo,
             "base_commit": item.base_commit, "head_commit": item.head_commit,
             "reviewer": "lcr", "ocr_exit_code": 0,
@@ -110,6 +98,30 @@ def convert(item, result):
                        "session_id": result.get("session_id"),
                        "llm": {"model": os.getenv("LCR_LLM_MODEL", "请参阅 run-config.json")}},
             "conversion": "LCR filePath/startLine/endLine/description+fixSuggestion -> official reviewer fields; raw JSON retained"}
+
+
+def _valid_location(path, line, end):
+    return (isinstance(path, str) and bool(path) and not path.startswith(("/", "\\"))
+            and ":" not in path and ".." not in Path(path).parts
+            and type(line) is int and line >= 1 and type(end) is int and end >= line)
+
+
+def _convert_comment(index, comment):
+    if not isinstance(comment, dict):
+        raise ValueError(f"第 {index} 条意见不是对象")
+    path = comment.get("filePath")
+    line = comment.get("startLine")
+    end = comment.get("endLine", line)
+    description = comment.get("description")
+    suggestion = comment.get("fixSuggestion")
+    if not _valid_location(path, line, end) or not isinstance(description, str) or not description.strip():
+        raise ValueError(f"第 {index} 条意见的位置或描述无效")
+    if suggestion is not None and not isinstance(suggestion, str):
+        raise ValueError(f"第 {index} 条意见的 fixSuggestion 无效")
+    return {"path": path.replace("\\", "/"), "start_line": line,
+                    "end_line": end,
+                    "content": description.strip() + (("\n" + suggestion.strip()) if suggestion and suggestion.strip() else ""),
+                    "source_issue_key": comment.get("issueKey")}
 
 
 def recover_answer(item, run):
@@ -133,6 +145,7 @@ def recover_answer(item, run):
                 or command[command.index(flag) + 1] != expected):
             raise ValueError(f"执行记录 {flag} 与案例或正式 JSON 检视不符")
     raw = parse_lcr_output(stdout_path.read_text(encoding="utf-8-sig"))
+    _check_budget(raw)
     failures = case_session_failures(item, run, raw)
     if failures:
         raise ValueError("原始 LCR 会话含失败条目，不能恢复成完整答卷")
@@ -172,7 +185,8 @@ def _lcr_review_command(executable, repo, item, preview, diagnostic, resume_sess
     command = [executable, "review", "--repo", str(repo), "--from", item.base_commit,
                "--to", item.head_commit, "--format", "text" if diagnostic else "json",
                "--audience", "human",
-               "--concurrency", str(FILE_CONCURRENCY), "--timeout", str(LCR_TIMEOUT_MINUTES), "--max-tools", "50"]
+               "--concurrency", str(FILE_CONCURRENCY), "--timeout", str(LCR_TIMEOUT_MINUTES)]
+    command.extend(command_options(LCR_OPTIONS or freeze_options()))
     if preview:
         command.append("--preview")
     else:
@@ -305,6 +319,7 @@ def _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_
         if preview:
             print("预览完成：", item.instance_id, "状态", raw.get("status"))
             return raw
+        _check_budget(raw)
         failures = case_session_failures(item, run, raw)
         if failures:
             raise ValueError("review_item_failed: " + json.dumps(failures, ensure_ascii=False))
@@ -582,6 +597,8 @@ def tool_identity():
 
 
 def retryable_case_error(error, raw=None):
+    if (isinstance(raw, dict) and raw.get("status") == "budget_exceeded") or "budget_exceeded" in str(error):
+        return False
     if isinstance(error, subprocess.TimeoutExpired):
         return True
     text = "\n".join([str(error), *_structured_error_details(raw)]).lower()
@@ -671,7 +688,9 @@ def saved_session_failures(item, run, session_id=None):
 
 
 def configure(cfg, run):
-    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT, MAX_CASE_RETRIES
+    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT, MAX_CASE_RETRIES, LCR_OPTIONS
+    LCR_OPTIONS = cfg.get("lcr_options") or freeze_options()
+    os.environ["LCR_LLM_STREAM"] = str(LCR_OPTIONS["stream"]).lower()
     case_jobs = cfg.get('case_jobs', 1)
     if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
         raise ValueError('案例并发必须为 1–16 的整数')

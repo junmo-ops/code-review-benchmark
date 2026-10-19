@@ -49,6 +49,8 @@ def init(args,run):
     if args.reviewer=='lcr':
         from reviewers.lcr.adapter import tool_identity
         cfg['lcr_identity']=tool_identity()
+        from reviewers.lcr.options import freeze_options
+        cfg['lcr_options']=freeze_options()
     (run/'dataset.jsonl').write_bytes(Path(args.dataset).read_bytes());save(run/'run-config.json',cfg)
     for case,row in rows(cases):
         folder=run/'rounds'/row['task_id'];folder.mkdir(parents=True)
@@ -98,14 +100,20 @@ def lcr_review_locked(case,row,folder,cfg):
     path=folder/'background.md';path.write_text(background,encoding='utf-8')
     save(folder/'range.json',{'base':base,'head':head,'background_sha256':sha(path)})
     command=[str(ROOT/'bin/lcr'),'review','--repo',str(repo),'--from',base,'--to',head,'--background-file',str(path),
-             '--format','json','--audience','human','--concurrency','1','--timeout','10','--max-tools','50','--keep-session']
+             '--format','json','--audience','human','--concurrency','1','--timeout','10','--keep-session']
+    from reviewers.lcr.options import freeze_options, command_options
+    options = cfg.get('lcr_options') or freeze_options()
+    command.extend(command_options(options))
+    os.environ["LCR_LLM_STREAM"] = str(options["stream"]).lower()
     def redact(text):
         for key in ('LCR_LLM_TOKEN','JUDGE_API_KEY'):
             if os.getenv(key):text=text.replace(os.environ[key],'[REDACTED]')
         return text
-    result=capture_process(command,folder,'lcr',timeout=720,cwd=repo,redact=redact)
+    result=capture_process(command,folder,'lcr',timeout=options.get('case_timeout_seconds') or 720,cwd=repo,redact=redact)
     if result.returncode:raise ValueError('LCR 失败，参见当轮日志')
     raw=json.loads(result.stdout)
+    if raw.get('status') == 'budget_exceeded':
+        raise ValueError('Token 预算耗尽；部分结果已保留，不自动重试')
     if raw.get('status') not in ('success','completed') or not isinstance(raw.get('comments'),list):raise ValueError('LCR 未返回完整答卷')
     from types import SimpleNamespace
     convert(SimpleNamespace(instance_id=row['task_id'],repo=case['repo'],base_commit=base,head_commit=head),raw)
