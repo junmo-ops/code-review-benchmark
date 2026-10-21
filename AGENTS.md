@@ -12,3 +12,14 @@
 - 不调用真实模型或真实 COS 做自动回归。浏览器交互和行内镜像验收与本地静态验证分开说明。
 - 行内 npm 依赖问题先检查锁文件与镜像来源，避免未经确认反复添加 overrides 或改版本。
 - 不自动提交、推送或发布。用户对交付范围和操作方式的明确指示优先。
+
+## Agent skills
+
+### Issue tracker
+读写规格或工单前，读取 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+分诊或完成工单前，读取 `docs/agents/triage-labels.md`。
+
+### Domain docs
+探索领域代码前，读取 `docs/agents/domain.md`。
