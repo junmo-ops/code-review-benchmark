@@ -34,10 +34,12 @@ export interface Metrics {
   pairs?: [number, number][];
 }
 export interface Case {
+  review_coverage?: string;
+  review_details?: { kind: string; file?: string | null; message: string }[];
   id: string;
   repo?: string;
   status: string;
-  scored?: boolean;
+  scored?: boolean | null;
   elapsed_seconds?: number;
   metrics?: Metrics;
   error?: string;

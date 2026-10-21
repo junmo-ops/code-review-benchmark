@@ -42,17 +42,31 @@ function usageSummary(text: string) {
     '检视用量来自最终答卷，可能不含失败和重跑成本；裁判与翻译分别统计，翻译用量见原始记录。', ''].join('\n');
 }
 
-function caseTable(run: Run, usage: string) {
+export function reportScoreScope(text: string): Set<string> | undefined {
+  const sections = reportSections(text);
+  const score = sections.find((section) => section.title === '评分结果');
+  const count = score?.text.match(/案例 ([\d,]+) 个；参考意见/);
+  if (!count) return undefined;
+  const references = sections.find((section) => section.title === '参考答案与匹配情况');
+  if (!references) return undefined;
+  const ids = new Set(caseSections(references).flatMap((section) => {
+    const match = section.title.match(/^参考答案与匹配情况 · ([^ ]+)(?: · 第.*)?$/);
+    return match ? [match[1]] : [];
+  }));
+  return ids.size === Number(count[1].replaceAll(',', '')) ? ids : undefined;
+}
+
+function caseTable(run: Run, usage: string, scoredIds?: Set<string>) {
   const rows = usage.split('\n').filter((line) => /^\| 检视：/.test(line));
   const values = new Map(rows.map((line) => {
     const parts = line.split('|').slice(1, -1).map((part) => part.trim());
     return [parts[0].slice(3), parts];
   }));
-  return ['## 案例结果简表', '', '状态为当前批次状态；耗时和 Token 来自所选报告，逐例得分请在明细核验。', '',
-    '| 案例 | 当前状态 | 纳入评分 | 耗时（秒） | Token |', '|---|---|---|---:|---:|',
+  return ['## 案例结果简表', '', '状态为当前批次状态；“计入本报告评分”依据所选报告的评分明细。耗时和 Token 来自所选报告。', '',
+    '| 案例 | 当前状态 | 计入本报告评分 | 耗时（秒） | Token |', '|---|---|---|---:|---:|',
     ...run.cases.map((item) => {
       const data = values.get(item.id);
-      const scored = item.scored === undefined ? '未提供' : item.scored ? '是' : '否';
+      const scored = scoredIds === undefined ? '未提供' : scoredIds.has(item.id) ? '是' : '否';
       return `| ${cell(item.id)} | ${cell(labels[item.status] ?? item.status)} | ${scored} | ${data?.[1] ?? '未提供'} | ${data?.[4] ?? '未提供'} |`;
     }), ''].join('\n');
 }
@@ -66,19 +80,20 @@ function snapshotMetrics(run: Run) {
 
 export function reportSummary(text: string, run: Run) {
   const sections = reportSections(text);
+  const scoredIds = reportScoreScope(text);
   const intro = sections[0].text.replace(/^(>.*?)(?:排除案例：|未完成案例：).*$/gm, '$1排除清单见完整报告；未完成案例不计零分。');
   const usage = sections.find((section) => section.title === '耗时与用量')?.text ?? '';
   const scores = sections.filter((section) => ['评分结果', '评分汇总', '测评结果'].includes(section.title));
   return [intro, '## 测评对象', '',
     `模型：${cell(run.model)}；Agent：${cell(run.reviewer)}；案例集：${cell(run.suite)}；评分器：${cell(run.evaluator)}；裁判：${cell(run.judge_model ?? '未提供')}。`, '',
     '## 完成情况', '',
-    `计划 ${run.total} 例；当前完整答卷 ${run.completed} 例；已评分 ${number(run.scored_cases)} 例。`, '',
+    `计划 ${run.total} 例；当前完整答卷 ${run.completed} 例；本报告评分范围 ${number(scoredIds?.size)} 例。`, '',
     '评分结果仅代表纳入评分的案例，未完成案例不计零分。当前答卷数可能包含评分后补跑的案例。', '',
     ...scores.map((section) => section.text),
     scores.length || intro.includes('| F1') ? '' : snapshotMetrics(run),
     'Precision 表示检视意见与参考答案的匹配程度，Recall 表示参考问题的覆盖程度，F1 综合两者。具体计数规则以本报告评分协议为准。', '',
     usageSummary(usage),
-    caseTable(run, usage), '具体检视意见、参考答案、匹配过程和恢复记录请查看“案例明细”或下载完整报告。', ''].join('\n');
+    caseTable(run, usage, scoredIds), '具体检视意见、参考答案、匹配过程和恢复记录请查看“案例明细”或下载完整报告。', ''].join('\n');
 }
 
 export function reportDetails(text: string) {

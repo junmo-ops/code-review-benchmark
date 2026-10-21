@@ -104,18 +104,24 @@ def states(items, run):
     return result
 
 
-def init_run(args, run):
-    if (run/'run-config.json').exists():
-        raise ValueError('批次已经存在，请沿用现有批次或使用新名称')
-    if not args.dataset or not args.model:
-        raise ValueError('init 需要 --dataset 和 --model（不是令牌）')
-    dataset = Path(args.dataset).resolve()
-    suite = get_suite(getattr(args, "suite", None) or "aacr")
-    reviewer_id = getattr(args, "reviewer", None) or "lcr"
-    reviewer = get_reviewer(reviewer_id)
-    ensure_compatible(suite, reviewer)
-    items = checked_instances(dataset, suite.id)
-    if reviewer_id=='cline_skill' and len(items)!=1:raise ValueError('Cline + Skill 当前仅支持单案例试跑，请选择单例清单')
+def _model_endpoints():
+    def endpoint(key):
+        value = os.getenv(key)
+        return hashlib.sha256(value.encode()).hexdigest() if value else None
+    return dict(judge_model=os.getenv('JUDGE_MODEL') or None,
+                judge_endpoint_sha256=endpoint('JUDGE_BASE_URL'),
+                review_endpoint_sha256=endpoint('LCR_LLM_BASE_URL'))
+
+
+def _runtime_mode():
+    if os.getenv('BENCH_SERVER_MODE'):
+        return 'server'
+    if (ROOT/'local-runtime.json').exists():
+        return 'windows_local' if platform.system() == 'Windows' else 'mac_cloud_simulation'
+    return 'linux_cloud'
+
+
+def _execution_limits(args, reviewer_id):
     case_jobs = getattr(args, 'case_jobs', None)
     if case_jobs is None: case_jobs = 1
     if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
@@ -129,23 +135,39 @@ def init_run(args, run):
         raise ValueError('失败案例自动重试次数必须为 0–2')
     if reviewer_id != 'lcr' and max_case_retries:
         raise ValueError('失败案例自动重试当前仅支持 LCR')
+    return case_jobs, max_case_retries
+
+
+def init_run(args, run):
+    if (run/'run-config.json').exists():
+        raise ValueError('批次已经存在，请沿用现有批次或使用新名称')
+    if not args.dataset or not args.model:
+        raise ValueError('init 需要 --dataset 和 --model（不是令牌）')
+    dataset = Path(args.dataset).resolve()
+    suite = get_suite(getattr(args, "suite", None) or "aacr")
+    reviewer_id = getattr(args, "reviewer", None) or "lcr"
+    reviewer = get_reviewer(reviewer_id)
+    ensure_compatible(suite, reviewer)
+    items = checked_instances(dataset, suite.id)
+    if reviewer_id=='cline_skill' and len(items)!=1:raise ValueError('Cline + Skill 当前仅支持单案例试跑，请选择单例清单')
+    case_jobs, max_case_retries = _execution_limits(args, reviewer_id)
+    from reviewers.lcr.options import freeze_options
+    lcr_options = freeze_options() if reviewer_id == 'lcr' else {}
     repo_root = Path(args.repos_root or data_root(ROOT)/'repos').resolve()
     cfg = {'schema_version':2, 'reviewer_id':reviewer_id,
            'evaluator':evaluators.freeze(getattr(args,'evaluator','original'),suite),
            'suite':{'id':suite.id, 'identity':suite.identity(), 'parameters':dict(suite.parameters), 'provenance':suite.provenance(dataset)}, 'dataset_sha256':digest(dataset), 'selected_instances':[i.instance_id for i in items],
            'reviewer':reviewer_id, 'tool_hashes':reviewer.tool_identity(),
            'review_model':args.model,
-           'judge_model':os.getenv('JUDGE_MODEL') or None,
-           'judge_endpoint_sha256':hashlib.sha256(os.environ['JUDGE_BASE_URL'].encode()).hexdigest() if os.getenv('JUDGE_BASE_URL') else None,
-           'review_endpoint_sha256':hashlib.sha256(os.environ['LCR_LLM_BASE_URL'].encode()).hexdigest() if os.getenv('LCR_LLM_BASE_URL') else None,
+           **_model_endpoints(),
            'repos_root':str(repo_root), 'case_jobs':case_jobs,'concurrency':1,
            'max_case_retries':max_case_retries,
-           'timeout_minutes':args.timeout_minutes, 'max_tools':50,'workspace_isolation':True,
+           'timeout_minutes':args.timeout_minutes, 'lcr_options':lcr_options, 'max_tools':lcr_options.get('max_tools', 50),'workspace_isolation':True,
            'repository_mode':'per_case_git_worktrees',
-           'process_timeout_policy':'(changed_files * timeout_minutes * 60 + 120) per attempt; total includes max_case_retries and backoff',
+           'process_timeout_policy':'lcr_options.case_timeout_seconds or (changed_files * timeout_minutes * 60 * effort_rounds + grouping_request_allowance + 120) per attempt; total includes max_case_retries and backoff',
            'execution_platform':platform.system(), 'execution_architecture':platform.machine(),
            'python_version':platform.python_version(),
-           'runtime_mode':'server' if os.getenv('BENCH_SERVER_MODE') else 'windows_local' if platform.system()=='Windows' and (ROOT/'local-runtime.json').exists() else 'mac_cloud_simulation' if (ROOT/'local-runtime.json').exists() else 'linux_cloud',
+           'runtime_mode':_runtime_mode(),
            'created_at':datetime.now(timezone.utc).isoformat()}
     if reviewer_id=='server_agent':
         remote=reviewer.load_config()
@@ -355,6 +377,8 @@ def _recover_or_queue(item, args, cfg, run, pending):
         print('从已有输出恢复完整答卷，未重新调用模型：', item.instance_id)
     except (ValueError, OSError) as error:
         print('已有输出无法恢复，将按失败案例策略处理：', item.instance_id, error, file=sys.stderr)
+        if 'budget_exceeded' in str(error) and not args.retry:
+            raise ValueError('Token 预算耗尽，不自动续跑；请明确确认重跑或新建批次调整预算') from error
         if cfg.get('max_case_retries', 1) > 0 or args.retry:
             pending.append(item)
         else:

@@ -142,29 +142,38 @@ class Dashboard:
         folder = self.run_dir(key)
         cfg = self.config(key)
         if key.startswith('mcr/'):
-            from multiround.core import load, validate_card
-            result = []
-            for case in load(folder / 'dataset.jsonl'):
-                for row in case['rounds']:
-                    sub = folder / 'rounds' / row['task_id']
-                    status = 'pending'
-                    try:
-                        if (sub / 'answer.json').exists():
-                            validate_card(read(sub / 'answer.json'), row, cfg['reviewer'])
-                            status = 'complete'
-                        elif (sub / 'review-status.json').exists():
-                            status = read(sub / 'review-status.json').get('status', 'failed')
-                        elif (sub / 'review').exists():
-                            status = 'unfinished_check_required'
-                    except (ValueError, KeyError, AttributeError):
-                        status = 'invalid_answer'
-                    result.append(dict(id=row['task_id'], status=status, scored=(sub / 'score.json').exists(),
-                                       repo=case['repo'], round=row['round_id']))
-            return result
+            return self._mcr_cases(folder, cfg)
         from runner.cloud import checked_instances, states
         items = checked_instances(folder / 'dataset.jsonl', cfg.get('suite', {}).get('id', 'aacr'))
         values = states(items, folder)
-        return [dict(id=s['instance_id'], status=s['status'], repo=i.repo, scored=False) for s, i in zip(values, items)]
+        from .scoring_scope import scored_case_ids
+        from reviewers.lcr.coverage import cached_case_diagnostics
+        scored = scored_case_ids(folder)
+        return [dict(id=s['instance_id'], status=s['status'], repo=i.repo,
+                     scored=None if scored is None else s['instance_id'] in scored,
+                     **cached_case_diagnostics(folder, i.safe_id)) for s, i in zip(values, items)]
+
+    def _mcr_cases(self, folder, cfg):
+        from multiround.core import load, validate_card
+        from reviewers.lcr.coverage import multi_round_diagnostics
+        result = []
+        for case in load(folder / 'dataset.jsonl'):
+            for row in case['rounds']:
+                sub = folder / 'rounds' / row['task_id']
+                status = 'pending'
+                try:
+                    if (sub / 'answer.json').exists():
+                        validate_card(read(sub / 'answer.json'), row, cfg['reviewer'])
+                        status = 'complete'
+                    elif (sub / 'review-status.json').exists():
+                        status = read(sub / 'review-status.json').get('status', 'failed')
+                    elif (sub / 'review').exists():
+                        status = 'unfinished_check_required'
+                except (ValueError, KeyError, AttributeError):
+                    status = 'invalid_answer'
+                result.append(dict(id=row['task_id'], status=status, scored=(sub / 'score.json').exists(),
+                                   repo=case['repo'], round=row['round_id'], **multi_round_diagnostics(sub)))
+        return result
 
     def summary(self, key):
         root = self.run_dir(key)
@@ -503,10 +512,18 @@ class Dashboard:
         if task:
             args += ['--task', task]
         if stage == 'review':
-            limit = 780 if cfg['reviewer'] == 'lcr' else 900
+            limit = self._mcr_review_budget(run_id, cfg, task) if cfg['reviewer'] == 'lcr' else 900
         if retry:
             args.append('--retry')
         return entry, args, limit
+
+    def _mcr_review_budget(self, run_id, cfg, task):
+        from multiround.core import load
+        from reviewers.lcr.options import case_timeout, patch_file_count
+        cases = load(self.run_dir('mcr/' + run_id) / 'dataset.jsonl')
+        selected = [row for case in cases for row in case['rounds'] if not task or row['task_id'] == task]
+        return 60 + sum(case_timeout(cfg.get('lcr_options', {}),
+                                    patch_file_count(row['code_diff']['diff']), 10) + 60 for row in selected)
 
     def _review_arguments(self, key, stage, run_id, cfg, init, task, retry):
         limit = 900
@@ -546,7 +563,8 @@ class Dashboard:
             repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
             base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
             files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-            one_attempt = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 120
+            from reviewers.lcr.options import case_timeout
+            one_attempt = case_timeout(cfg.get('lcr_options', {}), len([v for v in files.split(b'\0') if v]), cfg['timeout_minutes'])
             limits.append(one_attempt * attempts + backoff)
         case_jobs = max(1, cfg.get('case_jobs', 1))
         batch_budget = sum(max(limits[offset:offset + case_jobs])
