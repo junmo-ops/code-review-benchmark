@@ -49,6 +49,28 @@ npm run setup
 
 此命令创建 `.venv`，安装后端 Python 包及前端锁定依赖。它使用当前电脑配置的 Python/npm 包源，不调用模型。行内请先配置公司包源。LCR 与案例仓库资源按 [操作文档](docs/README.md) 准备。
 
+### 内外网依赖源
+
+前端共用一份锁文件，不需要进出公司时改文件或升级依赖。锁文件中的 `registry.npmjs.org` 是 npm 的标准源标记，实际下载使用安装时配置的 registry，见 [npm 官方说明](https://docs.npmjs.com/cli/v11/using-npm/registry/)。安装保留完整性校验，不会在公司镜像失败后自动回退公网。
+
+先用 `npm config get registry` 确认当前源。已有正确配置时，直接执行 `npm run setup`；也可以只为本次安装指定源（Linux/macOS）：
+
+```bash
+# 公司外环境
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ npm run setup
+
+# 公司内环境，只通过公司镜像安装 npm 依赖
+NPM_CONFIG_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/ npm run setup
+```
+
+PowerShell 使用 `$env:NPM_CONFIG_REGISTRY = '源地址'` 后执行 `npm run setup`。Python 的 pip 源独立配置，行内需同时配置公司 Python 镜像；npm 配置不会改变 pip 源。Dockerfile 原有公司镜像配置保持不变。
+
+依赖更新时仍须保留标准 npm 下载地址、完整版本和 integrity，不能把本机镜像地址写回共享锁文件。`setup` 和 `check` 会拒绝缺版本的占位条目或固定到特定镜像的地址。遇到 `EINTEGRITY` 应核对镜像包和可信源，不要关闭校验或临时改版本绕过。
+
+如果系统默认 Python 不是 3.12，首次创建环境时可用 `BENCH_PYTHON=python3.12 npm run setup`。已有 `.venv` 不会自动替换；虚拟环境必须是本机创建的目录，不能复制其他机器的绝对路径链接。
+
+`npm run verify` 包含真实 `npm ci` 的本地镜像回归，验证普通路径、公司 Artifactory 路径和完整性失败阻断；测试不访问真实公司镜像，不能代替行内网络和镜像构建验收。
+
 ## 启动
 
 开发模式：
