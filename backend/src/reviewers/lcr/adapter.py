@@ -18,6 +18,7 @@ import sys
 from runner.storage import ROOT, save, safe_json, validate_answer
 from runner.process import capture_process
 from .options import freeze_options, command_options, case_timeout
+from .coverage import read_manifest, coverage_issues, normalize_manifest
 from .session_logs import collect_session
 from .logs import parse_lcr_output, redact, write_summary
 
@@ -641,7 +642,8 @@ def _session_errors(item, run, execution, session_id):
     evidence = collect_session(item, run, execution, session_id, redact)
     if evidence.get('match') != 'matched':
         return []
-    return evidence.get('errors') or []
+    manifest = read_manifest({}, evidence, redact)
+    return (evidence.get('errors') or []) + coverage_issues(manifest)
 
 
 def case_session_failures(item, run, raw=None):
@@ -652,7 +654,7 @@ def case_session_failures(item, run, raw=None):
             raw = parse_lcr_output((folder / (item.safe_id + '.stdout.json')).read_text(encoding='utf-8-sig'))
     except (OSError, ValueError):
         return []
-    return _session_errors(item, run, execution, raw.get('session_id'))
+    return coverage_issues(read_manifest(raw, {}, redact)) + _session_errors(item, run, execution, raw.get('session_id'))
 
 
 def answer_session_failures(item, run, answer):
@@ -670,7 +672,7 @@ def answer_session_failures(item, run, answer):
         return []
     if session_id and raw.get('session_id') != session_id:
         return []
-    return _session_errors(item, run, execution, session_id or raw.get('session_id'))
+    return coverage_issues(read_manifest(raw, {}, redact)) + _session_errors(item, run, execution, session_id or raw.get('session_id'))
 
 
 def saved_session_failures(item, run, session_id=None):
@@ -684,7 +686,8 @@ def saved_session_failures(item, run, session_id=None):
     evidence = data.get('session_evidence') or {}
     if session_id and evidence.get('session_id') != session_id:
         return []
-    return evidence.get('errors') or []
+    manifest = normalize_manifest(data.get('review_manifest'), redact)
+    return (evidence.get('errors') or []) + coverage_issues(manifest)
 
 
 def configure(cfg, run):

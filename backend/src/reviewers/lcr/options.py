@@ -18,8 +18,6 @@ def freeze_options(env=None):
     if 0 < tools < 50:
         raise ValueError('LCR 工具上限只能为 0（模板默认）或 >= 50')
     cap = _integer(env, 'BENCH_LCR_CASE_TIMEOUT_SECONDS', 0, 0)
-    if effort != 'low' and cap == 0:
-        raise ValueError('medium/high 需显式配置 BENCH_LCR_CASE_TIMEOUT_SECONDS 案例总时限')
     stream = str(env.get('LCR_LLM_STREAM', 'false')).lower()
     if stream not in {'true', '1', 'yes', 'on', 'false', '0', 'no', 'off'}:
         raise ValueError('LCR_LLM_STREAM 必须为布尔值')
@@ -39,4 +37,14 @@ def command_options(options):
 
 
 def case_timeout(options, file_count, timeout_minutes):
-    return options.get('case_timeout_seconds', 0) or max(1, file_count) * timeout_minutes * 60 + 120
+    if options.get('case_timeout_seconds', 0):
+        return options['case_timeout_seconds']
+    rounds = {'low': 1, 'medium': 2, 'high': 3}[options.get('effort', 'low')]
+    # A group can degrade to one file. Grouping precedes group deadlines and
+    # one HTTP call can take six attempts (five retries) in LCR 2.0.1.
+    grouping = 6 * options.get('request_timeout_seconds', 2700) if file_count > 1 else 0
+    return max(1, file_count) * timeout_minutes * 60 * rounds + grouping + 120
+
+
+def patch_file_count(patch):
+    return max(1, sum(line.startswith('diff --git ') for line in patch.splitlines()))

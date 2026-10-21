@@ -267,6 +267,8 @@ function Overview({
         columns={[
           { title: '案例 / 轮次', dataIndex: 'id' },
           { title: '仓库', dataIndex: 'repo' },
+          { title: '检视覆盖', dataIndex: 'review_coverage', render: (value?: string) => value ?? '未提供' },
+          { title: '失败 / 跳过原因', render: (_: unknown, item: Case) => <CoverageDetails item={item} /> },
           {
             title: '状态',
             dataIndex: 'status',
@@ -281,6 +283,15 @@ function Overview({
     </>
   );
 }
+function CoverageDetails({ item }: { item: Case }) {
+  const details = item.review_details ?? [];
+  if (!details.length) return '—';
+  return <Collapse size="small" items={[{ key: 'coverage', label: `${details.length} 项明细`,
+    children: <Space direction="vertical">{details.map((row, index) =>
+      <div key={index}><Typography.Text strong>{row.kind} · {row.file ?? '未提供文件'}</Typography.Text>
+        <div>{row.message}</div></div>)}</Space> }]} />;
+}
+
 export function RunDetail({
   runKey,
   jobId,

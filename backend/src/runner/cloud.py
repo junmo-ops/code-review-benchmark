@@ -164,7 +164,7 @@ def init_run(args, run):
            'max_case_retries':max_case_retries,
            'timeout_minutes':args.timeout_minutes, 'lcr_options':lcr_options, 'max_tools':lcr_options.get('max_tools', 50),'workspace_isolation':True,
            'repository_mode':'per_case_git_worktrees',
-           'process_timeout_policy':'lcr_options.case_timeout_seconds or (changed_files * timeout_minutes * 60 + 120) per attempt; total includes max_case_retries and backoff',
+           'process_timeout_policy':'lcr_options.case_timeout_seconds or (changed_files * timeout_minutes * 60 * effort_rounds + grouping_request_allowance + 120) per attempt; total includes max_case_retries and backoff',
            'execution_platform':platform.system(), 'execution_architecture':platform.machine(),
            'python_version':platform.python_version(),
            'runtime_mode':_runtime_mode(),

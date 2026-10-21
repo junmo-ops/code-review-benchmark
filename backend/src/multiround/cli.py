@@ -101,7 +101,7 @@ def lcr_review_locked(case,row,folder,cfg):
     save(folder/'range.json',{'base':base,'head':head,'background_sha256':sha(path)})
     command=[str(ROOT/'bin/lcr'),'review','--repo',str(repo),'--from',base,'--to',head,'--background-file',str(path),
              '--format','json','--audience','human','--concurrency','1','--timeout','10','--keep-session']
-    from reviewers.lcr.options import freeze_options, command_options
+    from reviewers.lcr.options import freeze_options, command_options, case_timeout, patch_file_count
     options = cfg.get('lcr_options') or freeze_options()
     command.extend(command_options(options))
     os.environ["LCR_LLM_STREAM"] = str(options["stream"]).lower()
@@ -109,9 +109,10 @@ def lcr_review_locked(case,row,folder,cfg):
         for key in ('LCR_LLM_TOKEN','JUDGE_API_KEY'):
             if os.getenv(key):text=text.replace(os.environ[key],'[REDACTED]')
         return text
-    result=capture_process(command,folder,'lcr',timeout=options.get('case_timeout_seconds') or 720,cwd=repo,redact=redact)
+    result=capture_process(command,folder,'lcr',timeout=case_timeout(options, patch_file_count(actual), 10),cwd=repo,redact=redact)
     if result.returncode:raise ValueError('LCR 失败，参见当轮日志')
     raw=json.loads(result.stdout)
+    _validate_lcr_coverage(raw, folder, base, head, redact)
     if raw.get('status') == 'budget_exceeded':
         raise ValueError('Token 预算耗尽；部分结果已保留，不自动重试')
     if raw.get('status') not in ('success','completed') or not isinstance(raw.get('comments'),list):raise ValueError('LCR 未返回完整答卷')
@@ -123,6 +124,20 @@ def lcr_review_locked(case,row,folder,cfg):
                          'location':{'file':c.get('filePath'),'lines':str(c.get('startLine','unknown'))},
                          'state_transition':None,'state_support':'unsupported_native_output'})
     return {'task_id':row['task_id'],'round_id':row['round_id'],'defects':findings,'reviewer':'lcr','state_support':'unsupported_native_output'}
+
+def _validate_lcr_coverage(raw, folder, base, head, redact):
+    from types import SimpleNamespace
+    from reviewers.lcr.session_logs import collect_session
+    from reviewers.lcr.coverage import read_manifest, coverage_issues
+    execution = read(folder / 'lcr.execution.json')
+    item = SimpleNamespace(safe_id='lcr', base_commit=base, head_commit=head)
+    session = collect_session(item, folder, execution, raw.get('session_id'), redact)
+    manifest = read_manifest(raw, session, redact)
+    save(folder / 'lcr-coverage.json', dict(review_manifest=manifest))
+    issues = coverage_issues(manifest) + (session.get('errors') or [])
+    if issues:
+        raise ValueError('LCR 检视覆盖未完成：' + json.dumps(issues, ensure_ascii=False))
+
 
 def review(cases,cfg,run,args):
     check_model(cfg,'review')
