@@ -17,16 +17,17 @@ class WindowsLocalTests(unittest.TestCase):
     def test_fresh_bootstrap_uses_current_python_then_venv(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            spec_dir=root/'reviewers/lcr'; spec_dir.mkdir(parents=True)
+            spec_dir=root/'backend/src/reviewers/lcr'; spec_dir.mkdir(parents=True)
             (spec_dir/'windows-runtime.json').write_text(json.dumps({'npm_package':'@scope/lcr','npm_version':'1.2.3','binary':'lcr-win32-x64.exe'}))
-            (root/'requirements.txt').write_text('anyio==4.15.1\nhttpx==0.28.1\n')
+            requirements=root/'backend/requirements.txt'
+            requirements.write_text('anyio==4.15.1\nhttpx==0.28.1\n')
             with patch.object(prepare_windows, 'ROOT', root), patch.object(prepare_windows.platform, 'system', return_value='Windows'), patch.object(prepare_windows.platform, 'machine', return_value='AMD64'), patch.object(prepare_windows.shutil, 'which', return_value='present'), patch.object(prepare_windows.sys, 'version_info', (3,12,9)), patch.object(prepare_windows.sys, 'argv', ['prepare_windows.py']), patch.object(prepare_windows.subprocess, 'run') as run:
                 prepare_windows.main()
             calls = [call.args[0] for call in run.call_args_list]
             self.assertEqual(calls[0][:3], [prepare_windows.sys.executable, '-m', 'venv'])
             self.assertIn('-r', calls[1])
-            requirements_file = root/'.runtime'/'requirements-windows.txt'
-            self.assertEqual(requirements_file.read_text(), 'anyio\nhttpx\n')
+            self.assertEqual(calls[1][calls[1].index('-r')+1], str(requirements))
+            self.assertEqual(requirements.read_text(), 'anyio==4.15.1\nhttpx==0.28.1\n')
             self.assertEqual(calls[2][1], 'install')
             self.assertEqual(calls[3][-1], '--restore-only')
 
@@ -34,7 +35,7 @@ class WindowsLocalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package='.runtime/lcr/node_modules/@LV01.30/leancode-code-review-cli'
-            files = [package+'/dist/lcr-win32-x64.exe', 'bin/lcr.cmd', package+'/package.json', package+'/bin/lcr.js', package+'/bin/version-check.js', 'reviewers/lcr/windows-runtime.json']
+            files = [package+'/dist/lcr-win32-x64.exe', 'bin/lcr.cmd', package+'/package.json', package+'/bin/lcr.js', package+'/bin/version-check.js', 'backend/src/reviewers/lcr/windows-runtime.json']
             for name in files:
                 path = root/name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b'fixture')
             (root/'local-runtime.json').write_text(json.dumps({'platform':'Windows','architecture':'AMD64','binary':'lcr-win32-x64.exe'}))
@@ -63,7 +64,7 @@ class WindowsLocalTests(unittest.TestCase):
             if name == 'fcntl': raise ImportError('not available on Windows')
             return original_import(name, *args, **kwargs)
         namespace = {}
-        source = (Path(__file__).resolve().parents[1]/'runner/locking.py').read_text()
+        source = (Path(__file__).resolve().parents[1]/'src/runner/locking.py').read_text()
         with patch('builtins.__import__', side_effect=windows_import): exec(compile(source,'locking.py','exec'),namespace)
         with tempfile.TemporaryFile('w+b') as lock:
             namespace['acquire'](lock)
@@ -83,9 +84,21 @@ class WindowsLocalTests(unittest.TestCase):
                 path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(b'fixture')
             (root/'data').mkdir()
             (root/'data/pilot5.jsonl').write_text(json.dumps({'repo':'cline/cline'})+'\n')
-            with patch.object(build_delivery,'ROOT',root): build_delivery.main()
+            with patch.object(build_delivery,'ROOT',root), patch.object(build_delivery.subprocess,'run') as verify:
+                build_delivery.main()
+                verify.assert_called_once_with(['node',str(root/'scripts/project.mjs'),'verify'],cwd=root,check=True)
             with zipfile.ZipFile(root.parent/'code-review-benchmark-source.zip') as archive:
                 for name in files:
                     if name.startswith('bundles/') or name == 'bin/lcr.cmd': self.assertIn('project/'+name, archive.namelist())
+
+    def test_failed_verification_creates_no_delivery(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'project';root.mkdir()
+            failure=subprocess.CalledProcessError(1,['node','verify'])
+            with patch.object(build_delivery,'ROOT',root), patch.object(build_delivery.subprocess,'run',side_effect=failure):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build_delivery.main()
+            self.assertEqual(list(root.parent.iterdir()),[root])
 
 if __name__ == '__main__': unittest.main()

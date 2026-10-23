@@ -16,7 +16,7 @@ from .service import now, save
 
 CHUNK_SIZE = 8 * 1024 * 1024
 IDENTIFIER = re.compile(r'^[a-f0-9]{32}$')
-KINDS = {'dataset', 'repository'}
+KINDS = {'dataset', 'repository', 'skill'}
 
 
 def _root(dashboard):
@@ -163,6 +163,10 @@ def _validate_request(request):
 
 def create(dashboard, request):
     name, size, kind, fingerprint = _validate_request(request)
+    if kind == 'skill':
+        from .skill_package import limits as skill_limits
+        if size > skill_limits()['upload_max_bytes']:
+            raise ValueError('Skill ZIP 上传上限为 ' + skill_limits()['upload_max_label'])
     lock_path = dashboard.state / 'case-upload.lock'
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open('a+b') as lock:

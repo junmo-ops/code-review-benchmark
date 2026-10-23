@@ -107,6 +107,8 @@ npm start
 
 ## 部署
 
+**要部署 DSH + Skill，请从 [DSH 部署操作单](deployment/DSH部署操作单.md) 开始。** 它列出当前缺项、依赖准备、流水线填写值和发布成功标准。只更新源码并不会自动启用 DSH。
+
 - 镜像：`backend/Dockerfile`，构建上下文为项目根目录。
 - 镜像构建阶段使用 Node 22 编译 React；运行阶段由 Python 同时提供页面和 `/api`。
 - 平台只需一个 Web 服务单元，现有访问域名直接指向后端服务。

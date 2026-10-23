@@ -19,6 +19,8 @@ import tarfile
 from runner.paths import PROJECT_ROOT as ROOT
 sys.path.insert(0, str(ROOT))
 from reviewers.registry import get_reviewer
+from reviewers.dsh_skill.runtime import IsolationError
+from reviewers.dsh_skill.ownership import watch
 from suites.registry import get_suite, ensure_compatible, resolve_run_suite
 from scoring import registry as evaluators
 adapter = get_reviewer("lcr")
@@ -100,8 +102,28 @@ def states(items, run):
                 state = 'unfinished_check_required'
         elif (run/'raw'/(item.safe_id+'.outcome.json')).exists():
             state = 'failed'
-        result.append({'instance_id': item.instance_id, 'status': state})
+        result.append({'instance_id': item.instance_id, 'status': _skill_state(run, item, state)})
     return result
+
+
+def _skill_state(run, item, state):
+    outcome = run / 'raw' / (item.safe_id + '.outcome.json')
+    if state in {'recoverable_check_required', 'exited'} and outcome.exists():
+        try:
+            record = json.loads(outcome.read_text())
+            if record.get('reviewer') == 'dsh_skill' and record.get('status') in {'failed', 'stopped'}:
+                state = 'failed'
+        except (OSError, ValueError, AttributeError):
+            state = 'unknown'
+    path = run / 'raw' / (item.safe_id + '.skill-support.json')
+    if state == 'complete' or not path.exists():
+        return state
+    try:
+        if json.loads(path.read_text()).get('status') == 'unsupported':
+            return 'unsupported'
+    except (OSError, ValueError, AttributeError):
+        pass
+    return state
 
 
 def _model_endpoints():
@@ -174,6 +196,8 @@ def init_run(args, run):
         cfg.update(simulation=remote['simulation'],repository_mode='remote_fixed_commit_ranges',process_timeout_policy='whole_case_wait_timeout',diff_mode=remote['diff_mode'],review_endpoint_sha256=None,requested_model_only=True)
     if reviewer_id=='cline_skill':
         cfg.update(process_timeout_policy='whole_case_timeout_plus_20_seconds',repository_mode='head_snapshot_plus_merge_base_diff',pilot_only=True)
+    if reviewer_id == 'dsh_skill':
+        reviewer.freeze(args, cfg, run)
     (run/'dataset.jsonl').write_bytes(dataset.read_bytes())
     save(run/'run-config.json',cfg)
     print(f'案例集：{suite.name}；适配器版本：{suite.version}')
@@ -184,8 +208,7 @@ def require_model(cfg):
     adapter.require_model(cfg)
 
 
-def main():
-    global adapter
+def _arguments():
     p=argparse.ArgumentParser(description='LCR 测评入口；支持受控的案例并发，不启动后台进程')
     p.add_argument('stage',choices=['init','check','status','next','preview','review','recover','eval','report','export'])
     p.add_argument('--run-id',required=True)
@@ -194,6 +217,10 @@ def main():
     p.add_argument('--suite',help='仅 init 指定，默认 aacr；未知案例集会拒绝运行')
     p.add_argument('--evaluator',choices=['martian','original'],default=None,help='仅 init 指定，默认 martian；original 使用案例集原裁判')
     p.add_argument('--reviewer',help='仅 init 指定，默认 lcr')
+    p.add_argument('--skill-mode', choices=['baseline', 'skill'], help='仅 DSH init 指定')
+    p.add_argument('--dsh-runtime-mode', choices=['sandbox', 'pod'], help='队列冻结的部署运行模式，仅 DSH init 指定')
+    p.add_argument('--skill-version', help='不可变 Skill 内容版本，仅 DSH init 指定')
+    p.add_argument('--skill-identity-sha256', help='队列冻结的完整 Skill 身份摘要，仅 DSH init 指定')
     p.add_argument('--repos-root')
     p.add_argument('--model')
     p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效，默认30分钟')
@@ -203,102 +230,191 @@ def main():
     p.add_argument('--external-timeout-seconds',type=int,help='实际为本次工具命令设置的时限；review 必填')
     p.add_argument('--retry',action='store_true',help='确认上次任务已终止后，显式重跑失败案例')
     args=p.parse_args()
-    if args.stage!='init' and (args.suite is not None or args.reviewer is not None or args.evaluator is not None):
+    _validate_arguments(p, args)
+    return args
+
+
+def _validate_arguments(p, args):
+    frozen = (args.suite, args.reviewer, args.evaluator, args.skill_mode, args.skill_version,
+              args.skill_identity_sha256, args.dsh_runtime_mode)
+    if args.stage != 'init' and any(value is not None for value in frozen):
         p.error('案例集和检视工具已冻结；调整时请新建批次')
     if args.stage!='init' and args.timeout_minutes is not None:
         p.error('超时已在 init 冻结；调整时请新建批次')
-    if args.stage!='init' and (args.case_jobs is not None or args.max_case_retries is not None):
+    if args.stage!='init' and any(v is not None for v in (args.case_jobs, args.max_case_retries)):
         p.error('案例并发和自动重试次数已在 init 冻结；调整时请新建批次')
-    if args.evaluator is None: args.evaluator='martian'
-    if args.timeout_minutes is None: args.timeout_minutes=30
+    _argument_defaults(args)
     if not re.fullmatch(r'[A-Za-z0-9_-]+',args.run_id) or args.timeout_minutes<1:
         p.error('批次名或时限无效')
+    if any(v is not None for v in (args.skill_mode, args.skill_version, args.skill_identity_sha256,
+                                 args.dsh_runtime_mode)) and args.reviewer != 'dsh_skill':
+        p.error('Skill 模式仅适用于 DSH + Skill')
+
+
+def _argument_defaults(args):
+    if args.evaluator is None: args.evaluator='martian'
+    if args.timeout_minutes is None: args.timeout_minutes=10 if args.reviewer == 'dsh_skill' else 30
+
+
+def main():
+    args = _arguments()
     run=Path(args.runs_root).resolve()/args.run_id
-    with exclusive(run):
-        if args.stage=='init':
-            init_run(args,run);return
-        cfg=json.loads((run/'run-config.json').read_text(encoding='utf-8'))
-        if digest(run/'dataset.jsonl')!=cfg['dataset_sha256']:
-            raise ValueError('冻结数据集已变化')
-        suite=resolve_run_suite(cfg, verify=args.stage not in ('status','next','export'))
-        adapter=get_reviewer(cfg.get('reviewer_id','lcr'))
-        ensure_compatible(suite,adapter)
-        if 'suite' not in cfg:
-            print('历史批次按 AACR 兼容读取；当时未冻结评分器版本。',file=sys.stderr)
-        items=checked_instances(run/'dataset.jsonl',suite.id)
-        configure(cfg,run)
-        if cfg.get('reviewer_id', 'lcr') == 'lcr' and args.stage in ('status','review','eval','report'):
-            adapter.write_summary(items,run)
-        snapshot=states(items,run)
-        if args.stage=='status':
-            save(run/'cloud-status.json',snapshot)
-            print(json.dumps(snapshot,ensure_ascii=False,indent=2));return
-        if args.stage=='export':
-            destination=run.parent/(args.run_id+'-results.tar.gz')
-            with tarfile.open(destination,'w:gz') as archive:
-                for path in sorted(run.rglob('*')):
-                    if path.is_file() and not path.is_symlink() and path.name!='.cloud.lock':
-                        archive.add(path,arcname=str(Path(args.run_id)/path.relative_to(run)),recursive=False)
-            print('结果归档（需下载或另存持久化存储）：',destination);return
-        if args.stage=='next':
-            candidates=[row['instance_id'] for row in snapshot if row['status']=='pending']
-            print(json.dumps({'next_instance':candidates[0] if candidates else None,
-                 'complete':sum(row['status']=='complete' for row in snapshot),'total':len(items),
-                 'needs_attention':[row for row in snapshot if row['status'] not in ('pending','complete')]},ensure_ascii=False,indent=2));return
-        if args.stage=='check':
-            for item in items:
-                adapter.REPO=repo_path(cfg['repos_root'],item)
-                adapter.check_repos([item])
-                if cfg.get("reviewer_id")!="server_agent" and hasattr(suite,"check_repository"):
-                    suite.check_repository(item,adapter.REPO,run/"dataset.jsonl")
-                limit=adapter.case_execution_timeout(item) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(item)
-                print(f"{item.instance_id}：{'仓库映射就绪（远端提交待验证）' if cfg.get('reviewer_id')=='server_agent' else '提交就绪'}，检视外层上限 {limit} 秒；平台命令至少 {limit+60} 秒")
-            return
-        if args.stage in ('eval','report'):
-            if cfg.get('simulation'):raise ValueError('模拟服务结果禁止评分；请配置真实服务并新建批次')
-            evaluators.execute(args.stage,suite,items,run,cfg)
-            return
-        if args.stage == 'review' and not args.instance and cfg.get('reviewer_id', 'lcr') == 'lcr':
-            _review_all_lcr_cases(args, cfg, suite, items, snapshot, run)
-            return
-        if not args.instance:
-            p.error('preview/review/recover 必须指定 --instance')
-        selected=next((i for i in items if i.instance_id==args.instance),None)
-        if selected is None:
-            raise ValueError('案例不属于本轮冻结清单')
-        adapter.REPO=repo_path(cfg['repos_root'],selected)
-        if args.stage=='recover':
-            if cfg.get('reviewer_id')=='server_agent' and tool_identity()!=cfg['tool_hashes']:raise ValueError('适配配置已变更，不能恢复旧任务')
-            try:adapter.recover_answer(selected,run)
-            finally:adapter.write_summary(items,run)
-            return
-        if args.stage=='review' and (run/'results'/(selected.safe_id+'.json')).exists():
-            adapter.validate_answer(selected,run/'results'/(selected.safe_id+'.json'))
-            row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
-            if row['status']=='complete':
-                print('跳过已有完整答卷：',selected.instance_id);return
-            if row['status']!='answer_with_item_failures':
-                raise ValueError('已有答卷但状态不完整或诊断异常，请先运行 status 检查：'+selected.instance_id)
-        if tool_identity()!=cfg['tool_hashes']:
-            raise ValueError('本轮检视工具或适配配置已改变，请新建批次')
-        adapter.check_repos([selected])
-        if cfg.get("reviewer_id")!="server_agent" and hasattr(suite,"check_repository"):
-            suite.check_repository(selected,adapter.REPO,run/"dataset.jsonl")
-        if args.stage=='review':
-            require_model(cfg)
-            row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
-            auto_retry = row['status'] in ('failed','exited','timed_out','answer_with_item_failures') and cfg.get('max_case_retries',1)>0
-            if row['status']!='pending' and not auto_retry and not args.retry:
-                raise ValueError('已有未完成执行记录；先检查进程状态，或在确认安全后显式允许重跑')
-            required=(adapter.case_execution_timeout(selected) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(selected))+60
-            if not args.external_timeout_seconds or args.external_timeout_seconds<required:
-                raise ValueError(f'平台命令时限不足或未声明：至少 {required} 秒。须同时设置工具 timeout，参数本身不会延长平台时限')
+    with exclusive(run), watch():
         try:
-            adapter._stage_review([selected],run,args.stage=='preview')
-        finally:
-            if args.stage=='review':
-                adapter.write_summary(items,run)
-                save(run/'cloud-status.json',states(items,run))
+            if args.stage=='init':
+                init_run(args,run);return
+            _execute_run(args, run)
+        except IsolationError:
+            save(run/'dsh-system-error.json', dict(status='stopped', reason='runtime_or_isolation_changed'))
+            raise
+
+
+def _execute_run(args, run):
+    global adapter
+    cfg=json.loads((run/'run-config.json').read_text(encoding='utf-8'))
+    if cfg.get('reviewer_id') == 'dsh_skill' or (run / 'dsh-frozen-config.json').exists():
+        from reviewers.dsh_skill.selection import verify_frozen
+        verify_frozen(cfg, run)
+    if digest(run/'dataset.jsonl')!=cfg['dataset_sha256']:
+        if cfg.get('reviewer_id') == 'dsh_skill':
+            raise IsolationError('DSH 冻结案例清单已变化，停止批次')
+        raise ValueError('冻结数据集已变化')
+    suite=_resolve_frozen_suite(cfg, verify=args.stage not in ('status','next','export'))
+    adapter=get_reviewer(cfg.get('reviewer_id','lcr'))
+    ensure_compatible(suite,adapter)
+    if 'suite' not in cfg:
+        print('历史批次按 AACR 兼容读取；当时未冻结评分器版本。',file=sys.stderr)
+    items=checked_instances(run/'dataset.jsonl',suite.id)
+    configure(cfg,run)
+    if cfg.get('reviewer_id', 'lcr') == 'lcr' and args.stage in ('status','review','eval','report'):
+        adapter.write_summary(items,run)
+    snapshot=states(items,run)
+    if _non_review_stage(args, cfg, suite, items, snapshot, run):
+        return
+    if args.stage == 'review' and not args.instance and cfg.get('reviewer_id', 'lcr') == 'lcr':
+        return _review_all_lcr_cases(args, cfg, suite, items, snapshot, run)
+    _selected_stage(args, cfg, suite, items, snapshot, run)
+
+
+def _resolve_frozen_suite(cfg, verify):
+    try:
+        return resolve_run_suite(cfg, verify=verify)
+    except ValueError as error:
+        if cfg.get('reviewer_id') == 'dsh_skill':
+            raise IsolationError('DSH 冻结案例集或评分器无法核验，停止批次') from error
+        raise
+
+
+def _export(args, run):
+    destination=run.parent/(args.run_id+'-results.tar.gz')
+    with tarfile.open(destination,'w:gz') as archive:
+        for path in sorted(run.rglob('*')):
+            if path.is_file() and not path.is_symlink() and path.name!='.cloud.lock':
+                archive.add(path,arcname=str(Path(args.run_id)/path.relative_to(run)),recursive=False)
+    print('结果归档（需下载或另存持久化存储）：',destination)
+
+
+def _non_review_stage(args, cfg, suite, items, snapshot, run):
+    if args.stage == 'status':
+        save(run/'cloud-status.json',snapshot)
+        print(json.dumps(snapshot,ensure_ascii=False,indent=2))
+    elif args.stage == 'export':
+        _export(args, run)
+    elif args.stage == 'next':
+        _print_next(snapshot, items)
+    elif args.stage == 'check':
+        _check_repositories(cfg, suite, items, run)
+    elif args.stage in ('eval', 'report'):
+        if cfg.get('simulation'):
+            raise ValueError('模拟服务结果禁止评分；请配置真实服务并新建批次')
+        evaluators.execute(args.stage,suite,items,run,cfg)
+        if cfg.get('reviewer_id') == 'dsh_skill':
+            from reviewers.dsh_skill.reporting import annotate
+            annotate(run, cfg, items)
+    else:
+        return False
+    return True
+
+
+def _print_next(snapshot, items):
+    candidates=[row['instance_id'] for row in snapshot if row['status']=='pending']
+    print(json.dumps({'next_instance':candidates[0] if candidates else None,
+         'complete':sum(row['status']=='complete' for row in snapshot),'total':len(items),
+         'needs_attention':[row for row in snapshot if row['status'] not in ('pending','complete')]},ensure_ascii=False,indent=2))
+
+
+def _check_repositories(cfg, suite, items, run):
+    for item in items:
+        adapter.REPO=repo_path(cfg['repos_root'],item)
+        _check_repository(cfg, suite, item, run)
+        limit=adapter.case_execution_timeout(item) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(item)
+        label = '仓库映射就绪（远端提交待验证）' if cfg.get('reviewer_id')=='server_agent' else '提交就绪'
+        print(f'{item.instance_id}：{label}，检视外层上限 {limit} 秒；平台命令至少 {limit+60} 秒')
+
+
+def _check_repository(cfg, suite, selected, run):
+    adapter.check_repos([selected])
+    if cfg.get('reviewer_id') != 'server_agent' and hasattr(suite, 'check_repository'):
+        suite.check_repository(selected, adapter.REPO, run/'dataset.jsonl')
+
+
+def _selected_stage(args, cfg, suite, items, snapshot, run):
+    selected=next((i for i in items if i.instance_id==args.instance),None)
+    if selected is None:
+        raise ValueError('preview/review/recover 必须指定本轮冻结清单中的 --instance')
+    adapter.REPO=repo_path(cfg['repos_root'],selected)
+    if args.stage == 'recover':
+        if cfg.get('reviewer_id')=='server_agent' and tool_identity()!=cfg['tool_hashes']:
+            raise ValueError('适配配置已变更，不能恢复旧任务')
+        try:adapter.recover_answer(selected,run)
+        finally:adapter.write_summary(items,run)
+        return
+    if _already_complete(args, selected, snapshot, run):
+        return
+    _check_tool_identity(cfg)
+    _check_repository(cfg, suite, selected, run)
+    if args.stage == 'review':
+        _require_review(args, cfg, selected, snapshot)
+    try:
+        adapter._stage_review([selected],run,args.stage=='preview')
+    finally:
+        if args.stage=='review':
+            adapter.write_summary(items,run)
+            save(run/'cloud-status.json',states(items,run))
+
+
+def _already_complete(args, selected, snapshot, run):
+    if args.stage != 'review' or not (run/'results'/(selected.safe_id+'.json')).exists():
+        return False
+    adapter.validate_answer(selected,run/'results'/(selected.safe_id+'.json'))
+    row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
+    if row['status']=='complete':
+        print('跳过已有完整答卷：',selected.instance_id)
+        return True
+    if row['status']!='answer_with_item_failures':
+        raise ValueError('已有答卷但状态不完整或诊断异常，请先运行 status 检查：'+selected.instance_id)
+    return False
+
+
+def _check_tool_identity(cfg):
+    if tool_identity() == cfg['tool_hashes']:
+        return
+    if cfg.get('reviewer_id') == 'dsh_skill':
+        raise IsolationError('DSH 冻结依赖已变化，停止批次')
+    raise ValueError('本轮检视工具或适配配置已改变，请新建批次')
+
+
+def _require_review(args, cfg, selected, snapshot):
+    require_model(cfg)
+    row=next(r for r in snapshot if r['instance_id']==selected.instance_id)
+    auto_retry = row['status'] in ('failed','exited','timed_out','answer_with_item_failures') and cfg.get('max_case_retries',1)>0
+    if cfg.get('reviewer_id') == 'dsh_skill' and args.retry:
+        raise ValueError('DSH 失败检视须新建批次')
+    if row['status']!='pending' and not auto_retry and not args.retry:
+        raise ValueError('已有未完成执行记录；先检查进程状态，或在确认安全后显式允许重跑')
+    required=(adapter.case_execution_timeout(selected) if hasattr(adapter,'case_execution_timeout') else adapter.process_timeout(selected))+60
+    if not args.external_timeout_seconds or args.external_timeout_seconds<required:
+        raise ValueError(f'平台命令时限不足或未声明：至少 {required} 秒。须同时设置工具 timeout，参数本身不会延长平台时限')
 
 
 def _review_all_lcr_cases(args, cfg, suite, items, snapshot, run):

@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { reportSummaryScenario } from './report-summary.mjs';
+import { dshBaseline } from './dsh-baseline.mjs';
+import { dshSkill } from './dsh-skill.mjs';
+import { dshLifecycle } from './dsh-lifecycle.mjs';
+import { skillAssets } from './skill-assets.mjs';
+import { skillPersistence } from './skill-persistence.mjs';
 import { join } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -83,7 +88,10 @@ async function errors({ page, fixtures }) {
   // Navigate via the SPA menu, not a full reload, to detect cross-page errors.
   await page.getByRole('menuitem', { name: /仓库管理/ }).click();
   await page.waitForURL('**/repositories');
-  await page.getByText(/案例提交校验失败|缺少案例提交/).waitFor({ state: 'hidden' });
+  const priorErrors = page.getByText(/案例提交校验失败|缺少案例提交/);
+  const deadline = Date.now() + 15000;
+  while (await priorErrors.count() > 0 && Date.now() < deadline) await delay(50);
+  assert.equal(await priorErrors.count(), 0, '案例页错误污染仓库页');
   await page.getByRole('row').filter({ hasText: 'e2e/demo' }).getByRole('button', { name: /删\s*除/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: '确认删除', exact: true }).click();
   await page.getByRole('dialog').getByText(/案例集.*引用|案例集.*使用/).first().waitFor();
@@ -166,4 +174,8 @@ export const scenarios = [
   ['error-isolation-and-delete-feedback', errors], ['full-workflow', workflow], ['report-summary-and-details', reportSummaryScenario],
   ['queue-cancel-and-import-during-run', queue], ['partial-failure-scoring', partial],
   ['504-retry', retry], ['worker-interruption-resume', recovery], ['resource-deletion-history', deletion],
+  ['skill-version-import', skillAssets],
+  ...(process.env.E2E_DSH === '1' ? [['dsh-baseline', dshBaseline], ['dsh-skill', dshSkill]] : []),
+  ...(process.env.E2E_DSH_SCALE === '1' ? [['dsh-50-lifecycle', dshLifecycle]] : []),
+  ...(process.env.E2E_SKILL_COS === '1' ? [['skill-cos-persistence', skillPersistence]] : []),
 ];

@@ -13,6 +13,9 @@ RUN npm run build
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1
 USER root
+ARG BENCH_DSH_ENABLED=0
+ARG BENCH_DSH_RUNTIME_MODE=pod
+ARG BENCH_DSH_BUNDLE=deployment/offline/dsh-npm.tar.gz
 WORKDIR /opt/deployments
 ENV TZ=Asia/Shanghai PYTHONUTF8=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     BENCH_PROJECT_ROOT=/opt/deployments PYTHONPATH=/opt/deployments/backend/src:/opt/deployments \
@@ -20,7 +23,8 @@ ENV TZ=Asia/Shanghai PYTHONUTF8=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     BENCH_CONFIG_ROOT=/opt/deployments/runtime/models \
     BENCH_FRONTEND_DIST=/opt/deployments/frontend-dist \
     BENCH_STORAGE_MODE=persistent BENCH_RUN_STORAGE_MODE=cos BENCH_CASE_STORAGE_MODE=cos BENCH_ENABLED_SUITES=aacr BENCH_CASE_UPLOAD=1 \
-    BENCH_AUTH_MODE=basic BENCH_CONTAINER_ROLE=all \
+    BENCH_AUTH_MODE=basic BENCH_CONTAINER_ROLE=all BENCH_DSH_ENABLED=${BENCH_DSH_ENABLED} \
+    BENCH_DSH_RUNTIME_MODE=${BENCH_DSH_RUNTIME_MODE} \
     HOME=/opt/deployments/runtime/home \
     NPM_CONFIG_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/ \
     PATH=/opt/deployments/bin:/opt/deployments/.venv/bin:/usr/local/bin:/usr/bin:/bin
@@ -38,6 +42,7 @@ RUN python3 -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
        --trusted-host central.jaf.cmbchina.cn -r backend/requirements.txt \
     && .venv/bin/python -m pip freeze > /opt/deployments/requirements-container.resolved.txt
 COPY . /opt/deployments/
+RUN .venv/bin/python -m deployment.dsh_offline install --if-enabled --bundle "$BENCH_DSH_BUNDLE"
 COPY --from=node_runtime /lcr-runtime/node_modules/@LV01.30/leancode-code-review-cli/ /opt/deployments/lcr/
 COPY --from=node_runtime /frontend/dist/ /opt/deployments/frontend-dist/
 COPY deployment/lcr-linux /opt/deployments/bin/lcr

@@ -22,6 +22,7 @@ from reviewers.lcr import adapter
 from suites import registry
 from suites.aacr import evaluator, report
 from suites.aacr.evaluation_resume import scoring_budget
+from regression_fixtures import simulated_lcr
 
 
 def api_error(status):
@@ -33,6 +34,7 @@ class Client:
     calls = 0
     failures = {}
     answers = {}
+    usages = {}
 
     def __init__(self, **kwargs):
         assert kwargs['timeout'] == 180 and kwargs['max_retries'] == 0
@@ -49,13 +51,15 @@ class Client:
         status = Client.failures.get(Client.calls)
         if status:
             raise api_error(status)
-        usage = SimpleNamespace(model_dump=lambda: dict(prompt_tokens=10, completion_tokens=1, total_tokens=11))
+        values = Client.usages.get(Client.calls, dict(prompt_tokens=10, completion_tokens=1, total_tokens=11))
+        usage = SimpleNamespace(model_dump=lambda: values)
         choice = SimpleNamespace(finish_reason='stop', message=SimpleNamespace(content=Client.answers.get(Client.calls, 'yes')))
         return SimpleNamespace(choices=[choice], usage=usage)
 
 
 class AACRScoringResumeTests(unittest.TestCase):
     def setUp(self):
+        simulated_lcr(self)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.run = self.root / 'runs/run'
@@ -89,6 +93,7 @@ class AACRScoringResumeTests(unittest.TestCase):
         self.mock_mode.start()
         Client.calls, Client.failures = 0, {}
         Client.answers = {}
+        Client.usages = {}
 
     def tearDown(self):
         patch.stopall()
@@ -128,6 +133,31 @@ class AACRScoringResumeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '评分已完成'):
             self.evaluate()
         self.assertEqual(Client.calls, 7)
+
+    def test_missing_judge_usage_is_unknown_not_zero_and_does_not_fail_scoring(self):
+        Client.usages = {index: dict(prompt_tokens=None, completion_tokens=None, total_tokens=None)
+                         for index in range(1, 7)}
+        self.evaluate()
+        audit = json.loads((self.run / 'judge-audit.json').read_text())
+        self.assertEqual(audit['status'], 'complete')
+        self.assertEqual(audit['judge_usage_only'], {})
+        self.assertEqual(audit['judge_usage_coverage'], dict(known_requests=0, requests=6))
+        self.assertEqual(Client.calls, 6)
+
+    def test_partial_judge_usage_retains_known_values_and_real_zero_with_coverage(self):
+        Client.usages = {
+            1: dict(prompt_tokens=None, completion_tokens=None, total_tokens=None),
+            2: dict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            3: dict(prompt_tokens=20, completion_tokens=None, total_tokens=None),
+            4: {},
+            5: dict(prompt_tokens=True, completion_tokens=-1, total_tokens=1.5),
+        }
+        self.evaluate()
+        audit = json.loads((self.run / 'judge-audit.json').read_text())
+        self.assertEqual(audit['judge_usage_only'], dict(prompt_tokens=30, completion_tokens=1, total_tokens=11))
+        self.assertEqual(audit['judge_usage_coverage'], dict(known_requests=2, requests=6))
+        self.assertEqual(audit['requests'][1]['usage'], dict(prompt_tokens=0, completion_tokens=0, total_tokens=0))
+        self.assertEqual(Client.calls, 6)
 
     def test_resume_preserves_two_rounds_and_reuses_third_round_success(self):
         preserved = self.fail_third_round()
@@ -268,6 +298,9 @@ class AACRScoringResumeTests(unittest.TestCase):
         changed['files']['backend/src/suites/aacr/judge_transport.py'] = hashlib.sha256(b'changed').hexdigest()
         self.assertFalse(registry.compatible_frozen_identity(old, changed, 'aacr'))
         self.assertFalse(registry.compatible_frozen_identity(old, current, 'swe_prbench'))
+        previous_audit = copy.deepcopy(current)
+        previous_audit['files']['backend/src/suites/aacr/evaluator.py'] = 'ac4dd894636b5682b5a127a8c4b10819ef48edafd3ca389a50ec2b19b091c9d9'
+        self.assertFalse(registry.compatible_frozen_identity(previous_audit, current, 'aacr'))
 
     def test_budget_includes_all_rounds_and_retry_delays(self):
         self.assertGreaterEqual(scoring_budget(self.run, self.config), 4380)

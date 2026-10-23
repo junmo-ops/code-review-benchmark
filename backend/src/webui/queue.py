@@ -30,6 +30,11 @@ class Queue:
         except sqlite3.IntegrityError as exc:raise ValueError('该批次已有排队或运行任务') from exc
     def jobs(self):
         with self.connect() as db:return {r['id']:json.loads(r['job']) for r in db.execute('SELECT id,job FROM jobs')}
+    def skill_references(self):
+        with self.connect() as db:
+            specs = [json.loads(row['spec']) for row in db.execute('SELECT spec FROM jobs WHERE spec IS NOT NULL')]
+        return [spec for spec in specs if isinstance(spec, dict) and spec.get('reviewer') == 'dsh_skill'
+                and spec.get('skill_mode') == 'skill']
     def update(self,id,changes):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -113,7 +118,7 @@ class DurableDashboard(Dashboard):
             if spec is not None:
                 job['resource_dataset'] = spec.get('dataset')
             actor=request.get('_actor','local')
-            request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create'}}
+            request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create','skill_mode','skill_version'}}
             with phase('queue.fingerprint', job_id=job['id']):
                 job['profile_fingerprint']=self.fingerprint(job['profile'])
             job['submitted_by']=actor

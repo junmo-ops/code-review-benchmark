@@ -1,4 +1,5 @@
 import json
+import http.client
 import os
 from pathlib import Path
 import subprocess
@@ -11,12 +12,16 @@ from unittest.mock import patch
 from webui.queue import DurableDashboard
 from webui.service import save
 from webui.wsgi import create_app
+from webui.server import handler_for
+from http.server import ThreadingHTTPServer
+from regression_fixtures import seed_datasets, frontend_environment
 
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name).resolve()
-        self.env=patch.dict(os.environ,{'BENCH_DATA_ROOT':str(self.root/'persistent'),'BENCH_CONFIG_ROOT':str(self.root/'config'),'BENCH_SERVER_MODE':'1','BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
+        self.env=patch.dict(os.environ,{**frontend_environment(),'BENCH_DATA_ROOT':str(self.root/'persistent'),'BENCH_CONFIG_ROOT':str(self.root/'config'),'BENCH_SERVER_MODE':'1','BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
         self.env.start();self.app=DurableDashboard(self.root)
+        seed_datasets(self.root)
         save(self.root/'config/model.local.json',dict(LCR_LLM_MODEL='test',LCR_LLM_TOKEN='secret-do-not-store',LCR_LLM_BASE_URL='https://model.test',JUDGE_MODEL='test',JUDGE_API_KEY='judge-secret'))
     def tearDown(self):self.env.stop();self.tmp.cleanup()
     def submit(self,name='one'):
@@ -34,6 +39,28 @@ class ServerTests(unittest.TestCase):
         a=self.submit();self.app.queue.claim();self.app.queue.recover()
         self.assertEqual(self.app.queue.jobs()[a['job_id']]['status'],'interrupted')
         self.assertTrue(self.app.queue.meta('recovery_required'));self.assertIsNone(self.app.queue.claim())
+    def test_local_recovery_confirmation_unblocks_without_replaying_interrupted_job(self):
+        submitted = self.submit()
+        self.app.queue.claim()
+        self.app.queue.recover()
+        with ThreadingHTTPServer(('127.0.0.1', 0), handler_for(self.app, 'local-token')) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                for confirmed, expected in ((False, 400), (True, 200)):
+                    connection = http.client.HTTPConnection('127.0.0.1', server.server_port)
+                    connection.request('POST', '/api/recovery', json.dumps(dict(confirmed=confirmed)),
+                        {'Content-Type': 'application/json', 'X-Dashboard-Token': 'local-token'})
+                    response = connection.getresponse()
+                    response.read()
+                    self.assertEqual(response.status, expected)
+                    connection.close()
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+        self.assertFalse(self.app.queue.meta('recovery_required'))
+        self.assertEqual(self.app.queue.jobs()[submitted['job_id']]['status'], 'interrupted')
+        self.assertIsNone(self.app.queue.claim())
     def test_web_restart_does_not_kill_worker_and_cancel_persists(self):
         a=self.submit();job,request,spec=self.app.queue.claim()
         worker=DurableDashboard(self.root);worker.active=job['id']
@@ -68,12 +95,17 @@ class ServerTests(unittest.TestCase):
         for path in ['/models','/comparisons/','/experiments','/jobs','/guide']:
             self.assertEqual(client.get(path,base_url='https://review.test').status_code,403)
             reply=client.get(path,base_url='https://review.test',headers=headers)
-            self.assertEqual(reply.status_code,200);self.assertIn(b'dashboard-token',reply.data)
+            self.assertEqual(reply.status_code,200);self.assertIn(b'id="root"',reply.data)
+            self.assertNotIn(b'__STYLE_NONCE__',reply.data)
+            self.assertIn("script-src 'self'",reply.headers['Content-Security-Policy'])
+        session=client.get('/api/session',base_url='https://review.test',headers=headers)
+        self.assertEqual(session.status_code,200)
+        self.assertEqual(session.json,dict(csrf_token='c'*40,access_role='viewer'))
         for path in ['/missing.js','/api/missing','/unknown/page']:
             self.assertEqual(client.get(path,base_url='https://review.test',headers=headers).status_code,404)
 
     def test_server_commands_use_external_config_and_data(self):
-        cmd,env,_=self.app.command('new','init','model.local.json',init=dict(dataset='pilot1.jsonl',suite='aacr',evaluator='martian',timeout_minutes=10))
+        cmd,env,_=self.app.command('new','init','model.local.json',init=dict(dataset='pilot1.jsonl',suite='aacr',reviewer='lcr',evaluator='martian',timeout_minutes=10))
         self.assertIn(str(self.root/'config/model.local.json'),cmd)
         self.assertEqual(env['BENCH_SERVER_MODE'],'1')
         self.assertEqual(self.app.run_dir('new'),self.root/'persistent/runs/new')

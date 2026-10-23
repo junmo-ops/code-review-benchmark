@@ -2,7 +2,8 @@
 from reviewers.lcr import adapter as lcr
 from reviewers.cline_skill import adapter as cline_skill
 from reviewers.server_agent import adapter as server_agent
-REVIEWERS = {"lcr": lcr, "server_agent": server_agent, "cline_skill": cline_skill}
+from reviewers.dsh_skill import adapter as dsh_skill
+REVIEWERS = {"lcr": lcr, "server_agent": server_agent, "cline_skill": cline_skill, "dsh_skill": dsh_skill}
 
 def get_reviewer(name):
     try:

@@ -57,6 +57,11 @@ export interface Run {
   model: string;
   judge_model?: string;
   reviewer: string;
+  skill_mode?: 'baseline' | 'skill';
+  skill_version?: string;
+  skill_name?: string;
+  dsh_runtime_version?: string;
+  dsh_runtime_mode?: 'sandbox' | 'pod';
   evaluator: string;
   status: string;
   total: number;
@@ -130,6 +135,7 @@ export interface Comparison {
 }
 export interface Snapshot {
   platform: string;
+  dsh_runtime_mode?: 'sandbox' | 'pod';
   queue_mode?: boolean;
   active?: string;
   worker_ready?: boolean;
@@ -165,10 +171,30 @@ export interface UploadReply {
   message: string;
   task?: ImportTask;
 }
+export interface SkillFile { path: string; size: number; sha256: string }
+export interface SkillVersion {
+  id: string;
+  name: string;
+  description: string;
+  main: string;
+  created_at: string;
+  archive_sha256: string;
+  content_sha256: string;
+  archives: string[];
+  files: SkillFile[];
+}
+export interface SkillListing {
+  storage_mode: 'local' | 'cos';
+  supported: boolean;
+  message?: string;
+  versions: SkillVersion[];
+  unavailable: { id: string; message: string }[];
+  limits: { max_entries: number; unpacked_max_bytes: number; upload_max_bytes: number; upload_max_label: string };
+}
 export interface UploadSession {
   task?: ImportTask;
   id: string;
-  kind: 'dataset' | 'repository';
+  kind: 'dataset' | 'repository' | 'skill';
   filename: string;
   size: number;
   fingerprint: string;

@@ -33,7 +33,7 @@ import {
   stamp,
   suiteName,
 } from '../presentation';
-import { ErrorAlert, Status } from './Common';
+import { DshRuntimeWarning, ErrorAlert, Status } from './Common';
 import type { Case, Job, JobReply, Run, TextReply } from '../types';
 function TextFile({ kind, run }: { kind: string; run: Run }) {
   const artifacts = kind === 'report' ? run.artifacts.filter((a) => a.report).sort((a, b) => Number(b.path === 'report.zh-CN.md') - Number(a.path === 'report.zh-CN.md')) : run.artifacts;
@@ -202,7 +202,7 @@ function ActionControls({
                         ]}
                       />
                     </Form.Item>
-                    {run.reviewer !== 'server_agent' && (
+                    {!['server_agent', 'dsh_skill'].includes(run.reviewer) && (
                       <Form.Item label="允许重跑所选未完成案例（可能产生费用）" htmlFor={controlId + "-retry"}>
                         <Switch id={controlId + "-retry"} checked={retry} onChange={setRetry} />
                       </Form.Item>
@@ -457,13 +457,16 @@ function RunHeader({
   const { state } = useWorkbench();
   return (
     <>
-      <Typography.Paragraph type="secondary">
+      <Typography.Paragraph type="secondary" style={{ overflowWrap: 'anywhere' }}>
         {suiteName(state, record.suite)} · {record.model} · 裁判 {record.judge_model} /{' '}
         {record.evaluator}
+        {record.skill_mode === 'baseline' && ` · DSH ${record.dsh_runtime_version ?? ''} · 无待测 Skill 基线`}
+        {record.skill_mode === 'skill' && ` · DSH ${record.dsh_runtime_version ?? ''} · Skill ${record.skill_name ?? ''} · ${record.skill_version ?? ''}`}
       </Typography.Paragraph>
       {record.compatibility_warning && (
         <Alert type="warning" message={record.compatibility_warning} />
       )}
+      <DshRuntimeWarning reviewer={record.reviewer} mode={record.dsh_runtime_mode} />
       <Space wrap className="section-gap">
         <Button
           type="primary"

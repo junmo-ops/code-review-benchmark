@@ -87,7 +87,7 @@ def create_app(dashboard=None):
         raise RuntimeError('试运行须设置 BENCH_BASIC_USER 和 BENCH_BASIC_PASSWORD')
     app=Flask(__name__,static_folder=None);app.config['MAX_CONTENT_LENGTH']=16384
     frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', PROJECT_ROOT/'frontend-dist')).resolve()
-    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
+    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide'}
     dashboard=dashboard or DurableDashboard()
     @app.before_request
     def authorize():
@@ -164,7 +164,18 @@ def create_app(dashboard=None):
     @app.get('/api/cases/imports')
     def case_import_status():
         from .case_import import current
-        return jsonify(task=current(dashboard))
+        return jsonify(task=current(dashboard, request.args.get('id')))
+    @app.get('/api/skills', defaults={'tail': ''})
+    @app.get('/api/skills/<path:tail>')
+    def skill_resource(tail):
+        from .skill_assets import response
+        body, mimetype, filename = response(dashboard, tail, request.args)
+        if mimetype == 'application/json':
+            return jsonify(body)
+        result = app.response_class(body, mimetype=mimetype)
+        if filename:
+            result.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return result
     @app.post('/api/uploads/start')
     def start_upload():
         if os.environ.get('BENCH_CASE_UPLOAD') != '1':

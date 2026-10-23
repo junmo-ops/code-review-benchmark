@@ -1,10 +1,10 @@
 import argparse,importlib.util,json,os,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 
 def module(name):
- spec=importlib.util.spec_from_file_location(name,ROOT/('tools' if name=='configure_openai' else '')/(name+'.py'));out=importlib.util.module_from_spec(spec);spec.loader.exec_module(out);return out
+ spec=importlib.util.spec_from_file_location(name,ROOT/('tools' if name=='configure_openai' else 'backend/src')/(name+'.py'));out=importlib.util.module_from_spec(spec);spec.loader.exec_module(out);return out
 local=module('local');configure=module('configure_openai')
 class ProfileTests(unittest.TestCase):
  def test_profile_preserves_judge_and_existing_source(self):
@@ -19,6 +19,7 @@ class ProfileTests(unittest.TestCase):
  def test_selected_config_is_injected_in_fresh_process(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);(root/'local-runtime.json').write_text('{}')
+   python=root/'.venv/bin/python';python.parent.mkdir(parents=True);python.touch()
    (root/'selected.local.json').write_text(json.dumps({'LCR_LLM_MODEL':'test-openai','LCR_LLM_TOKEN':'test-key','JUDGE_API_KEY':'test-judge'}))
    argv=['local.py','--config','selected.local.json','--timeout-seconds','60','init','--run-id','test','--dataset','data/test.jsonl']
    with patch.object(local,'ROOT',root),patch.object(sys,'argv',argv),patch.object(local,'execute',return_value=0) as execute:

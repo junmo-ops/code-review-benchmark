@@ -86,6 +86,9 @@ export function reportSummary(text: string, run: Run) {
   const scores = sections.filter((section) => ['评分结果', '评分汇总', '测评结果'].includes(section.title));
   return [intro, '## 测评对象', '',
     `模型：${cell(run.model)}；Agent：${cell(run.reviewer)}；案例集：${cell(run.suite)}；评分器：${cell(run.evaluator)}；裁判：${cell(run.judge_model ?? '未提供')}。`, '',
+    ...(run.skill_mode === 'baseline' ? [`无待测 Skill 基线；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''] : []),
+    ...(run.skill_mode === 'skill' ? [`Skill：${cell(run.skill_name ?? '未提供')}；版本：${cell(run.skill_version ?? '未提供')}；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''] : []),
+    ...(run.dsh_runtime_mode === 'pod' ? ['运行条件：POD 内运行，无操作系统级沙盒；仅软件工具和路径限制。', ''] : []),
     '## 完成情况', '',
     `计划 ${run.total} 例；当前完整答卷 ${run.completed} 例；本报告评分范围 ${number(scoredIds?.size)} 例。`, '',
     '评分结果仅代表纳入评分的案例，未完成案例不计零分。当前答卷数可能包含评分后补跑的案例。', '',

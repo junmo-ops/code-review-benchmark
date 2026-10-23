@@ -26,11 +26,13 @@ def check_build():
     if not (frontend/'index.html').is_file() or not any((frontend/'assets').glob('*')):
         raise RuntimeError('React 前端构建产物缺失')
     tool_identity()
+    _check_dsh(runtime=False)
     print('Python、React 前端、AACR 源码和 LCR 资源检查完成；未调用模型。', flush=True)
 
 
 def prepare():
     import json
+    _check_dsh(runtime=True)
     print('运行 Python：' + sys.version.split()[0], flush=True)
     manifest = json.loads((ROOT / 'lcr/package.json').read_text(encoding='utf-8'))
     print('运行 LCR npm 包：' + manifest['version'], flush=True)
@@ -44,6 +46,17 @@ def prepare():
     from webui.case_storage import restore_case_archives
     restore_case_archives(ROOT)
     print('工作台运行目录已准备；案例包可在网页上传，未调用模型。', flush=True)
+
+
+def _check_dsh(*, runtime):
+    from deployment import dsh_preflight
+    if not dsh_preflight.enabled():
+        print('DSH disabled (BENCH_DSH_ENABLED=0); no DSH readiness claim.', flush=True)
+        return
+    if runtime:
+        dsh_preflight.check_runtime()
+    else:
+        dsh_preflight.check_build()
 
 
 def _launch(command, children):

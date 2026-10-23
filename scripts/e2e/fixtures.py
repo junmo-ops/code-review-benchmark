@@ -44,11 +44,17 @@ def create(root):
                  head_commit=commit, reference_comments=[])
             for name, commit in [('ok', head), ('fail', orphan)]]
     case_archive(root / 'fixtures/cases.zip', rows, '浏览器回归案例')
+    dsh_case = dict(rows[0], reference_comments=[dict(path='sample.py', start_line=1,
+        end_line=1, text='本地确定性缺陷意见，仅验证测评流程。', side='right')])
+    case_archive(root / 'fixtures/dsh-case.zip', [dsh_case], 'DSH Linux 单例')
     many = [dict(rows[i % 2], instance_id=f'scale-{i:03d}') for i in range(50)]
     case_archive(root / 'fixtures/cases-50.zip', many, '浏览器回归50例')
+    dsh_many = [dict(row, reference_comments=dsh_case['reference_comments']) for row in many]
+    case_archive(root / 'fixtures/dsh-cases-50.zip', dsh_many, 'DSH 本地50例')
     missing = [dict(rows[0], instance_id='demo-missing', head_commit='1' * 40)]
     case_archive(root / 'fixtures/missing.zip', missing, '缺少提交的案例')
     (root / 'fixtures/invalid.zip').write_bytes(b'not a zip')
+    skill_archives(root / 'fixtures')
     repository_update(repo, root / 'fixtures/repository-update.zip')
     size = int(os.environ.get('E2E_LARGE_REPOSITORY_MIB', '0'))
     if size:
@@ -62,6 +68,18 @@ def case_archive(path, rows, name):
     with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as output:
         output.writestr('manifest.json', json.dumps(manifest))
         output.writestr('dataset.jsonl', data)
+
+
+def skill_archives(root):
+    main = '---\nname: browser-review\ndescription: Browser Skill fixture\n---\nRead [rules](references/rules.txt).\n'
+    for name, rules in [('skill.zip', 'original\r\n'), ('skill-changed.zip', 'changed\n')]:
+        with zipfile.ZipFile(root / name, 'w') as output:
+            output.writestr('SKILL.md', main)
+            output.writestr('references/rules.txt', rules)
+            output.writestr('scripts/never-run.sh', 'exit 99\n')
+    with zipfile.ZipFile(root / 'skill-unsafe.zip', 'w') as output:
+        output.writestr('SKILL.md', main)
+        output.writestr('../escape', 'unsafe')
 
 
 def repository_update(repo, archive):

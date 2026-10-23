@@ -103,7 +103,7 @@ class AgentTests(unittest.TestCase):
             app=Dashboard(ROOT,load_jobs=False)
             spec=dict(reviewer='server_agent',suite='aacr',dataset='pilot1.jsonl',evaluator='martian',timeout_minutes=1)
             cmd,env,limit=app.command('test','init','environment',init=spec)
-            self.assertIn(str(ROOT/'cloud.py'),cmd)
+            self.assertIn(str(ROOT/'backend/src/cloud.py'),cmd)
             self.assertIn('server_agent',cmd)
             save(app.run_dir('test')/'run-config.json',spec)
             cmd,env,limit=app.command('test','review','environment',task=self.item.instance_id)
@@ -117,7 +117,7 @@ class AgentTests(unittest.TestCase):
             self.config['base_url']=f'http://127.0.0.1:{server.server_port}'
             save(self.path,self.config)
             def command(stage,*extra):
-                return subprocess.run([sys.executable,str(ROOT/'cloud.py'),stage,'--run-id','smoke','--runs-root',str(self.root/'runs'),*extra],cwd=ROOT,capture_output=True,text=True,timeout=30)
+                return subprocess.run([sys.executable,str(ROOT/'backend/src/cloud.py'),stage,'--run-id','smoke','--runs-root',str(self.root/'runs'),*extra],cwd=ROOT,capture_output=True,text=True,timeout=30)
             for stage,extra in [('init',['--reviewer','server_agent','--dataset',str(ROOT/'data/pilot1.jsonl'),'--suite','aacr','--model','test-model','--timeout-minutes','1']),('check',[]),('preview',['--instance',self.item.instance_id]),('review',['--instance',self.item.instance_id,'--external-timeout-seconds','150']),('status',[])]:
                 result=command(stage,*extra)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from webui.queue import DurableDashboard
 from webui.wsgi import create_app
+from regression_fixtures import frontend_environment
 
 
 class ContainerAccessTests(unittest.TestCase):
@@ -17,6 +18,7 @@ class ContainerAccessTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.env = patch.dict(os.environ, {
+            **frontend_environment(),
             'BENCH_DATA_ROOT': str(self.root / 'data'),
             'BENCH_CONFIG_ROOT': str(self.root / 'models'),
             'BENCH_PUBLIC_URL': 'https://review.test',
@@ -107,7 +109,9 @@ class ContainerProcessTests(unittest.TestCase):
                     patch.object(sys, 'argv', ['container']), \
                     patch('webui.wsgi.create_app'), \
                     patch('deployment.container.subprocess.Popen', side_effect=launch):
-                self.assertEqual(container.main(), 7)
+                with self.assertRaises(SystemExit) as exited:
+                    container.main()
+                self.assertEqual(exited.exception.code, 7)
             child = int(pid_file.read_text())
             for _ in range(50):
                 result = subprocess.run(['ps', '-p', str(child), '-o', 'stat='], capture_output=True, text=True)

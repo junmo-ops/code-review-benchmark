@@ -5,8 +5,9 @@ import { useWorkbench } from '../context';
 import { availableProfiles, canSubmit } from '../presentation';
 import { useAction } from '../hooks/useAction';
 import { useRequestScope } from '../hooks/useRequestScope';
-import { ErrorAlert } from './Common';
-import type { Snapshot } from '../types';
+import { useRemote } from '../hooks/useRemote';
+import { DshRuntimeWarning, ErrorAlert } from './Common';
+import type { SkillListing, Snapshot } from '../types';
 interface Values {
   suite: string;
   dataset: string;
@@ -15,6 +16,8 @@ interface Values {
   review_profile: string;
   judge_profile?: string;
   reviewer: string;
+  skill_mode?: 'baseline' | 'skill';
+  skill_version?: string;
   evaluator: string;
   timeout_minutes: number;
   case_jobs: number;
@@ -22,6 +25,7 @@ interface Values {
   max_tokens: number;
 }
 const identifier = (suite: string) => creationName(suite === 'swe_prbench_llm' ? 'swe' : suite);
+const skillMode = (values: Values) => values.reviewer === 'dsh_skill' ? values.skill_mode : undefined;
 function defaults(state: Snapshot, suiteId?: string, datasetId?: string): Values {
   const suite = state.catalog.find((s) => s.id === suiteId) ??
     state.catalog[0] ?? { id: '', datasets: [] };
@@ -49,8 +53,10 @@ function reviewers(suite: string) {
     ];
   const result = [{ value: 'lcr', label: 'LCR CLI' }];
   if (suite !== 'ccrab') result.push({ value: 'server_agent', label: '服务端 Agent' });
-  if (suite === 'aacr')
+  if (suite === 'aacr') {
     result.push({ value: 'cline_skill', label: 'Cline + Skill（Mac 单例试跑）' });
+    result.push({ value: 'dsh_skill', label: 'DSH + Skill' });
+  }
   return result;
 }
 function evaluators(suite: string) {
@@ -71,6 +77,34 @@ function judgeChoices(state: Snapshot) {
     )
       choices.push({ value: 'legacy-judge:' + p.id, label: p.judge_model + ' · 旧裁判配置' });
   return choices;
+}
+function SkillSelection({ reviewer }: { reviewer?: string }) {
+  const form = Form.useFormInstance<Values>();
+  const mode = Form.useWatch('skill_mode', form);
+  const { data, error } = useRemote<SkillListing>(reviewer === 'dsh_skill' ? '/api/skills' : undefined);
+  if (reviewer !== 'dsh_skill') return null;
+  return (
+    <>
+      <Form.Item name="skill_mode" label="Skill 模式" rules={[{ required: true }]} preserve={false}>
+        <Select onChange={() => form.setFieldValue('skill_version', undefined)} options={[
+          { value: 'baseline', label: '不加载 Skill（基线）' },
+          { value: 'skill', label: '加载指定 Skill 版本', disabled: !data?.supported },
+        ]} />
+      </Form.Item>
+      {mode === 'skill' && <Form.Item name="skill_version" label="Skill 版本" preserve={false} rules={[{ required: true }]}>
+        <Select loading={!data && !error} options={data?.versions.map((version) => ({
+          value: version.id, label: `${version.name} · ${version.id.slice(0, 12)}`,
+        }))} />
+      </Form.Item>}
+      {data && !data.supported && <Alert type="warning" message={data.message} />}
+      <ErrorAlert error={error} />
+    </>
+  );
+}
+function executionDescription(values: Partial<Values>) {
+  if (values.suite === 'ccrab') return '固定单例检视、DeepSeek 修复与容器测试，不使用语义裁判。';
+  if (values.reviewer === 'lcr') return 'LCR 整例上限随变更文件数增加；与多模型实验的整例预算不同。';
+  return undefined;
 }
 function ready(state: Snapshot, values: Partial<Values>) {
   const model = state.profiles.find((p) => p.id === values.review_profile);
@@ -174,6 +208,8 @@ export function CreateRun({
         start_after_create: start,
         case_jobs: data.reviewer === 'lcr' ? data.case_jobs : 1,
         max_case_retries: data.reviewer === 'lcr' ? data.max_case_retries : 0,
+        skill_mode: skillMode(data),
+        skill_version: data.reviewer === 'dsh_skill' && data.skill_mode === 'skill' ? data.skill_version : undefined,
         ...(data.suite === 'ccrab' ? { judge_profile: undefined } : {}),
       }, key, 'create');
       await refresh();
@@ -189,6 +225,8 @@ export function CreateRun({
       name: initial.name,
       reviewer: initial.reviewer,
       evaluator: initial.evaluator,
+      skill_mode: undefined,
+      skill_version: undefined,
     });
   };
   const enabled = ready(state, values) && !importBusy;
@@ -251,8 +289,11 @@ export function CreateRun({
           </Form.Item>
         )}
         <Form.Item name="reviewer" label="被测工具">
-          <Select options={reviewers(values.suite ?? '')} />
+          <Select options={reviewers(values.suite ?? '')}
+            onChange={(reviewer: string) => form.setFieldsValue({ skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_version: undefined })} />
         </Form.Item>
+        <SkillSelection reviewer={values.reviewer} />
+        <DshRuntimeWarning reviewer={values.reviewer} mode={state.dsh_runtime_mode} />
         <Form.Item name="evaluator" label="评分方法">
           <Select options={evaluators(values.suite ?? '')} />
         </Form.Item>
@@ -261,11 +302,7 @@ export function CreateRun({
           className="section-gap"
           type="info"
           message={`${dataset?.count ?? 0} 个案例；保存配置不调用模型，创建并开始会调用模型并产生 API 用量。`}
-          description={
-            values.suite === 'ccrab'
-              ? '固定单例检视、DeepSeek 修复与容器测试，不使用语义裁判。'
-              : 'LCR 整例上限随变更文件数增加；与多模型实验的整例预算不同。'
-          }
+          description={executionDescription(values)}
         />
         {!enabled && (
           <Alert type="warning" message="请准备可用的被测模型和裁判，并等待资源导入完成。" />

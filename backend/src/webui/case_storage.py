@@ -806,8 +806,11 @@ def restore_case_archives(root=ROOT):
     dashboard = Dashboard(root=root, load_jobs=False)
     asset_count = CaseAssetStorage(dashboard.data).restore(dashboard)
     archive_count = CaseArchiveStorage(dashboard.data).restore(dashboard)
-    count = asset_count + archive_count
+    from .skill_storage import SkillAssetStorage
+    skill_count = SkillAssetStorage(dashboard.data).restore(dashboard)
+    count = asset_count + archive_count + skill_count
     print(f'COS 案例资源恢复完成：{asset_count} 份拆分案例集和 {archive_count} 份旧 ZIP；未调用模型。', flush=True)
+    print(f'COS Skill 资源恢复并校验完成：{skill_count} 个版本；未调用模型。', flush=True)
     return count
 
 

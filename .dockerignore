@@ -52,3 +52,35 @@ retry-rehearsals
 
 # Browser acceptance runs locally only
 scripts/e2e
+
+# Never import host Node installations, credentials, or local review evidence.
+**/node_modules
+**/.npm
+**/.cache
+.scratch
+.codex
+.agents
+tools/dsh_local_model.py
+**/*.test.mjs
+**/test-results
+**/playwright-report
+
+# Controlled offline inputs are staged here before the devops source upload.
+# They are intentionally git-ignored, but must be in the actual build context.
+deployment/offline/**
+!deployment/offline/dsh-npm.tar.gz
+!deployment/offline/dsh/
+!deployment/offline/dsh/npm.json
+!deployment/offline/dsh/system.json
+!deployment/offline/dsh/npm-cache/
+!deployment/offline/dsh/npm-cache/_cacache/
+!deployment/offline/dsh/npm-cache/_cacache/**
+!deployment/offline/dsh/rpms/
+!deployment/offline/dsh/rpms/*.rpm
+
+# These exclusions also apply inside any staged input directory.
+**/.env
+**/.env.*
+**/.npmrc
+**/*.pem
+**/*.key

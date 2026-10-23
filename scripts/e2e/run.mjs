@@ -58,7 +58,7 @@ async function execute(page, fixtures) {
     console.log(`RUN ${name}`);
     if (containerRuntime) containerRuntime.scenario = name;
     try {
-      await scenario({ page, fixtures, restart: () => restartServer(page, fixtures) });
+      await scenario({ page, fixtures, restart: (afterStop) => restartServer(page, fixtures, afterStop) });
       if (errors.length > errorOffset) throw new Error(errors.slice(errorOffset).join('\n'));
       results.push({ name, status: 'passed', milliseconds: Date.now() - started });
       await page.screenshot({ path: join(output, `${name}.png`), fullPage: true });
@@ -117,7 +117,7 @@ function killTree(pid) {
     try { process.kill(-pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
 }
-async function restartServer(page, fixtures) {
+async function restartServer(page, fixtures, afterStop) {
   if (containerMode) return restartContainer(fixtures);
   const data = resolve(fixtures, '..');
   const { state } = await import('./helpers.mjs');
@@ -129,6 +129,7 @@ async function restartServer(page, fixtures) {
   killTree(old.pid);
   for (const child of children) killTree(child.pid);
   await exited;
+  if (afterStop) await afterStop();
   await rm(join(data, 'server.json'));
   serverError = undefined;
   launchServer(data, ['--reuse', '--port', new URL(url).port]);

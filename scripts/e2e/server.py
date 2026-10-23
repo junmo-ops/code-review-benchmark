@@ -1,6 +1,8 @@
 """Isolated local HTTP server and durable queue worker for browser acceptance."""
 import argparse
+from contextlib import ExitStack
 import json
+import hashlib
 import os
 from pathlib import Path
 import sys
@@ -45,6 +47,9 @@ def make_dashboard():
 
     class RegressionDashboard(DurableDashboard):
         def command(self, key, stage, profile, task=None, retry=False, init=None):
+            cfg = init if init is not None else self.config(key)
+            if cfg.get('reviewer') == 'dsh_skill':
+                return super().command(key, stage, profile, task, retry, init)
             spec = dict(init or {}, task=task, retry=retry)
             if stage == 'review':
                 spec['external_timeout_seconds'] = super().command(key, stage, profile, task, retry, init)[2]
@@ -119,10 +124,20 @@ def main():
     if (data / 'config').exists() and not args.reuse:
         raise ValueError('Use a new isolated regression directory')
     environment(data, args.reuse)
+    if os.environ.get('E2E_DSH_RUNTIME_MODE'):
+        os.environ['BENCH_DSH_RUNTIME_MODE'] = os.environ['E2E_DSH_RUNTIME_MODE']
+    stack = ExitStack()
+    if os.environ.get('E2E_DSH') == '1':
+        from tools.dsh_local_model import serve
+        local_model = stack.enter_context(serve())
+        local_model.respond = dsh_response(data)
+        seed_dsh_models(data, local_model.url)
     if not args.reuse:
         seed_models(data)
         from fixtures import create
         create(data)
+    from skill_storage_fixture import enable as enable_skill_storage
+    enable_skill_storage(stack, data, ROOT)
     from webui.server import handler_for
     app = make_dashboard()
     stop = threading.Event()
@@ -142,6 +157,40 @@ def main():
         stop.set()
         server.server_close()
         thread.join(timeout=15)
+        stack.close()
+
+
+def seed_dsh_models(data, url):
+    for name, model in [('review', 'dsh-review'), ('judge', 'dsh-judge')]:
+        path = data / 'config' / f'model.dsh.{name}.local.json'
+        path.write_text(json.dumps(dict(LCR_LLM_BASE_URL=url, LCR_LLM_TOKEN='dsh-local-only',
+                                      LCR_LLM_MODEL=model, LCR_LLM_STREAM='false')))
+        path.with_suffix('.label').write_text('DSH 本地' + name)
+
+
+def dsh_response(data):
+    from runner.storage import save
+    from tools.dsh_local_model import completion
+    path = data / 'dsh-model-requests.json'
+    records = json.loads(path.read_text()) if path.exists() else []
+    lock = threading.Lock()
+
+    def response(body, index):
+        with lock:
+            records.append(dict(model=body['model'], at=time.time(),
+                                sha256=hashlib.sha256(json.dumps(body).encode()).hexdigest()))
+            save(path, records)
+            review_calls = sum(row['model'] == 'dsh-review' for row in records)
+        control = data / 'dsh-model-control.json'
+        deadline = time.monotonic() + 90
+        while control.exists() and time.monotonic() < deadline:
+            settings = json.loads(control.read_text())
+            if body['model'] != 'dsh-review' or review_calls <= settings['hold_after_review_calls']:
+                break
+            time.sleep(.05)
+        return completion(body, index)
+
+    return response
 
 
 if __name__ == '__main__':

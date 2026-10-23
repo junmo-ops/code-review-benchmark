@@ -166,10 +166,14 @@ def _execute(dashboard, task):
         proxy = _import_dashboard(dashboard)
         if task.get("kind") == "repository":
             result = install_repositories(proxy, archive, background=True, progress=progress)
+        elif task.get('kind') == 'skill':
+            from .skill_assets import install as install_skill
+            result = install_skill(proxy, archive, progress)
         else:
             result = install(proxy, archive, progress=progress)
         _update(dashboard, status='succeeded', phase='complete', ended_at=now(),
-                message=result.get('message', '案例集已导入，可新建测评'))
+                message=result.get('message', '案例集已导入，可新建测评'),
+                **{key: result[key] for key in ('skill_version',) if key in result})
     except Exception as error:
         details = dashboard.redact(traceback.format_exc())
         logging.getLogger(__name__).error('资源导入失败 [%s]：\n%s', task['id'], details)

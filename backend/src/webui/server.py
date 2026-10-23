@@ -75,6 +75,10 @@ def handler_for(app, token):
                 return self.send(200, {'csrf_token': token, 'access_role': 'operator'})
             if parsed.path == '/api/state':
                 return self.send(200, app.snapshot())
+            if parsed.path == '/api/skills' or parsed.path.startswith('/api/skills/'):
+                from .skill_assets import response
+                body, mimetype, filename = response(app, parsed.path[12:], query)
+                return self.send(200, body, mimetype, filename)
             if parsed.path == '/api/cases/imports':
                 from .case_import import current
                 return self.send(200, {'task': current(app, query.get('id'))})
@@ -104,7 +108,7 @@ def handler_for(app, token):
 
         def _frontend(self, path):
             root=Path(os.environ.get('BENCH_FRONTEND_DIST', ROOT/'frontend'/'dist')).resolve()
-            pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
+            pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide'}
             normalized=path.rstrip('/') or '/'
             if normalized in pages:
                 index=root/'index.html'
@@ -127,7 +131,7 @@ def handler_for(app, token):
 
         def _frontend(self, path):
             root=Path(os.environ.get('BENCH_FRONTEND_DIST', ROOT/'frontend'/'dist')).resolve()
-            pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
+            pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide'}
             normalized=path.rstrip('/') or '/'
             if normalized in pages:
                 index=root/'index.html'
@@ -215,6 +219,13 @@ def handler_for(app, token):
                 return self.send(202, submit_named(app, request))
             if self.path == '/api/stop':
                 app.stop(request['job'])
+                return self.send(200, {'ok':True})
+            if self.path == '/api/recovery':
+                if request.get('confirmed') is not True:
+                    raise ValueError('请先确认旧任务进程和容器已停止')
+                if not getattr(app, 'queue_mode', False):
+                    raise ValueError('当前工作台没有持久队列')
+                app.acknowledge_recovery(actor='local')
                 return self.send(200, {'ok':True})
             return self.send(404, {'error':'操作不存在'})
 

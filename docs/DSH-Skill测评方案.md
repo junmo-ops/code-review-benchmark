@@ -1,5 +1,9 @@
 # 在现有被测工具中接入 DSH + Skill
 
+## 2026-10-23 运行方式修订
+
+使用者在真实行内 POD 验证非特权 Bubblewrap namespace 创建被拒绝后，明确选择方案 2。新增显式 `pod` 模式：DSH 在现有 POD 内运行，不要求额外 Bubblewrap、RPM 或 namespace 权限；只保留软件工具与路径限制，不声称操作系统级只读、文件或网络隔离。原 `sandbox` 模式保留。两者均冻结运行模式、禁止失败自动降级，更改模式须新建批次；页面、答卷、执行记录和报告必须披露实际模式。此修订优先于下文早期的强制隔离条款，见 [ADR 0002](adr/0002-explicit-pod-dsh-execution.md)及[部署操作单](../deployment/DSH部署操作单.md)。
+
 ## Problem Statement
 
 测评人员希望评估不同代码检视 Skill 的执行效果，但当前工作台没有可在 Linux 上运行、支持用户完整 Skill 包的 DSH 被测工具。已有 Cline + Skill 仅是固定 Skill、Mac 单例适配，不能代替这一需求。
@@ -40,7 +44,7 @@
 20. As a platform operator, I want read-only inspection enforced beyond prompt instructions, so that a Skill cannot modify the case or execute arbitrary project code.
 21. As a platform operator, I want dependency installation, Skill scripts, sub-agents and reviewer web access disabled, so that the first release has an explicit capability boundary.
 22. As a Skill author, I want required but unavailable capabilities reported as unsupported, so that a silently weakened run is not presented as my Skill's quality.
-23. As a platform operator, I want the batch to stop when isolation is unavailable or broken, so that the system never falls back to an unsandboxed review.
+23. As a platform operator, I want the batch to stop when the explicitly selected runtime mode is unavailable or its frozen conditions change, so that sandbox failure never silently falls back to POD execution.
 24. As a benchmark operator, I want a configurable per-case wall-clock limit with a ten-minute default, so that long-running reviews have a predictable boundary.
 25. As a benchmark operator, I want the full selected case list reflected in progress and batch budgeting, so that fifty cases are not treated as one ten-minute task.
 26. As a benchmark operator, I want hidden DSH request and recovery retries disabled, so that a failed attempt is not silently converted into extra cost.
@@ -84,9 +88,9 @@
 - 基线模式明确不加载待测 Skill，但采用相同任务、答卷协议和权限设置。配置、证据及报告须区分基线和加载失败。
 - 隔离个人配置、其他 Skill 与仓库指令的自动注入，禁止跨案例和跨批次记忆；不为去掉指令而改写案例仓库内容。
 - 每案例使用全新会话和隔离工作区。固定并记录执行器版本、Skill 身份、模型、输入、预算、权限、重试及上下文压缩配置。
-- Linux 只读隔离与工具能力限制必须实际生效。首期禁止项目或 Skill 脚本执行、安装依赖、子代理和检视工具联网；受控模型及裁判接口通信不属于检视工具联网。
+- 两种模式均限制可用工具，不开放项目或 Skill 脚本执行、安装依赖、子代理和检视工具联网能力。sandbox 模式另要求 Linux 只读及 namespace 隔离实际生效；pod 模式只能保证软件检查路径，不能声称阻止进程级读写或联网。受控模型及裁判接口通信不属于检视工具联网。
 - 依赖禁用能力的 Skill 标记不支持并留证，不在静默削弱后发布质量分。不能只凭包中存在脚本推断它必须执行脚本。
-- 隔离不可用、失效或冻结条件变化时停止整个批次，不退化为裸跑。不能用提示词、只读文件标志或未验证配置代替隔离验收。
+- 所选运行模式不可用或冻结条件变化时停止整个批次，不自动切换模式。sandbox 的隔离保证不能用提示词、只读文件标志或软件 guard 代替；pod 须明确披露无额外操作系统级沙盒。
 - 案例串行执行，每案例默认检视总时限 10 分钟，沿用现有分钟配置。由平台实现整例监督与进程树终止，单请求超时不替代整例截止；清理耗时单列。
 - 批次预算、任务进度与外层监督按真实案例清单计算，不把五十例共用一个案例时限，也不沿用五例规模的固定估算。
 - 关闭平台 DSH 检视重跑及其内部模型请求、压缩失败和上下文溢出恢复的额外重试。正常工具循环与固定策略的上下文压缩仍计入时间和用量；选定提供方的实际行为必须验证。
@@ -111,7 +115,7 @@
 - 专项契约测试复用现有 Cline + Skill 的答卷完整性和加载证据先例，以及服务端 Agent 的范围校验、脱敏、未知用量与无重复创建先例，覆盖显式注入加载证明、基线、空答卷、缺失结束、格式错误、越界位置和失败状态。
 - 对 reviewer 与进程运行契约做必要的故障注入：使用会产生后代进程的本地受控程序，验证超时、停止、重启、进程树回收、失败证据与无自动重跑；不能仅断言发过终止信号。
 - Linux DSH 与本地模型接口替身联调，核对实际重试次数、压缩恢复行为、整例截止和实际加载日志。只看 patch 或提供方配置值不是生效证明。
-- 隔离专项须真实尝试写入、读取参考材料或其他目录、执行受限代码、联网和委派，验证拒绝及状态归类；测试工具与模型接口保持本地，不访问真实模型服务。
+- sandbox 隔离专项须真实尝试写入、读取其他目录和联网；pod 专项验证真实 DSH 工具/路径拒绝、完整 Skill 加载、模式冻结、独立会话、模型通道和进程树清理，不把软件拒绝等同于 OS 隔离。两种模式都验证受限能力的状态归类，不访问真实模型服务。
 - Skill 资产测试复用现有资源导入及存储契约先例，使用临时目录和本地 COS 替身覆盖安全解包、内容摘要、不可变版本、保存失败不可选、恢复校验、内容冲突及启动失败。
 - 持久化测试复用现有运行备份与长任务恢复先例，验证 DSH 脱敏事件和加载证明进入可恢复材料，临时会话清理后仍可读取，恢复不产生新模型调用。
 - 针对相同 DSH 完整答卷分别走现有原始评分和 Martian，验证配置冻结、协议预算和恢复语义未被 reviewer 替换；同时回归 LCR、服务端 Agent、Cline 与现有多模型创建和执行路由。
@@ -126,7 +130,7 @@
 - 新增专用一对一评分器，或因 reviewer 选择而改变旧协议的裁判轮次、预算、匹配、重试及历史结果。
 - Skill 自主发现或选择能力测评；加载后执行效果是本期目标。
 - 非 AACR 案例集、多轮状态评估、可执行修复验证，以及将单例或五例作为数量白名单。
-- 运行项目或 Skill 脚本、依赖安装、子代理、Reviewer 互联网访问和未隔离执行。
+- 运行项目或 Skill 脚本、依赖安装、子代理、Reviewer 联网工具和未显式选择/未记录运行模式的执行；pod 进程不受 OS 网络隔离这一限制须明确披露。
 - 修改待测 Skill 正文、检视策略或结论，模型重写格式失败的答卷，以及静默降级受限 Skill 后评分。
 - 失败检视自动重跑、服务重启自动续跑、在原批次重测失败检视；所选裁判协议自身已有的显式恢复不属于这一排除。
 - 重复检视采样、置信区间、显著性判断、自动普遍优劣结论及完整官方榜单复现。

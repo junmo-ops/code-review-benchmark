@@ -68,3 +68,7 @@ requirements-container.resolved.txt
 
 # Optional browser regression dependencies
 scripts/e2e/node_modules/
+dependencies/dsh/node_modules/
+
+# Controlled deployment inputs are staged separately; never auto-commit binaries.
+/deployment/offline/dsh/

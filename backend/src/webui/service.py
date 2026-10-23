@@ -266,6 +266,10 @@ class Dashboard:
         score_status, scored_cases = self._score_status(key, cases, summary)
         return dict(key=key, compatibility_warning=self.compatibility(key), name=key.split('/')[-1], suite='mcr' if mcr else cfg.get('suite', {}).get('id', 'aacr'),
                     simulation=cfg.get('simulation',False), reviewer=cfg.get('reviewer', 'lcr'), model=cfg.get('review_model', '—'), judge_model=cfg.get('judge_model', '—'),
+                    skill_mode=cfg.get('skill_mode'), skill_version=cfg.get('skill_version'),
+                    skill_name=cfg.get('skill_identity', {}).get('name'),
+                    dsh_runtime_version=cfg.get('tool_hashes', {}).get('version') if cfg.get('reviewer') == 'dsh_skill' else None,
+                    dsh_runtime_mode=cfg.get('dsh_policy', {}).get('runtime_mode'),
                     evaluator='Martian 一对一（内部）' if (self.run_dir(key)/'comparison-protocol.json').exists() else 'MCR 一对一' if mcr else cfg.get('evaluator', {}).get('id', 'original'),
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
                     status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else score_status,
@@ -454,6 +458,7 @@ class Dashboard:
                     if not case_assets['datasets']:
                         case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
             return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
+                        dsh_runtime_mode=os.environ.get('BENCH_DSH_RUNTIME_MODE', 'sandbox'),
                         active=self.active, case_assets=case_assets, run_storage=run_storage,
                         storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
@@ -465,7 +470,7 @@ class Dashboard:
         run_id = key.split('/')[-1]
         env = self.environment(profile)
         cfg = self.config(key) if init is None else init
-        if cfg.get('reviewer', cfg.get('reviewer_id')) in {'server_agent', 'cline_skill'}:
+        if cfg.get('reviewer', cfg.get('reviewer_id')) in {'server_agent', 'cline_skill', 'dsh_skill'}:
             return self._agent_command(stage, run_id, env, cfg, init, task)
         if key.startswith('ccrab/'):
             return self._ccrab_command(stage, run_id, env, cfg)
@@ -485,12 +490,21 @@ class Dashboard:
         return command+args, env, limit
 
     def _agent_command(self, stage, run_id, env, cfg, init, task):
+        if cfg.get('reviewer', cfg.get('reviewer_id')) == 'dsh_skill':
+            env['BENCH_DSH_OWNER_PID'] = str(os.getpid())
         args=[stage,'--run-id',run_id,'--runs-root',str(self.data/'runs')]
         limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
         if stage == 'eval':
             limit = self._scoring_budget(cfg, self.data/'runs'/run_id)
         if init is not None:
             args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
+            if init['reviewer'] == 'dsh_skill':
+                args += ['--skill-mode', init['skill_mode'],
+                         '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox')]
+                if init.get('skill_version'):
+                    from reviewers.dsh_skill.selection import identity_digest
+                    args += ['--skill-version', init['skill_version'],
+                             '--skill-identity-sha256', identity_digest(init['skill_identity'])]
         if task:args+=['--instance',task]
         if stage=='review':args+=['--external-timeout-seconds',str(limit)]
         return [sys.executable,str(self.root/'backend/src/cloud.py')]+args,env,limit
@@ -572,11 +586,14 @@ class Dashboard:
         limit = batch_budget + 60 * len(items) * attempts
         return limit
 
-    def submit(self, request):
+    def _require_submission_resources(self, request):
         if os.environ.get('BENCH_SERVER_MODE') and os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
             from .case_assets import status
             if not status(self.root, self.data)['ready']:
                 raise ValueError('请先在网页上传并准备至少一份案例 ZIP')
+
+    def submit(self, request):
+        self._require_submission_resources(request)
         action = request.get('action')
         request = dict(request)
         role_config = None
@@ -585,77 +602,48 @@ class Dashboard:
         if type(request.get('start_after_create',False)) is not bool:
             raise ValueError('开始选项必须为布尔值')
         if action == 'create':
-            suite = request.get('suite')
-            entry = next((s for s in self.catalog() if s['id'] == suite), None)
-            enabled = os.environ.get('BENCH_ENABLED_SUITES', '')
-            if enabled and suite not in enabled.split(','):
-                raise ValueError('本部署未启用该案例集')
-            if not entry or request.get('dataset') not in [dataset['id'] for dataset in entry['datasets']]:
-                raise ValueError('案例集与数据清单不匹配')
-            run_id = request.get('name')
-            if not isinstance(run_id, str) or not NAME.fullmatch(run_id):
-                raise ValueError('批次名只支持字母、数字、下划线和短横线，最长 100 字符')
-            key = (suite+'/' if suite in {'mcr','ccrab'} else '')+run_id
-            if self.run_dir(key).exists():
-                raise ValueError('批次名已存在，请使用新名称')
-            reviewer = request.get('reviewer', 'lcr')
-            evaluator = request.get('evaluator', 'martian')
-            if reviewer not in ({'lcr','llm_direct'} if suite == 'mcr' else {'lcr'} if suite=='ccrab' else {'lcr','server_agent','cline_skill'}):
-                raise ValueError('该案例集不支持所选检视对象')
-            if reviewer=='cline_skill' and (suite!='aacr' or request['dataset']!='pilot1.jsonl'):
-                raise ValueError('Cline + Skill 当前仅开放 AACR 单例试跑')
-            if reviewer=='server_agent':
-                from reviewers.server_agent.adapter import load_config
-                try:load_config()
-                except OSError:raise ValueError('请先配置 agent.local.json；参见 docs/服务端Agent接入.md') from None
-            if 'review_profile' in request:
-                from .profiles import compose_roles
-                role_config = compose_roles(self, profile, request.get('judge_profile'), suite!='ccrab')
-            if suite=='ccrab':
-                from executable.dashboard import identity
-                identity(self.root,self.environment(profile))
-                if evaluator!='executable':raise ValueError('c-CRAB 必须使用发布测试')
-            elif evaluator not in {'martian','original'} or (suite == 'codefuse_cr' and evaluator != 'martian'):
-                raise ValueError('该案例集不支持所选裁判')
-            timeout = request.get('timeout_minutes', 10)
-            tokens = request.get('max_tokens', 32768)
-            if type(timeout) is not int or not 1 <= timeout <= 120 or type(tokens) is not int or not 1 <= tokens <= 131072:
-                raise ValueError('超时或输出上限不在允许范围内')
-            case_jobs = request.get('case_jobs', 1)
-            if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
-                raise ValueError('案例并发必须为 1–16 的整数')
-            if (suite in {'mcr','ccrab'} or reviewer != 'lcr') and case_jobs != 1:
-                raise ValueError('案例并发仅适用于单轮 LCR 测评')
-            max_case_retries = request.get('max_case_retries', 1 if reviewer == 'lcr' else 0)
-            if type(max_case_retries) is not int or not 0 <= max_case_retries <= 2:
-                raise ValueError('失败案例自动重试次数必须为 0–2')
-            if reviewer != 'lcr' and max_case_retries:
-                raise ValueError('失败案例自动重试当前仅支持 LCR')
-            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens, case_jobs=case_jobs, max_case_retries=max_case_retries)
+            from .creation import prepare
+            key, spec, role_config = prepare(self, request, profile)
         else:
-            key = request.get('key')
-            self.config(key)
+            key = self._validate_run_action(request)
             spec = None
-            warning = self.compatibility(key)
-            if warning and (action != 'export' or key.startswith('mcr/')):
-                raise ValueError(warning)
-            common = {'check','preview','review','eval','report','export','recover','workflow'}
-            if key.startswith('mcr/'):
-                common = {'check','review','eval','report','export','compare-martian','workflow'}
-            if action not in common:
-                raise ValueError('不支持的操作')
-            if key.startswith('ccrab/'):
-                common={'check','workflow'}
-                if action=='workflow' and not self.describe(key)['can_run']:
-                    raise ValueError('该批次已有执行痕迹；请查看结果或新建批次')
-                if request.get('task') or request.get('retry'):raise ValueError('c-CRAB 单例实验不支持恢复或自动重试')
-            if action not in common:raise ValueError('不支持的操作')
-            if request.get('task') and request['task'] not in {c['id'] for c in self.cases(key)}:
-                raise ValueError('案例不属于本批次')
-            if action == 'workflow' and request.get('task'):
-                raise ValueError('一键检视并评分需要选择全部案例；单例请使用分步检视按钮')
-            if action == 'recover' and not request.get('task'):
-                raise ValueError('请选择要恢复的单个案例')
+        return self._enqueue_submission(request, key, spec, profile, role_config)
+
+    def _validate_run_action(self, request):
+        key, action = request.get('key'), request.get('action')
+        cfg = self.config(key)
+        warning = self.compatibility(key)
+        if warning and (action != 'export' or key.startswith('mcr/')):
+            raise ValueError(warning)
+        common = {'check','preview','review','eval','report','export','recover','workflow'}
+        if key.startswith('mcr/'):
+            common = {'check','review','eval','report','export','compare-martian','workflow'}
+        if key.startswith('ccrab/'):
+            common = self._validate_ccrab_action(key, action, request)
+        if action not in common:
+            raise ValueError('不支持的操作')
+        self._validate_case_action(key, action, request)
+        if cfg.get('reviewer') == 'dsh_skill' and request.get('retry'):
+            raise ValueError('DSH 失败检视须新建批次，不在原批次重跑')
+        return key
+
+    def _validate_ccrab_action(self, key, action, request):
+        if action == 'workflow' and not self.describe(key)['can_run']:
+            raise ValueError('该批次已有执行痕迹；请查看结果或新建批次')
+        if request.get('task') or request.get('retry'):
+            raise ValueError('c-CRAB 单例实验不支持恢复或自动重试')
+        return {'check', 'workflow'}
+
+    def _validate_case_action(self, key, action, request):
+        if request.get('task') and request['task'] not in {c['id'] for c in self.cases(key)}:
+            raise ValueError('案例不属于本批次')
+        if action == 'workflow' and request.get('task'):
+            raise ValueError('一键检视并评分需要选择全部案例；单例请使用分步检视按钮')
+        if action == 'recover' and not request.get('task'):
+            raise ValueError('请选择要恢复的单个案例')
+
+    def _enqueue_submission(self, request, key, spec, profile, role_config):
+        action = request.get('action')
         with self.lock:
             if self.active and not getattr(self,'queue_mode',False):
                 raise ValueError('已有任务执行中。请等待完成或先停止，避免仓库与日志冲突。')
@@ -696,6 +684,8 @@ class Dashboard:
 
     def _continue_partial_review(self, job, steps, index, stage, code, timed_out=False):
         # AACR's evaluator can score complete answers while explicitly excluding failed cases.
+        if (self.run_dir(job['key'])/'dsh-system-error.json').exists():
+            return False
         if (code == 0 and not timed_out) or stage != 'review' or job['action'] not in {'workflow', 'create'}:
             return False
         if job['action'] == 'create' and not job.get('start_after_create'):
