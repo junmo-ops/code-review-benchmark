@@ -65,18 +65,10 @@ tools/dsh_local_model.py
 **/test-results
 **/playwright-report
 
-# Controlled offline inputs are staged here before the devops source upload.
-# They are intentionally git-ignored, but must be in the actual build context.
+# Source producer is published separately; never ship its vendor tree in the benchmark image.
+dependencies/dsh-review-source
+# Historical offline archives are not part of the Git-only deployment path.
 deployment/offline/**
-!deployment/offline/dsh-npm.tar.gz
-!deployment/offline/dsh/
-!deployment/offline/dsh/npm.json
-!deployment/offline/dsh/system.json
-!deployment/offline/dsh/npm-cache/
-!deployment/offline/dsh/npm-cache/_cacache/
-!deployment/offline/dsh/npm-cache/_cacache/**
-!deployment/offline/dsh/rpms/
-!deployment/offline/dsh/rpms/*.rpm
 
 # These exclusions also apply inside any staged input directory.
 **/.env

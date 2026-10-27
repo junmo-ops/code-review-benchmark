@@ -2,7 +2,7 @@
 
 > 第一次部署请先读 [DSH 部署操作单](DSH部署操作单.md)，按机器和操作顺序执行。本页是依赖制品准备、校验原理和验收边界的技术参考，不需要从头读完才能开始。
 
-**2026-10-23 修订：下文 RPM 与 namespace 步骤只适用于显式 `sandbox` 模式。** 使用者已选择 POD 模式，当前 Dockerfile 明确选择 `BENCH_DSH_RUNTIME_MODE=pod` 和单文件 npm 构建输入，不需要 RPM。请按操作单部署，不再照下文要求准备 Bubblewrap。若仍需历史沙盒方式，构建时同时指定 `BENCH_DSH_RUNTIME_MODE=sandbox`、`BENCH_DSH_BUNDLE=deployment/offline/dsh` 及 enabled=1；运行时不能自动降级。
+**历史离线路线，不适用于当前行内 Git 策略和 Dockerfile。** 当前改为独立 headless 源码工程发布内部 npm、测评镜像从公司源获取；只按 [DSH 部署操作单](DSH部署操作单.md) 部署。下文保留历史离线工具和 sandbox 记录，不能再通过传 `BENCH_DSH_BUNDLE` 启用新 Dockerfile，也不要求准备 Bubblewrap/RPM。需要重新启用历史沙盒构建时必须另行配置受控依赖输入，不能自动降级。
 
 本页对应 06 票。固定 `@deepseek-ai/dsh@0.2.1-rc.2`，沿用 `dependencies/dsh/package-lock.json`，不更新版本或 overrides。自动化编译脚本仍为：
 

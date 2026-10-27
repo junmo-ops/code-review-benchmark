@@ -72,3 +72,6 @@ dependencies/dsh/node_modules/
 
 # Controlled deployment inputs are staged separately; never auto-commit binaries.
 /deployment/offline/dsh/
+
+# Full producer inputs are maintained in the independent company npm source repository.
+/dependencies/dsh-review-source/vendor/

@@ -117,7 +117,7 @@ function check() {
   invoke(python, [join(root, "tools/check_project.py")]);
   invoke("npm", ["--prefix", "frontend", "run", "lint"]);
   invoke(process.execPath, [
-    "frontend/node_modules/eslint/bin/eslint.js", "scripts",
+    "frontend/node_modules/eslint/bin/eslint.js", "scripts", "dependencies/dsh-review-source/scripts",
     "--config", "scripts/eslint.config.mjs", "--max-warnings", "0",
   ]);
   invoke("npm", ["--prefix", "frontend", "run", "typecheck"]);
@@ -126,7 +126,11 @@ function verify() {
   check();
   invoke(process.execPath, [
     "--test", "scripts/check-dependencies.test.mjs", "scripts/npm-registry.test.mjs",
+    "scripts/dsh/registry-audit.test.mjs",
+    "scripts/dsh/source-closure.test.mjs",
+    "dependencies/dsh-review-source/scripts/source.test.mjs",
   ]);
+  invoke(python, ["-m", "unittest", "discover", "-s", "backend/tests", "-p", "test_dsh_release.py", "-v"]);
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
   invoke("git", ["diff", "--check"]);
   invoke("git", ["diff", "--cached", "--check"]);

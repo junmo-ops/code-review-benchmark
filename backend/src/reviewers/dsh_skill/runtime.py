@@ -94,7 +94,16 @@ def identity():
         raise IsolationError('此 DSH 锁定依赖要求 Node >=22.19.0')
     sources = sorted(Path(__file__).parent.glob('*.py')) + [PROJECT_ROOT / 'scripts/dsh' / name
                                                           for name in ('bridge.mjs', 'compaction.mjs', 'scope.mjs', 'candidate.mjs')]
+    distribution = {}
+    if (RUNTIME / 'headless-distribution.json').exists():
+        from deployment.dsh_release_validation import validate_installed
+        distribution = validate_installed(RUNTIME)
+        if not node_version.startswith('v22.22.'):
+            raise IsolationError('Headless DSH runtime requires Node 22.22.x')
+        sources += [PROJECT_ROOT / 'backend/src/deployment/dsh_release_validation.py',
+                    RUNTIME / 'headless-release.json']
     return dict(version=actual, runtime_mode=runtime_mode(), os_isolation=runtime_mode() == 'sandbox',
+                distribution=distribution,
                 package_lock_sha256=sha(RUNTIME / 'package-lock.json'),
                 node_version=node_version,
                 node_sha256=sha(node()), installed_sha256=installed_identity(),

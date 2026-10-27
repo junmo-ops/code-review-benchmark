@@ -1,0 +1,21 @@
+{
+  "name": "@LV01.38/dsh-review-runtime",
+  "version": "0.2.1-rc.2-review.2",
+  "description": "Internal Linux headless review runtime, based on DSH 0.2.1-rc.2",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "22.9.x || 22.22.x"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "THIRD_PARTY_NOTICES.txt"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test scripts/source.test.mjs",
+    "prepack": "node scripts/check-dist.mjs",
+    "prepublishOnly": "node scripts/check-dist.mjs"
+  }
+}

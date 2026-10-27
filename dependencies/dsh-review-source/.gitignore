@@ -1,0 +1,6 @@
+/dist/
+/node_modules/
+*.tgz
+/.dsh-review-build-*/
+# Upstream readable JS may live in directories named dist, bin or runtime.
+!/vendor/**

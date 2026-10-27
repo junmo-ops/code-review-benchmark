@@ -54,7 +54,22 @@ def matches(values, actual):
                           (actual in values or all(value.startswith('!') for value in values)))
 
 
-def check_install(prefix):
+def check_install(prefix, *, expected_headless=None):
+    if (prefix / 'headless-distribution.json').exists():
+        from .dsh_release_validation import validate_installed
+        release = validate_installed(prefix, expected_headless)
+        if not run(['node', '--version']).startswith('v22.22.'):
+            raise ValueError('Headless DSH runtime requires Node 22.22.x')
+        with tempfile.TemporaryDirectory(prefix='dsh-target-env-') as home:
+            env = dict(PATH=os.environ['PATH'], HOME=home, LANG='C.UTF-8')
+            result = json.loads(run(['node', str(prefix / 'headless-target-check.mjs'), str(prefix)], env=env))
+        if result.get('status') != 'passed' or not result.get('node', '').startswith('22.22.'):
+            raise ValueError('Target runtime check did not pass')
+        return dict(check_executables(prefix), target_validation=result, **release)
+    return check_full_install(prefix)
+
+
+def check_full_install(prefix):
     lock = json.loads((RUNTIME / 'package-lock.json').read_text())
     count = 0
     for path, package in lock['packages'].items():
@@ -64,13 +79,17 @@ def check_install(prefix):
         if not installed.is_file() or json.loads(installed.read_text())['version'] != package['version']:
             raise ValueError('missing/wrong-version locked dependency: ' + path)
         count += 1
+    return dict(check_executables(prefix), locked_packages=count)
+
+
+def check_executables(prefix):
     version = run(['node', str(prefix / 'node_modules/@deepseek-ai/dsh/lib/bin.js'), '--version'])
     if version != VERSION:
         raise ValueError('installed DSH version mismatch: ' + version)
     # Exercise the native grep binary used by the permitted read-only tools, not only JS metadata.
     script = "import {rgPath} from '@vscode/ripgrep'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(rgPath,['--version'],{encoding:'utf8'}));"
     grep = run(['node', '--input-type=module', '-e', script], cwd=prefix)
-    return dict(version=version, locked_packages=count, node=run(['node', '--version']), ripgrep=grep)
+    return dict(version=version, node=run(['node', '--version']), ripgrep=grep)
 
 
 def prepare(bundle):
