@@ -59,6 +59,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def log_message(self, *args):
+        # Tests inspect server.requests; keep routine fixture HTTP logs off stderr.
         pass
 
 

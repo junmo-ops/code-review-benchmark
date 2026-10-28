@@ -38,6 +38,7 @@ def handler_for(store):
         protocol_version = 'HTTP/1.1'
 
         def log_message(self, *args):
+            # store.record captures allowlisted request evidence instead of stderr logs.
             pass
 
         def respond(self, status, body=b'', headers=None):

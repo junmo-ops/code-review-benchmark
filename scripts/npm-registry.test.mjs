@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { companyLock } from './company-npm-lock.mjs';
 
 const execute = promisify(execFile);
 const name = '@registry-switch/fixture';
@@ -67,6 +68,22 @@ async function install(context, url) {
   });
 }
 
+async function variant(context, content) {
+  const folder = await mkdtemp(join(context.root, 'variant-'));
+  await writeFile(join(folder, 'package.json'), JSON.stringify({ name, version: '1.0.0' }));
+  await writeFile(join(folder, 'index.js'), content);
+  const result = await execute('npm', ['pack', '--json', '--ignore-scripts'], {
+    cwd: folder, env: context.env, timeout: 15000,
+  });
+  return readFile(join(folder, JSON.parse(result.stdout)[0].filename));
+}
+
+function approval(context, url, archive) {
+  return { schema: 1, registry: url, artifacts: [{ location: `node_modules/${name}`, version: '1.0.0',
+    baseIntegrity: context.lock.packages[`node_modules/${name}`].integrity,
+    integrity: 'sha512-' + createHash('sha512').update(archive).digest('base64') }] };
+}
+
 for (const [label, prefix] of [['external', '/npm/'], ['corporate', '/artifactory/api/npm/group-npm/']]) {
   test(`npm ci fetches locked scoped packages only from the selected ${label} mirror`, {
     skip: process.platform === 'win32', timeout: 30000,
@@ -92,4 +109,52 @@ test('a selected mirror cannot bypass the locked integrity', {
     return true;
   });
   assert.ok(mirror.requests.length > 0);
+});
+
+test('corporate approval selects its exact artifact even when the public variant is cached', {
+  skip: process.platform === 'win32', timeout: 30000,
+}, async (t) => {
+  const context = await fixture(t);
+  const external = await registry(t, '/npm/', context.archive);
+  await install(context, external.url);
+  const archive = await variant(context, 'module.exports = 43;\n');
+  const corporate = await registry(t, '/artifactory/api/npm/group-npm/', archive);
+  const original = JSON.stringify(context.lock);
+  const policy = approval(context, corporate.url, archive);
+  const prepared = companyLock(context.lock, policy, corporate.url);
+  assert.equal(JSON.stringify(context.lock), original);
+  context.lock = prepared;
+  await install(context, corporate.url);
+  assert.equal(await readFile(join(context.app, 'node_modules', name, 'index.js'), 'utf8'),
+    'module.exports = 43;\n');
+  assert.ok(corporate.requests.length > 0);
+  assert.ok(corporate.requests.every(url => decodeURIComponent(url).startsWith('/artifactory/api/npm/group-npm/')));
+});
+
+test('a clean install accepts the exact approved corporate artifact without changing its version', {
+  skip: process.platform === 'win32', timeout: 30000,
+}, async (t) => {
+  const context = await fixture(t);
+  const archive = await variant(context, 'module.exports = 43;\n');
+  const corporate = await registry(t, '/artifactory/api/npm/group-npm/', archive);
+  context.lock = companyLock(context.lock, approval(context, corporate.url, archive), corporate.url);
+  await install(context, corporate.url);
+  const installed = JSON.parse(await readFile(join(context.app, 'node_modules', name, 'package.json'), 'utf8'));
+  assert.equal(installed.version, '1.0.0');
+  assert.equal(await readFile(join(context.app, 'node_modules', name, 'index.js'), 'utf8'),
+    'module.exports = 43;\n');
+});
+
+test('corporate approval still rejects a different unapproved artifact', {
+  skip: process.platform === 'win32', timeout: 30000,
+}, async (t) => {
+  const context = await fixture(t);
+  const approved = await variant(context, 'module.exports = 43;\n');
+  const unapproved = await variant(context, 'module.exports = 44;\n');
+  const corporate = await registry(t, '/artifactory/api/npm/group-npm/', unapproved);
+  context.lock = companyLock(context.lock, approval(context, corporate.url, approved), corporate.url);
+  await assert.rejects(install(context, corporate.url), error => {
+    assert.match(error.stderr, /EINTEGRITY/);
+    return true;
+  });
 });

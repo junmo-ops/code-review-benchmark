@@ -104,6 +104,6 @@ export async function skillPersistence({ page, fixtures, restart }) {
   await writeFile(resolve(fixtures, '../../skill-persistence.json'), JSON.stringify({
     milliseconds: Date.now() - started, failure, runBackupFaultMilliseconds: faultDuration,
     callsBeforeReplacement: calls, callsAfterRestoreAndView: await requestCount(data),
-    boundary: 'Filesystem S3 substitute, native Linux DSH, loopback models/judges, service restart and confirmed-data replacement; no real COS or models, no Docker image acceptance.',
+    boundary: 'Filesystem S3 substitute ignoring conditional headers, append-only Skill publications, native Linux DSH, loopback models/judges, service restart and confirmed-data replacement; no real COS or models, no Docker image acceptance.',
   }, null, 2));
 }

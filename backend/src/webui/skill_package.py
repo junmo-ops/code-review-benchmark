@@ -8,7 +8,7 @@ import stat
 import zipfile
 from urllib.parse import unquote, urlsplit
 
-import mistune
+from markdown_it import MarkdownIt
 import yaml
 
 from .case_upload import _positive_setting, size_label
@@ -139,9 +139,11 @@ def _extract(source, entries, main, destination, progress):
 
 def _links(tokens):
     for token in tokens:
-        if token['type'] in {'link', 'image'}:
-            yield token['attrs']['url']
-        yield from _links(token.get('children', []))
+        if token.type == 'link_open':
+            yield token.attrGet('href')
+        elif token.type == 'image':
+            yield token.attrGet('src')
+        yield from _links(token.children or [])
 
 
 def verify_metadata(content, record):
@@ -154,13 +156,14 @@ def verify_metadata(content, record):
 
 
 def _validate_references(destination, main, entries):
-    parser = mistune.create_markdown(renderer=None)
+    # Inspect CommonMark tokens only; raw HTML is never rendered or executed here.
+    parser = MarkdownIt('commonmark')
     root = PurePosixPath(main).parent.as_posix()
     for name in entries:
         if not name.lower().endswith('.md'):
             continue
         text = (destination / name).read_text(encoding='utf-8-sig')
-        for link in _links(parser(text)):
+        for link in _links(parser.parse(text)):
             url = urlsplit(link)
             if url.scheme or url.netloc or not url.path:
                 continue

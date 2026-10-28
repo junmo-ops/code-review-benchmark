@@ -126,6 +126,7 @@ function verify() {
   check();
   invoke(process.execPath, [
     "--test", "scripts/check-dependencies.test.mjs", "scripts/npm-registry.test.mjs",
+    "scripts/company-npm-lock.test.mjs",
     "scripts/dsh/registry-audit.test.mjs",
     "scripts/dsh/source-closure.test.mjs",
     "dependencies/dsh-review-source/scripts/source.test.mjs",

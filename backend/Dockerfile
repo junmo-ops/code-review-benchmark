@@ -6,10 +6,12 @@ RUN mkdir -p /node-runtime/bin && cp -L "$(command -v node)" /node-runtime/bin/n
     && cp -a "$(dirname "$(dirname "$(readlink -f "$(command -v npm)")")")" /node-runtime/npm
 RUN npm install --prefix /lcr-runtime --registry="$NPM_REGISTRY" --ignore-scripts --no-audit --no-fund "@LV01.30/leancode-code-review-cli@$LCR_VERSION"
 WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
+COPY scripts/company-npm-lock.mjs /build-tools/company-npm-lock.mjs
+COPY frontend/package.json frontend/package-lock.json frontend/npm-company-artifacts.json ./
+RUN node /build-tools/company-npm-lock.mjs --registry="$NPM_REGISTRY" \
+    && npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
 COPY frontend/ ./
-RUN npm run build
+RUN node /build-tools/company-npm-lock.mjs --registry="$NPM_REGISTRY" && npm run build
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1
 USER root

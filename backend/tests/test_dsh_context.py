@@ -24,7 +24,9 @@ class SourceReleaseBuildContextTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             context = exported / 'context'
             for name in ('dependencies/dsh/headless-release.json', 'dependencies/dsh/package-lock.json',
-                         'backend/src/deployment/dsh_release.py', 'backend/src/deployment/dsh_release_validation.py'):
+                         'backend/src/deployment/dsh_release.py', 'backend/src/deployment/dsh_release_validation.py',
+                         'backend/src/webui/skill_append.py', 'backend/src/webui/skill_restore.py',
+                         'scripts/company-npm-lock.mjs', 'frontend/npm-company-artifacts.json'):
                 self.assertEqual(hashlib.sha256((context / name).read_bytes()).hexdigest(),
                                  hashlib.sha256((ROOT / name).read_bytes()).hexdigest())
             for name in ('.git', '.venv', '.scratch', 'output', 'backend/tests', 'scripts/e2e',

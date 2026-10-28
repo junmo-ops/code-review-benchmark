@@ -11,7 +11,7 @@ def configure(stack, data, root):
     spec = importlib.util.spec_from_file_location('local_cos', root / 'backend/tests/local_cos.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    remote = module.LocalCOS(data.parent / 'local-cos')
+    remote = module.LocalCOS(data.parent / 'local-cos', ignore_conditions=True)
     os.environ.update(BENCH_CASE_STORAGE_MODE='cos', BENCH_RUN_STORAGE_MODE='cos',
                       BENCH_CASE_S3_ACCESS_KEY_ID='local', BENCH_CASE_S3_SECRET_ACCESS_KEY='local-only')
     stack.enter_context(patch('webui.case_storage.CaseArchiveStorage._create_client', return_value=remote))

@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "registry": "http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/",
+  "authority": "User-confirmed company registry artifacts are authoritative for company image builds.",
+  "artifacts": [
+    {
+      "location": "node_modules/@eslint/object-schema",
+      "version": "2.1.7",
+      "baseIntegrity": "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA==",
+      "integrity": "sha512-feVjvqSEsEdtpW6rtELa7l2XzxBGJoJVm2e+8MMURSQ2tJADyWDHZ4aEHCrVKyMokF3obL2X3SSfmxK/PWCu3A==",
+      "archiveBytes": 11105,
+      "payloadFingerprint": "4173c9a75361256efe1a9f0b1e4e60b9cbcb785516eb54af08a0ee88368a17a0",
+      "observedAt": "2026-10-27",
+      "boundary": "Reported by the user from a fresh company-registry download; not assumed identical to the public npm artifact."
+    }
+  ]
+}

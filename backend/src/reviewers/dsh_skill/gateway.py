@@ -94,6 +94,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, *args):
+        # Structured, redacted evidence is saved above; avoid raw HTTP stderr logs.
         pass
 
 

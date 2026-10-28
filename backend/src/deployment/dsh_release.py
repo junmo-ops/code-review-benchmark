@@ -2,18 +2,33 @@
 import argparse
 import base64
 import hashlib
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
+import time
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from reviewers.dsh_skill.runtime import RUNTIME
 from .dsh_npm import check_host, check_install, copy_inputs
 from .dsh_release_validation import expected_release, relative, validate_package
+
+MAX_ARCHIVE_BYTES = 256 * 1024**2
+DOWNLOAD_SECONDS = 180
+SOCKET_TIMEOUT = 30
+
+
+class NoArchiveRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Only the approved metadata URL may supply bytes, not an unchecked redirect target.
+        return None
 
 
 def unpack(archive, destination):
@@ -90,22 +105,76 @@ def artifact_url(value, registry):
     return value
 
 
+def _archive_length(response):
+    length = response.headers.get('Content-Length')
+    if length is None:
+        return None
+    if not length.isdecimal() or int(length) > MAX_ARCHIVE_BYTES:
+        raise ValueError('invalid/oversized internal npm archive Content-Length')
+    return int(length)
+
+
+def _copy_archive(response, output, integrity, started):
+    length = _archive_length(response)
+    total, report_at = 0, 16 * 1024**2
+    digest = hashlib.sha512()
+    while chunk := response.read1(1024 * 1024):
+        total += len(chunk)
+        if time.monotonic() - started > DOWNLOAD_SECONDS:
+            raise ValueError('internal npm archive download exceeded time budget')
+        if total > MAX_ARCHIVE_BYTES:
+            raise ValueError('internal npm archive exceeds download size limit')
+        output.write(chunk)
+        digest.update(chunk)
+        if total >= report_at:
+            print(f'Headless DSH: downloaded {total} bytes', file=sys.stderr, flush=True)
+            report_at += 16 * 1024**2
+    if length is not None and length != total:
+        raise ValueError('internal npm archive download is truncated')
+    actual = 'sha512-' + base64.b64encode(digest.digest()).decode('ascii')
+    if actual != integrity:
+        raise ValueError('internal npm archive integrity mismatch')
+    return total
+
+
+def download(directory, url, registry, integrity):
+    url = artifact_url(url, registry)
+    archive = directory / 'internal-runtime.tgz'
+    if archive.exists():
+        raise ValueError('internal npm archive destination already exists')
+    started = time.monotonic()
+    print('Headless DSH: downloading approved archive directly (no npm pack)', file=sys.stderr, flush=True)
+    request = Request(url, headers={'Accept-Encoding': 'identity'})
+    try:
+        with tempfile.TemporaryDirectory(prefix='.archive-', dir=directory) as temporary:
+            partial = Path(temporary) / 'runtime.tgz'
+            with build_opener(NoArchiveRedirect()).open(request, timeout=SOCKET_TIMEOUT) as response:
+                if response.status != 200 or response.headers.get('Content-Encoding', 'identity') != 'identity':
+                    raise ValueError('unexpected internal npm archive HTTP response')
+                with partial.open('xb') as output:
+                    total = _copy_archive(response, output, integrity, started)
+            partial.rename(archive)
+    except HTTPError as error:
+        error.close()
+        raise ValueError(f'internal npm archive HTTP {error.code}; no npm credentials forwarded, '
+                         'redirects and public fallback disabled') from None
+    except (OSError, HTTPException):
+        raise ValueError('internal npm archive network/read failed; no public fallback') from None
+    print(f'Headless DSH: verified {total} archive bytes in {time.monotonic() - started:.1f}s',
+          file=sys.stderr, flush=True)
+    return archive
+
+
 def fetch(directory, registry):
     release = expected_release()
+    print('Headless DSH: reading fixed internal npm metadata', file=sys.stderr, flush=True)
     metadata = npm_json(directory, registry, release,
                         ['view', release['name'] + '@' + release['version'], 'version', 'dist'])
     if metadata['version'] != release['version']:
         raise ValueError('internal npm metadata version mismatch')
     url = artifact_url(metadata['dist']['tarball'], registry)
-    # Fetch the checked corporate URL only, never resolve runtime dependencies or execute hooks.
-    records = npm_json(directory, registry, release, ['pack', url])
-    if len(records) != 1 or Path(records[0]['filename']).name != records[0]['filename']:
-        raise ValueError('unexpected npm pack result')
-    archive = directory / records[0]['filename']
-    with archive.open('rb') as handle:
-        integrity = 'sha512-' + base64.b64encode(hashlib.file_digest(handle, 'sha512').digest()).decode('ascii')
-    if integrity != metadata['dist']['integrity']:
-        raise ValueError('internal npm archive integrity mismatch')
+    archive = download(directory, url, registry, metadata['dist']['integrity'])
+    print('Headless DSH: inspecting and extracting verified archive', file=sys.stderr, flush=True)
     return unpack(archive, directory / 'unpacked')
 
 

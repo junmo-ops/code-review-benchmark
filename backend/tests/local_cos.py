@@ -14,10 +14,12 @@ class Body(io.BytesIO):
 
 
 class LocalCOS:
-    def __init__(self, root):
+    def __init__(self, root, *, ignore_conditions=False):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
+        self.put_keys = []
+        self.ignore_conditions = ignore_conditions
 
     def control(self):
         path = self.root / 'fault.json'
@@ -37,6 +39,7 @@ class LocalCOS:
     def put_object(self, Bucket, Key, Body, Metadata=None, **kwargs):
         self._fault('put', Key)
         with self.lock:
+            self.put_keys.append(Key)
             return self._put(Bucket, Key, Body, Metadata, kwargs)
 
     def _put(self, bucket, key, body, metadata, options):
@@ -45,11 +48,13 @@ class LocalCOS:
         if self.control().get('conflict') and key.endswith(self.control()['conflict']):
             path.write_bytes(b'concurrent immutable object')
             path.with_name(path.name + '.metadata').write_text('{}')
-        if options.get('IfNoneMatch') == '*' and path.exists():
+        if not self.ignore_conditions and options.get('IfNoneMatch') == '*' and path.exists():
             raise ClientError({'Error': {'Code': 'PreconditionFailed'},
                                'ResponseMetadata': {'HTTPStatusCode': 412}}, 'PutObject')
         path.write_bytes(body.read() if hasattr(body, 'read') else body)
         path.with_name(path.name + '.metadata').write_text(json.dumps(metadata or {}))
+        if self.control().get('corrupt_after_put') and key.endswith(self.control()['corrupt_after_put']):
+            path.write_bytes(b'concurrent immutable object')
         self._fault('put_response', key)
         return {'ResponseMetadata': {'HTTPStatusCode': 200}}
 

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import tempfile
 import stat
+import subprocess
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -114,6 +116,70 @@ class SkillAssetApiTests(unittest.TestCase):
         main = b'---\nname: first\nname: second\ndescription: Duplicate metadata\n---\nReview.\n'
         self.assertEqual(self.upload(package([('SKILL.md', main)]))['status'], 'failed')
         self.assertEqual(self.request('/api/skills').json['versions'], [])
+
+    def test_markdown_reference_forms_preserve_original_bytes(self):
+        body = b'''Read [inline](references/rules.txt) and [reference][rules].
+![image](references/image.png)
+[![linked image](references/image.png)](references/rules.txt)
+[shortcut] and ![picture][picture].
+[space](references/space%20name.txt#section)
+[paren](references/file\\(name\\).txt)
+[external](https://example.invalid/missing) [anchor](#section)
+`[not a resource](missing-inline.txt)`
+```
+![not a resource](missing-code.png)
+```
+<div>
+[not markdown](missing-html.txt)
+</div>
+
+[rules]: references/rules.txt
+[shortcut]: references/rules.txt
+[picture]: references/image.png
+'''
+        main = MAIN + body
+        entries = [('SKILL.md', main), ('references/rules.txt', b'rules'),
+                   ('references/image.png', b'opaque image'),
+                   ('references/space name.txt', b'space'), ('references/file(name).txt', b'paren'),
+                   ('references/notes.MD', b'[relative](rules.txt)')]
+        original = package([('review/' + name, data) for name, data in entries])
+        self.assertEqual(self.upload(original)['status'], 'succeeded')
+        version = self.request('/api/skills').json['versions'][0]
+        base = '/api/skills/' + version['id']
+        self.assertEqual(self.request(base + '/archive').data, original)
+        self.assertEqual(self.request(base + '/file?path=review/SKILL.md').data, main)
+
+    def test_missing_and_escaping_markdown_references_are_not_published(self):
+        bodies = [b'[link](missing.txt)', b'![image](missing.png)',
+                  b'[reference][r]\n\n[r]: missing.txt', b'![reference][r]\n\n[r]: missing.png',
+                  b'[shortcut]\n\n[shortcut]: missing.txt',
+                  b'[![nested](missing.png)](references/rules.txt)',
+                  b'[escape](../../outside.txt)', b'[encoded](%2e%2e/outside.txt)',
+                  b'[absolute](/review/references/rules.txt)']
+        for body in bodies:
+            with self.subTest(markdown=body):
+                archive = package([('review/SKILL.md', MAIN + body),
+                                   ('review/references/rules.txt', b'rules')])
+                task = self.upload(archive)
+                self.assertEqual(task['status'], 'failed')
+                self.assertIn('本地引用资源', task['message'])
+                self.assertEqual(self.request('/api/skills').json['versions'], [])
+        archive = package([('review/SKILL.md', MAIN),
+                           ('review/references/rules.txt', b'rules'),
+                           ('review/references/notes.md', b'[escape](../../outside.txt)')])
+        self.assertEqual(self.upload(archive)['status'], 'failed')
+
+    def test_unmatched_brackets_complete_within_bounded_subprocess(self):
+        archive = Path(self.temp.name) / 'brackets.zip'
+        archive.write_bytes(package([('SKILL.md', MAIN + b'[' * 12800),
+                                     ('references/rules.txt', b'rules')]))
+        # A subprocess bounds the regression even if a future parser blocks its caller.
+        script = ('from pathlib import Path; import sys; from webui.skill_package import unpack; '
+                  'unpack(Path(sys.argv[1]), Path(sys.argv[2]), lambda *args: None)')
+        result = subprocess.run([sys.executable, '-c', script, str(archive),
+                                 str(Path(self.temp.name) / 'unpacked')],
+                                capture_output=True, text=True, timeout=5, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_unsafe_archives_are_rejected_without_publishing_versions(self):
         link = zipfile.ZipInfo('linked')

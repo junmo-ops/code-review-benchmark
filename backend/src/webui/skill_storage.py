@@ -1,18 +1,14 @@
 """Skill assets on the existing resource COS connection, separate from run backup."""
 import hashlib
-import io
 import json
 from pathlib import Path
 import tempfile
 
 from .case_storage import CaseAssetStorage, _sha256
 from .service import save
+from .skill_append import encoded as _encoded
 
 MAX_RECORD_BYTES = 4 * 1024 * 1024
-
-
-def _encoded(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True).encode('utf-8')
 
 
 class SkillAssetStorage(CaseAssetStorage):
@@ -34,63 +30,34 @@ class SkillAssetStorage(CaseAssetStorage):
                 return None
             raise RuntimeError('无法确认 Skill COS 对象状态') from None
 
-    def _immutable(self, key, stream, size, digest, content_type):
-        self._require_conditional_writes()
-        head = self._head(key)
-        if head is not None:
-            if head.get('ContentLength') != size or head.get('Metadata', {}).get('sha256') != digest:
-                raise RuntimeError('Skill COS 不可变内容冲突，拒绝覆盖')
-            return
-        try:
-            self.client.put_object(Bucket=self.bucket, Key=key, Body=stream, ContentLength=size,
-                                   ContentType=content_type, Metadata={'sha256': digest}, IfNoneMatch='*')
-        except Exception:
-            # A lost response or a concurrent identical import can still be confirmed.
-            pass
-        # Confirmation is HEAD size/digest metadata, not a full downloaded readback.
-        head = self._head(key)
-        if head is None or head.get('ContentLength') != size or head.get('Metadata', {}).get('sha256') != digest:
-            raise RuntimeError('Skill 资源未能可靠保存到 COS，或不可变内容冲突；版本不可选，请重传同一 ZIP')
-
-    def _require_conditional_writes(self):
-        if not getattr(self, '_conditional_writes_checked', False):
-            from .conditional_storage import require_atomic_create
-            require_atomic_create(self.client, self.bucket, self.skill_prefix)
-            self._conditional_writes_checked = True
-
-    def _archive(self, identifier, path):
-        digest = _sha256(path)
-        key = self._key_for(identifier, 'archives/' + digest + '.zip')
-        with path.open('rb') as stream:
-            self._immutable(key, stream, path.stat().st_size, digest, 'application/zip')
-        return dict(sha256=digest, size=path.stat().st_size)
-
     def store_version(self, folder, record):
-        archive = dict(sha256=record['archive_sha256'], size=(folder / 'package.zip').stat().st_size)
-        value = dict(format='skill-assets-v1', manifest=record, archive=archive)
-        raw = _encoded(value)
-        if len(raw) > MAX_RECORD_BYTES:
-            raise RuntimeError('Skill COS 版本记录超过恢复上限 4 MiB；请缩短包内路径或减少文件数')
-        if self._archive(record['id'], folder / 'package.zip') != archive:
+        from .skill_append import publish
+        from .skill_restore import check_identities, read_entries
+        if _sha256(folder / 'package.zip') != record['archive_sha256']:
             raise RuntimeError('Skill 原包在保存期间变化，拒绝发布')
-        self._immutable(self._key_for(record['id'], 'record.json'), io.BytesIO(raw), len(raw),
-                        hashlib.sha256(raw).hexdigest(), 'application/json')
-        self._commit_record(record['id'], value)
-
-    def _commit_record(self, identifier, value):
-        commit = dict(format='skill-commit-v1', id=identifier,
-                      record_sha256=hashlib.sha256(_encoded(value)).hexdigest())
-        raw = _encoded(commit)
-        key = self._key_for(identifier, 'commit.json')
-        if self._head(key) is not None and self._read_record(key) != commit:
-            raise RuntimeError('Skill COS 不可变保存记录冲突')
-        self._immutable(key, io.BytesIO(raw), len(raw), hashlib.sha256(raw).hexdigest(), 'application/json')
+        _, entries = read_entries(self)
+        check_identities(entries, record)
+        originals = list((self.data / 'skill-assets/archives' / record['id']).glob('*.zip'))
+        for path in originals:
+            self._verify_original_content(path, record)
+        retained = {item['archive']['sha256'] for item in entries if item['id'] == record['id']}
+        complete = all(_sha256(path) in retained for path in originals)
+        if not complete or not any(item['kind'] == 'version' and item['value']['manifest'] == record for item in entries):
+            publish(self, folder / 'package.zip', record, 'version', originals)
+        check_identities(read_entries(self)[1], record)
 
     def store_repacked(self, identifier, path):
-        record = self._archive(identifier, path)
-        raw = _encoded(record)
-        key = self._key_for(identifier, 'originals/' + record['sha256'] + '.json')
-        self._immutable(key, io.BytesIO(raw), len(raw), hashlib.sha256(raw).hexdigest(), 'application/json')
+        from .skill_append import publish
+        from .skill_restore import check_identities, read_entries
+        record = json.loads((self.data / 'skill-assets/versions' / identifier / 'manifest.json').read_text())
+        self._verify_original_content(path, record)
+        _, entries = read_entries(self)
+        check_identities(entries, record)
+        if not any(item['id'] == identifier and item['kind'] == 'version' for item in entries):
+            raise RuntimeError('Skill COS 追加原包前必须先确认主版本')
+        digest = _sha256(path)
+        if not any(item['id'] == identifier and item['archive']['sha256'] == digest for item in entries):
+            publish(self, path, record, 'original')
 
     def confirm_local(self, record):
         save(self.data / 'skill-assets/confirmed' / (record['id'] + '.json'),
@@ -98,7 +65,10 @@ class SkillAssetStorage(CaseAssetStorage):
 
     def _read_record(self, key):
         response = self.client.get_object(Bucket=self.bucket, Key=key)
-        raw = response['Body'].read(MAX_RECORD_BYTES + 1)
+        try:
+            raw = response['Body'].read(MAX_RECORD_BYTES + 1)
+        finally:
+            response['Body'].close()
         if (len(raw) > MAX_RECORD_BYTES or response.get('ContentLength') != len(raw)
                 or response.get('Metadata', {}).get('sha256') != hashlib.sha256(raw).hexdigest()):
             raise RuntimeError('Skill COS 记录摘要校验失败')
@@ -110,28 +80,11 @@ class SkillAssetStorage(CaseAssetStorage):
                       for item in page.get('Contents', []))
 
     def restore(self, dashboard):
-        from .skill_assets import IDENTIFIER
+        from .skill_restore import restore_all
         try:
-            keys = self._keys()
-            records = [key for key in keys if key.endswith('/record.json')]
-            if records:
-                self._require_conditional_writes()
-            available = {key[len(self.skill_prefix):].split('/')[0] for key in records}
-            for key in keys:
-                if key.endswith('/commit.json'):
-                    identifier = key[len(self.skill_prefix):].split('/')[0]
-                    if key != self._key_for(identifier, 'commit.json') or identifier not in available:
-                        raise RuntimeError('Skill COS 已确认版本记录缺失，停止恢复')
-            for receipt in (self.data / 'skill-assets/confirmed').glob('*.json'):
-                if receipt.stem not in available:
-                    raise RuntimeError('Skill COS 版本记录缺失，停止恢复')
-            for key in records:
-                identifier = key[len(self.skill_prefix):].split('/')[0]
-                if not IDENTIFIER.fullmatch(identifier) or key != self._key_for(identifier, 'record.json'):
-                    raise RuntimeError('Skill COS 版本路径无效')
-                self._restore_version(dashboard, identifier, self._read_record(key), keys)
+            count = restore_all(self, dashboard)
             self._verify_references(dashboard)
-            return len(records)
+            return count
         except Exception as error:
             raise RuntimeError('Skill 资产恢复失败，服务未启动：' + str(error)) from error
 
@@ -149,7 +102,7 @@ class SkillAssetStorage(CaseAssetStorage):
             if identity(dashboard, reference['skill_version']) != reference['skill_identity']:
                 raise RuntimeError('Skill 恢复内容与历史批次或排队身份冲突')
 
-    def _download_archive(self, identifier, record, target):
+    def _download_archive(self, identifier, record, target, key=None):
         from .skill_package import limits
         from .skill_assets import IDENTIFIER
         digest, size = record['sha256'], record['size']
@@ -159,9 +112,20 @@ class SkillAssetStorage(CaseAssetStorage):
         if target.exists() and (target.is_symlink() or not target.is_file()
                                 or target.stat().st_size != size or _sha256(target) != digest):
             raise RuntimeError('Skill 本地不可变原包冲突，拒绝覆盖')
-        self._download_object(self._key_for(identifier, 'archives/' + digest + '.zip'), target, size, digest)
+        if key is None:
+            self._download_object(self._key_for(identifier, 'archives/' + digest + '.zip'), target, size, digest)
+        elif not target.exists():
+            from .skill_append import read_verified
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(target.name + '.part')
+            try:
+                with temporary.open('xb') as output:
+                    read_verified(self, dict(key=key, size=size, sha256=digest), output=output)
+                temporary.replace(target)
+            finally:
+                temporary.unlink(missing_ok=True)
 
-    def _restore_version(self, dashboard, identifier, value, keys):
+    def _restore_version(self, dashboard, identifier, value, archive_key=None):
         from .skill_assets import _verify, _version_path
         from .skill_package import unpack
         record, archive = value['manifest'], value['archive']
@@ -172,7 +136,7 @@ class SkillAssetStorage(CaseAssetStorage):
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.restore-', dir=root) as temporary:
             stage = Path(temporary)
-            self._download_archive(identifier, archive, stage / 'package.zip')
+            self._download_archive(identifier, archive, stage / 'package.zip', archive_key)
             (stage / 'content').mkdir()
             extracted = unpack(stage / 'package.zip', stage / 'content', lambda *args: None)
             if any(record[key] != val for key, val in extracted.items()):
@@ -186,13 +150,10 @@ class SkillAssetStorage(CaseAssetStorage):
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 stage.replace(destination)
-        self._restore_originals(identifier, record, keys)
-        self._commit_record(identifier, value)
-        self.confirm_local(record)
 
-    def _restore_originals(self, identifier, record, keys):
+    def _restore_originals(self, identifier, record, keys, additional=()):
         prefix = self._key_for(identifier, 'originals/')
-        available = {record['archive_sha256']}
+        available = {record['archive_sha256'], *additional}
         for key in keys:
             if not key.startswith(prefix) or not key.endswith('.json'):
                 continue

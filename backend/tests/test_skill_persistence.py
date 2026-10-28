@@ -26,7 +26,7 @@ class SkillPersistenceTests(unittest.TestCase):
 
     def setUp(self):
         assets.SkillAssetApiTests.setUp(self)
-        self.remote = LocalCOS(Path(self.temp.name) / 'remote')
+        self.remote = LocalCOS(Path(self.temp.name) / 'remote', ignore_conditions=True)
         self.enterContext(patch('webui.case_storage.CaseArchiveStorage._create_client',
                                 return_value=self.remote))
         self.enterContext(patch.dict(os.environ, {
@@ -135,8 +135,8 @@ class SkillPersistenceTests(unittest.TestCase):
         self.assertEqual(list(self.remote.root.glob('objects/**/skills/*/record.json')), [])
         self.assertEqual(self.upload(assets.package())['status'], 'succeeded')
 
-    def test_concurrent_immutable_object_cannot_be_overwritten_during_import(self):
-        self.fault(conflict='.zip')
+    def test_external_object_corruption_during_import_is_detected_before_publication(self):
+        self.fault(corrupt_after_put='.zip')
         self.assertEqual(self.upload(assets.package())['status'], 'failed')
         self.assertEqual(self.request('/api/skills').json['versions'], [])
         self.assertEqual(next(self.remote.root.glob('objects/**/*.zip')).read_bytes(),
@@ -144,24 +144,20 @@ class SkillPersistenceTests(unittest.TestCase):
 
     def test_restore_rejects_repacked_archive_bound_to_different_content(self):
         self.assertEqual(self.upload(assets.package())['status'], 'succeeded')
-        root = next(self.remote.root.glob('objects/**/skills/*/record.json')).parent
+        record = json.loads(next(self.remote.root.glob('objects/**/append-v2/**/record.json')).read_text())['manifest']
         wrong = assets.package([('SKILL.md', assets.MAIN), ('references/rules.txt', b'wrong identity')])
-        digest = hashlib.sha256(wrong).hexdigest()
-        bucket = self.remote.root / 'objects'
-        relative = root.relative_to(next(bucket.iterdir())).as_posix()
-        bucket_name = next(bucket.iterdir()).name
-        self.remote.put_object(Bucket=bucket_name, Key=relative + '/archives/' + digest + '.zip',
-                               Body=wrong, Metadata={'sha256': digest})
-        raw = json.dumps(dict(sha256=digest, size=len(wrong))).encode()
-        self.remote.put_object(Bucket=bucket_name, Key=relative + '/originals/' + digest + '.json',
-                               Body=raw, Metadata={'sha256': hashlib.sha256(raw).hexdigest()})
+        from webui.skill_append import publish
+        from webui.skill_storage import SkillAssetStorage
+        path = Path(self.temp.name) / 'wrong.zip'
+        path.write_bytes(wrong)
+        publish(SkillAssetStorage(self.temp.name), path, record, 'original')
         shutil.rmtree(self.dashboard.data / 'skill-assets')
         with self.assertRaisesRegex(RuntimeError, 'Skill.*恢复失败'):
             self.restart()
 
     def test_fresh_replacement_blocks_missing_previously_confirmed_remote_record(self):
         self.assertEqual(self.upload(assets.package())['status'], 'succeeded')
-        next(self.remote.root.glob('objects/**/skills/*/record.json')).unlink()
+        next(self.remote.root.glob('objects/**/append-v2/**/record.json')).unlink()
         shutil.rmtree(self.dashboard.data / 'skill-assets')
         with self.assertRaisesRegex(RuntimeError, 'Skill.*恢复失败'):
             self.restart()

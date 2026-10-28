@@ -150,9 +150,7 @@ def install(dashboard, archive, progress):
             existing = json.loads((destination / 'manifest.json').read_text())
             _verify(destination, existing, identifier)
             if storage:
-                for digest in _archives(dashboard, existing)[1:]:
-                    path = _root(dashboard) / 'archives' / identifier / (digest + '.zip')
-                    storage.store_repacked(identifier, path)
+                _archives(dashboard, existing)
                 storage.store_version(destination, existing)
                 if record['archive_sha256'] != existing['archive_sha256']:
                     storage.store_repacked(identifier, staging / 'package.zip')
@@ -164,7 +162,7 @@ def install(dashboard, archive, progress):
             staging.replace(destination)
             if storage:
                 storage.confirm_local(record)
-    message = 'COS 对象大小及摘要元数据已确认保存' if storage else '本地保存'
+    message = 'COS 追加发布及完整回读校验已确认' if storage else '本地保存'
     return dict(message='Skill 版本已导入（' + message + '）', skill_version=identifier)
 
 
