@@ -46,6 +46,12 @@ def make_dashboard():
     configure()
 
     class RegressionDashboard(DurableDashboard):
+        def dataset_path(self, dataset_id):
+            # Exercise the built-in selection ID without changing production case bytes.
+            if os.environ.get('E2E_BUILTIN_CASE') == '1' and dataset_id == 'pilot1.jsonl':
+                return self.data / 'fixtures/builtin-pilot1.jsonl'
+            return super().dataset_path(dataset_id)
+
         def command(self, key, stage, profile, task=None, retry=False, init=None):
             cfg = init if init is not None else self.config(key)
             if cfg.get('reviewer') == 'dsh_skill':

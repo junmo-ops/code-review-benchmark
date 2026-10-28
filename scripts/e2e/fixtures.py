@@ -46,6 +46,7 @@ def create(root):
     case_archive(root / 'fixtures/cases.zip', rows, '浏览器回归案例')
     dsh_case = dict(rows[0], reference_comments=[dict(path='sample.py', start_line=1,
         end_line=1, text='本地确定性缺陷意见，仅验证测评流程。', side='right')])
+    (root / 'fixtures/builtin-pilot1.jsonl').write_text(json.dumps(dsh_case) + '\n')
     case_archive(root / 'fixtures/dsh-case.zip', [dsh_case], 'DSH Linux 单例')
     many = [dict(rows[i % 2], instance_id=f'scale-{i:03d}') for i in range(50)]
     case_archive(root / 'fixtures/cases-50.zip', many, '浏览器回归50例')

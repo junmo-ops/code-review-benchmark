@@ -1,5 +1,6 @@
 """One frozen model endpoint, no redirects or retries, no credential in the sandbox."""
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 import json
 import socketserver
@@ -54,18 +55,51 @@ class Relay(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
 
 
+class ResponseLimitError(ValueError):
+    """The bounded upstream response exceeded its byte budget."""
+
+
+class CaseDeadlineError(ValueError):
+    """The shared whole-case deadline expired during a model request."""
+
+
+def _error_kind(error, deadline):
+    if isinstance(error, ResponseLimitError):
+        return 'response_too_large'
+    if isinstance(error, CaseDeadlineError) or time.monotonic() >= deadline:
+        return 'case_deadline_exceeded'
+    if isinstance(error, httpx.TimeoutException):
+        return 'upstream_timeout'
+    return 'transport_or_contract_error'
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        record = dict(index=len(self.server.records) + 1, status='started')
+        self.request_started = time.monotonic()
+        record = dict(index=len(self.server.records) + 1, status='started',
+                      started_at=datetime.now(timezone.utc).isoformat())
         self.server.records.append(record)
         save(self.server.evidence, self.server.records)
         try:
             self.forward(record)
-        except (httpx.HTTPError, OSError, ValueError):
-            record['status'] = 'transport_or_contract_error'
-            self.send_error(502)
+        except (BrokenPipeError, ConnectionResetError):
+            record['delivery_status'] = 'client_disconnected'
+            if record['status'] != 'responded':
+                record['status'] = 'client_disconnected'
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            record.update(status='transport_or_contract_error',
+                          error_kind=_error_kind(error, self.server.deadline))
+            self._send_failure(record)
         finally:
+            record['elapsed_seconds'] = round(time.monotonic() - self.request_started, 3)
             save(self.server.evidence, self.server.records)
+
+    def _send_failure(self, record):
+        try:
+            self.send_error(502)
+        except (BrokenPipeError, ConnectionResetError):
+            # The supervisor may already have stopped DSH at the case deadline.
+            record['delivery_status'] = 'client_disconnected'
 
     def forward(self, record):
         if self.path != '/v1/chat/completions':
@@ -79,12 +113,16 @@ class Handler(BaseHTTPRequestHandler):
         self.server.inputs.append(json.loads(self.server.redact(json.dumps(payload, ensure_ascii=False))))
         save(self.server.input_evidence, self.server.inputs)
         remaining = self.server.deadline - time.monotonic()
+        record['budget_remaining_seconds'] = round(max(0, remaining), 3)
         if remaining <= 0:
-            raise ValueError('整例时限已到')
+            raise CaseDeadlineError('DSH 整例检视时限已到')
         with httpx.Client(timeout=remaining, follow_redirects=False, trust_env=False) as client:
             with client.stream('POST', self.server.endpoint + '/chat/completions', json=payload,
                                headers={'Authorization': 'Bearer ' + self.server.token}) as reply:
-                body = _bounded_response(reply, self.server.deadline)
+                record.update(status='receiving', http_status=reply.status_code, response_bytes=0,
+                              headers_seconds=round(time.monotonic() - self.request_started, 3))
+                save(self.server.evidence, self.server.records)
+                body = _bounded_response(reply, self.server.deadline, record, self.request_started)
         record.update(status='responded', http_status=reply.status_code,
                       usage=response_usage(body))
         self.send_response(reply.status_code)
@@ -98,12 +136,16 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def _bounded_response(reply, deadline):
+def _bounded_response(reply, deadline, record, started):
     parts, size = [], 0
     for chunk in reply.iter_bytes():
         size += len(chunk)
-        if size > 16 * 1024 * 1024 or time.monotonic() >= deadline:
-            raise ValueError('模型响应超过整例时限或响应大小上限')
+        record['response_bytes'] = size
+        record.setdefault('first_body_seconds', round(time.monotonic() - started, 3))
+        if size > 16 * 1024 * 1024:
+            raise ResponseLimitError('模型响应超过 16MiB 大小上限')
+        if time.monotonic() >= deadline:
+            raise CaseDeadlineError('读取模型响应时 DSH 整例检视时限已到')
         parts.append(chunk)
     return b''.join(parts)
 

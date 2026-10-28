@@ -33,7 +33,9 @@ def freeze(args, cfg, run):
     if getattr(args, 'dsh_runtime_mode', None) not in {None, runtime.runtime_mode()}:
         raise runtime.IsolationError('排队后 DSH 运行模式已变化，停止批次')
     selection.bind(args, cfg, run)
-    cfg.update(dsh_policy=runtime.policy(cfg['skill_mode']),
+    limit = getattr(args, 'dsh_max_output_tokens', None)
+    cfg['dsh_max_output_tokens'] = runtime.output_limit(8192 if limit is None else limit)
+    cfg.update(dsh_policy=runtime.policy(cfg['skill_mode'], cfg['dsh_max_output_tokens']),
                repository_mode='head_snapshot_plus_merge_base_diff',
                process_timeout_policy='whole_case_deadline_with_separate_cleanup')
     runtime.probe()
@@ -45,7 +47,7 @@ def configure(cfg, run):
     CFG = cfg
     selection.verify_frozen(cfg, run)
     selection.verify(cfg, run)
-    if cfg.get('dsh_policy') != runtime.policy(cfg['skill_mode']):
+    if cfg.get('dsh_policy') != runtime.policy(cfg['skill_mode'], cfg.get('dsh_max_output_tokens', 8192)):
         raise runtime.IsolationError('DSH 冻结模式或权限配置无效')
 
 
@@ -117,7 +119,8 @@ def _snapshot(item, work):
     (inputs / 'REVIEW_DIFF.patch').write_bytes(git('diff', ancestor, item.head_commit, '--'))
     save(inputs / 'REVIEW_REQUEST.json', dict(instance_id=item.instance_id, repo=item.repo,
          base_commit=item.base_commit, head_commit=item.head_commit, merge_base=ancestor))
-    (inputs / 'policy.json').write_text(policy.overlay(CFG['review_model'], CFG.get('skill_identity'), work))
+    (inputs / 'policy.json').write_text(policy.overlay(CFG['review_model'], CFG.get('skill_identity'), work,
+                                                    max_output_tokens=CFG.get('dsh_max_output_tokens', 8192)))
     (work / 'home').mkdir()
     return {p.relative_to(repo).as_posix(): _line_count(p)
             for p in repo.rglob('*') if p.is_file() and not p.is_symlink()}
@@ -187,7 +190,7 @@ def _run_case(item, run):
                 raw = evidence_path(evidence, '.stdout.jsonl').read_text()
                 if not _started_session(raw):
                     raise runtime.IsolationError('DSH 隔离启动失败，停止整个批次')
-                raise ValueError('DSH 执行失败，详见脱敏原始日志')
+                raise ValueError(_execution_error(raw))
             if CFG['skill_mode'] == 'skill':
                 save(evidence_path(evidence, '.skill-integrity.json'), selection.integrity(CFG))
             recover_answer(item, run)
@@ -239,6 +242,20 @@ def _started_session(raw):
         return any(isinstance(row, dict) and row.get('type') == 'session' for row in rows)
     except ValueError:
         return False
+
+
+def _execution_error(raw):
+    try:
+        rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        ends = [row for row in rows if isinstance(row, dict)
+                and row.get('type') == 'status' and row.get('phase') == 'turn_end']
+        if ends and ends[-1].get('reason', {}).get('kind') == 'max-tokens':
+            limit = CFG.get('dsh_max_output_tokens', 8192)
+            return (f'DSH 模型返回输出截断（max-tokens）；本批次单次输出上限 {limit} tokens。'
+                    '未生成完整答卷，未自动续写或重试；调整输出上限须新建批次。')
+    except (ValueError, AttributeError):
+        pass  # Retain the generic failure when the runtime log is malformed.
+    return 'DSH 执行失败，详见脱敏原始日志'
 
 
 def _save_sessions(work, evidence):

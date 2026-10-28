@@ -40,7 +40,8 @@ def annotate(run, cfg, items):
              text,
              execution_conditions(cfg),
              '每案例全新会话，head 快照与 merge-base diff；工具：' + ' / '.join(cfg['dsh_policy']['tools']) + '。',
-             f"整例预算 {cfg['timeout_minutes']} 分钟；模型、压缩失败和上下文溢出额外重试均关闭。", '',
+             f"整例预算 {cfg['timeout_minutes']} 分钟；模型、压缩失败和上下文溢出额外重试均关闭。",
+             f"单次模型输出上限 {cfg['dsh_policy']['max_output_tokens']} tokens；上下文窗口 {cfg['dsh_policy']['context_window']} tokens。", '',
              '| 案例 | 检视状态 / 评分范围 | 已知检视用量 | 请求覆盖 | 检视秒数 | 清理秒数 | Skill 加载 / 能力 |',
              '|---|---|---|---|---:|---:|---|']
     for item in items:

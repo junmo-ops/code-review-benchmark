@@ -398,6 +398,26 @@ class Dashboard:
                     CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest, progress=progress)
             except RuntimeError as error:
                 raise ValueError(str(error)) from None
+        elif suite == 'aacr':
+            self._prepare_builtin_repositories(spec, key, suite, progress)
+
+    def _prepare_builtin_repositories(self, spec, key, suite, progress):
+        from .case_storage import CaseAssetStorage, _sha256
+        if spec is not None:
+            if spec.get('reviewer') == 'server_agent':
+                return
+            dataset = self.dataset_path(spec['dataset'])
+        else:
+            config = self.config(key)
+            if config.get('reviewer') == 'server_agent':
+                return
+            dataset = self.run_dir(key) / 'dataset.jsonl'
+            if _sha256(dataset) != config.get('dataset_sha256'):
+                raise ValueError('冻结案例清单校验失败；禁止按其他案例恢复仓库')
+        try:
+            CaseAssetStorage(self.data).prepare_builtin_repositories(self.data, suite, dataset, progress)
+        except RuntimeError as error:
+            raise ValueError(str(error)) from None
 
     def _selected_case_asset(self, rows, spec, key):
         if spec is not None:
@@ -500,7 +520,8 @@ class Dashboard:
             args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
             if init['reviewer'] == 'dsh_skill':
                 args += ['--skill-mode', init['skill_mode'],
-                         '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox')]
+                         '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox'),
+                         '--dsh-max-output-tokens', str(init.get('dsh_max_output_tokens', 8192))]
                 if init.get('skill_version'):
                     from reviewers.dsh_skill.selection import identity_digest
                     args += ['--skill-version', init['skill_version'],

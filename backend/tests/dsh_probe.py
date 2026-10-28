@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class Probe:
     def __init__(self, root, model, minutes, head_text, prepare_head=None, skill_version=None, assets_root=None,
-                 instance_id='local.case', cli_entry=None):
+                 instance_id='local.case', cli_entry=None, max_output_tokens=None):
         self.root = root
         self.run = root / 'runs/baseline'
         self.repo = root / 'repos/test__repo'
@@ -30,6 +30,8 @@ class Probe:
             self.env['BENCH_DATA_ROOT'] = str(assets_root)
         self.seed()
         selection = ['--skill-mode', 'skill', '--skill-version', skill_version] if skill_version else ['--skill-mode', 'baseline']
+        if max_output_tokens is not None:
+            selection += ['--dsh-max-output-tokens', str(max_output_tokens)]
         result = self.stage('init', '--dataset', str(root / 'dataset.jsonl'), '--repos-root',
             str(root / 'repos'), '--model', 'dsh-review', '--reviewer', 'dsh_skill',
             *selection, '--timeout-minutes', str(minutes))

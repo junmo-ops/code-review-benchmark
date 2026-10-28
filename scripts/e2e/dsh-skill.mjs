@@ -11,7 +11,7 @@ export async function importResource(page, fixtures, path, file, button) {
   await page.getByText(/所选文件导入完成/).waitFor();
 }
 
-export async function form(page, scoring, version) {
+export async function form(page, scoring, version, outputLimit) {
   await page.goto('/');
   await page.getByRole('button', { name: /新建测评/ }).first().click();
   await select(page, '案例集', 'AACR');
@@ -33,6 +33,10 @@ export async function form(page, scoring, version) {
   assert.equal(await page.getByLabel('Skill 版本', { exact: true }).inputValue(), '');
   await select(page, 'Skill 版本', version.id.slice(0, 12));
   await select(page, '评分方法', scoring);
+  if (outputLimit !== undefined) {
+    await page.getByText('高级参数', { exact: true }).click();
+    await page.getByLabel('DSH 单次输出上限（tokens）', { exact: true }).fill(String(outputLimit));
+  }
 }
 
 export async function dshSkill({ page, fixtures }) {
@@ -42,7 +46,7 @@ export async function dshSkill({ page, fixtures }) {
   const version = (await api(page, '/api/skills', undefined, 'GET')).versions.find((v) => v.name === 'browser-review');
   const evidence = [];
   for (const scoring of ['案例集原始评分', 'Martian 语义评分']) {
-    await form(page, scoring, version);
+    await form(page, scoring, version, 32768);
     const response = page.waitForResponse((r) => r.url().endsWith('/api/jobs') && r.request().method() === 'POST');
     await page.getByRole('button', { name: '仅保存配置', exact: true }).click();
     const reply = await response;
@@ -53,6 +57,8 @@ export async function dshSkill({ page, fixtures }) {
     const root = resolve(fixtures, '..', 'runs', created.key);
     const cfg = JSON.parse(await readFile(join(root, 'run-config.json'), 'utf8'));
     assert.equal(cfg.skill_version, version.id);
+    assert.equal(cfg.dsh_max_output_tokens, 32768);
+    assert.equal(cfg.dsh_policy.max_output_tokens, 32768);
     assert.equal(snapshot.runs.find((r) => r.key === created.key).completed, 0);
     await importResource(page, fixtures, '/skills', 'skill-changed.zip', '导入 Skill');
     const launched = await api(page, '/api/jobs', { action: 'workflow', key: created.key,
@@ -66,8 +72,12 @@ export async function dshSkill({ page, fixtures }) {
     assert.equal(answer.skill.version, version.id);
     assert.equal(answer.skill.loaded, true);
     assert.ok(answer.skill.evidence.some((entry) => entry.form === 'explicit_injection'));
+    const inputs = JSON.parse(await readFile(join(root, 'raw/demo-ok.model-inputs.json'), 'utf8'));
+    assert.ok(inputs.length > 0);
+    assert.ok(inputs.every((request) => request.max_completion_tokens === 32768));
     const report = await api(page, `/api/artifact?key=${created.key}&path=report.zh-CN.md`, undefined, 'GET');
     assert.ok(report.text.includes(version.id));
+    assert.ok(report.text.includes('单次模型输出上限 32768 tokens'));
     await page.goto(`/?run=${created.key}&tab=report`);
     await page.getByText(version.id, { exact: false }).first().waitFor();
     const download = page.waitForEvent('download');

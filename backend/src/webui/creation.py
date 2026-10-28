@@ -4,6 +4,7 @@ import os
 LIMIT_ERRORS = {
     'timeout_minutes': '超时或输出上限不在允许范围内',
     'max_tokens': '超时或输出上限不在允许范围内',
+    'dsh_max_output_tokens': 'DSH 单次输出上限必须为 1–65536 的整数',
     'case_jobs': '案例并发必须为 1–16 的整数',
     'max_case_retries': '失败案例自动重试次数必须为 0–2',
 }
@@ -70,7 +71,15 @@ def _limits(request, suite, reviewer):
         raise ValueError('失败案例自动重试当前仅支持 LCR')
     return dict(timeout_minutes=_integer(request, 'timeout_minutes', 10, 1, 120),
                 max_tokens=_integer(request, 'max_tokens', 32768, 1, 131072),
-                case_jobs=jobs, max_case_retries=retries)
+                case_jobs=jobs, max_case_retries=retries, **_dsh_limits(request, reviewer))
+
+
+def _dsh_limits(request, reviewer):
+    if reviewer == 'dsh_skill':
+        return dict(dsh_max_output_tokens=_integer(request, 'dsh_max_output_tokens', 8192, 1, 65536))
+    if request.get('dsh_max_output_tokens') is not None:
+        raise ValueError('DSH 单次输出上限仅适用于 DSH + Skill')
+    return {}
 
 
 def prepare(dashboard, request, profile):

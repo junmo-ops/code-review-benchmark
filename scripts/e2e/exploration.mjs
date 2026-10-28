@@ -10,6 +10,7 @@ import { importHistory } from './import-history.mjs';
 import { skillUploadRecovery } from './skill-assets.mjs';
 import { dshRecovery } from './dsh-recovery.mjs';
 import { skillPersistence } from './skill-persistence.mjs';
+import { builtinRepository } from './builtin-repository.mjs';
 
 async function draft(page, name) {
   await page.getByRole('button', { name: /新增模型/ }).click();
@@ -270,4 +271,5 @@ export const exploration = [
   ['skill-upload-response-loss-recovery', skillUploadRecovery],
   ...(process.env.E2E_DSH === '1' ? [['dsh-fifty-cancel-restart-zero-call-recovery', dshRecovery]] : []),
   ...(process.env.E2E_SKILL_COS === '1' ? [['skill-cos-persistence', skillPersistence]] : []),
+  ...(process.env.E2E_BUILTIN_CASE === '1' ? [['builtin-repository-download-failure', (ctx) => builtinRepository(ctx, true)]] : []),
 ];

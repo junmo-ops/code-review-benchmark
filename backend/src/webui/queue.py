@@ -118,7 +118,7 @@ class DurableDashboard(Dashboard):
             if spec is not None:
                 job['resource_dataset'] = spec.get('dataset')
             actor=request.get('_actor','local')
-            request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create','skill_mode','skill_version'}}
+            request={k:v for k,v in request.items() if k in {'action','key','suite','dataset','name','profile','reviewer','evaluator','timeout_minutes','case_jobs','max_tokens','task','retry','start_after_create','skill_mode','skill_version','dsh_max_output_tokens'}}
             with phase('queue.fingerprint', job_id=job['id']):
                 job['profile_fingerprint']=self.fingerprint(job['profile'])
             job['submitted_by']=actor

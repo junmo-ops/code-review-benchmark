@@ -21,9 +21,16 @@ POLICY = dict(request_retries=0, compaction_retries=0, overflow_retries=0,
               isolation='bubblewrap_pid_mount_network', model_transport='fixed_endpoint_unix_relay')
 
 
-def policy(mode):
+def output_limit(value=8192):
+    if type(value) is not int or not 1 <= value <= 65536:
+        raise IsolationError('DSH 单次输出上限必须为 1–65536 的整数')
+    return value
+
+
+def policy(mode, max_output_tokens=8192):
     selected = runtime_mode()
-    result = dict(POLICY, runtime_mode=selected, os_isolation=selected == 'sandbox')
+    result = dict(POLICY, max_output_tokens=output_limit(max_output_tokens),
+                  runtime_mode=selected, os_isolation=selected == 'sandbox')
     if selected == 'pod':
         result['isolation'] = 'pod_shared_process_software_guards_only'
     if mode == 'skill':

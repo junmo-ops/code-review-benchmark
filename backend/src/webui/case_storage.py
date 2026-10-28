@@ -746,6 +746,25 @@ class CaseAssetStorage(CaseArchiveStorage):
                 self._prepare_runtime_repository(data, slug, repo_cases, item, Path(name),
                                                  index, len(by_slug), progress)
 
+    def prepare_builtin_repositories(self, data, suite, dataset, progress=None):
+        from runner.cloud import checked_instances
+        from .case_assets import (repository_registry, _current_repository_record,
+                                  _validate_repository_cases, _notify)
+        by_slug = {}
+        for case in checked_instances(dataset, suite):
+            by_slug.setdefault(case.repo.replace('/', '__'), []).append(case)
+        registry = repository_registry(data)['repositories']
+        with tempfile.TemporaryDirectory(prefix='case-assets-', dir=data) as name:
+            for index, (slug, cases) in enumerate(sorted(by_slug.items()), 1):
+                destination = Path(data) / 'repos' / slug
+                if _runtime_repository_ready(destination, cases, _validate_repository_cases):
+                    _notify(progress, 'ready', f'[{index}/{len(by_slug)}] {slug}：本地提交校验通过，复用仓库',
+                            index, len(by_slug))
+                    continue
+                item = dict(_current_repository_record(registry, slug), source='repository-pool')
+                self._prepare_runtime_repository(data, slug, cases, item, Path(name),
+                                                 index, len(by_slug), progress)
+
     def _prepare_runtime_repository(self, data, slug, cases, item, staging, index, total, progress):
         from runner.diagnostics import phase
         from .case_assets import _prepare_one_repository, _validate_repository_cases, _notify

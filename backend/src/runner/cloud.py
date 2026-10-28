@@ -219,6 +219,7 @@ def _arguments():
     p.add_argument('--reviewer',help='仅 init 指定，默认 lcr')
     p.add_argument('--skill-mode', choices=['baseline', 'skill'], help='仅 DSH init 指定')
     p.add_argument('--dsh-runtime-mode', choices=['sandbox', 'pod'], help='队列冻结的部署运行模式，仅 DSH init 指定')
+    p.add_argument('--dsh-max-output-tokens', type=int, help='仅 DSH init 指定，单次输出上限 1–65536，默认8192')
     p.add_argument('--skill-version', help='不可变 Skill 内容版本，仅 DSH init 指定')
     p.add_argument('--skill-identity-sha256', help='队列冻结的完整 Skill 身份摘要，仅 DSH init 指定')
     p.add_argument('--repos-root')
@@ -236,7 +237,7 @@ def _arguments():
 
 def _validate_arguments(p, args):
     frozen = (args.suite, args.reviewer, args.evaluator, args.skill_mode, args.skill_version,
-              args.skill_identity_sha256, args.dsh_runtime_mode)
+              args.skill_identity_sha256, args.dsh_runtime_mode, args.dsh_max_output_tokens)
     if args.stage != 'init' and any(value is not None for value in frozen):
         p.error('案例集和检视工具已冻结；调整时请新建批次')
     if args.stage!='init' and args.timeout_minutes is not None:
@@ -247,7 +248,7 @@ def _validate_arguments(p, args):
     if not re.fullmatch(r'[A-Za-z0-9_-]+',args.run_id) or args.timeout_minutes<1:
         p.error('批次名或时限无效')
     if any(v is not None for v in (args.skill_mode, args.skill_version, args.skill_identity_sha256,
-                                 args.dsh_runtime_mode)) and args.reviewer != 'dsh_skill':
+                                 args.dsh_runtime_mode, args.dsh_max_output_tokens)) and args.reviewer != 'dsh_skill':
         p.error('Skill 模式仅适用于 DSH + Skill')
 
 

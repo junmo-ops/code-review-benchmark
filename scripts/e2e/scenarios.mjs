@@ -5,6 +5,7 @@ import { dshSkill } from './dsh-skill.mjs';
 import { dshLifecycle } from './dsh-lifecycle.mjs';
 import { skillAssets } from './skill-assets.mjs';
 import { skillPersistence } from './skill-persistence.mjs';
+import { builtinRepository } from './builtin-repository.mjs';
 import { join } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -178,4 +179,5 @@ export const scenarios = [
   ...(process.env.E2E_DSH === '1' ? [['dsh-baseline', dshBaseline], ['dsh-skill', dshSkill]] : []),
   ...(process.env.E2E_DSH_SCALE === '1' ? [['dsh-50-lifecycle', dshLifecycle]] : []),
   ...(process.env.E2E_SKILL_COS === '1' ? [['skill-cos-persistence', skillPersistence]] : []),
+  ...(process.env.E2E_BUILTIN_CASE === '1' ? [['builtin-repository-restore', builtinRepository]] : []),
 ];

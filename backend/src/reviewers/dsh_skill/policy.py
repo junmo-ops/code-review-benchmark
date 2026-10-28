@@ -19,7 +19,7 @@ class BundleLoader(yaml.SafeLoader):
 BundleLoader.add_constructor('tag:yaml.org,2002:js', lambda loader, node: loader.construct_scalar(node))
 
 
-def overlay(model, skill=None, work=None):
+def overlay(model, skill=None, work=None, max_output_tokens=8192):
     source = runtime.MODULES / '@deepseek-ai/dsh-base/cordis.patch.yml'
     bundle = yaml.load(source.read_text(), Loader=BundleLoader)
     rows = bundle[0]['insert']
@@ -35,7 +35,8 @@ def overlay(model, skill=None, work=None):
         'compaction-basic': dict(compactionRetries=0, maxOverflowRetries=0),
         'llm-pi-ai': dict(providers={'benchmark': dict(
             api='openai-completions', baseURL='http://127.0.0.1:8123/v1',
-            apiKeyEnv='BENCH_DSH_KEY', models=[dict(id=model, contextWindow=131072, maxTokens=8192)],
+            apiKeyEnv='BENCH_DSH_KEY', models=[dict(id=model, contextWindow=131072,
+                                                 maxTokens=runtime.output_limit(max_output_tokens))],
             retryPolicy=dict(mode='normal', maxRetries=0))}),
     }
     patches += [dict(id=name, config=config) for name, config in settings.items()]

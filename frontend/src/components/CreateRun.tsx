@@ -23,6 +23,7 @@ interface Values {
   case_jobs: number;
   max_case_retries: number;
   max_tokens: number;
+  dsh_max_output_tokens?: number;
 }
 const identifier = (suite: string) => creationName(suite === 'swe_prbench_llm' ? 'swe' : suite);
 const skillMode = (values: Values) => values.reviewer === 'dsh_skill' ? values.skill_mode : undefined;
@@ -164,6 +165,12 @@ function Advanced({ suite, reviewer }: { suite: string; reviewer: string }) {
                   <InputNumber min={1} max={131072} className="full-width" />
                 </Form.Item>
               )}
+              {reviewer === 'dsh_skill' && (
+                <Form.Item name="dsh_max_output_tokens" label="DSH 单次输出上限（tokens）"
+                  initialValue={8192} preserve={false} rules={[{ required: true }]}>
+                  <InputNumber min={1} max={65536} precision={0} step={1024} className="full-width" />
+                </Form.Item>
+              )}
             </>
           ),
         },
@@ -210,6 +217,7 @@ export function CreateRun({
         max_case_retries: data.reviewer === 'lcr' ? data.max_case_retries : 0,
         skill_mode: skillMode(data),
         skill_version: data.reviewer === 'dsh_skill' && data.skill_mode === 'skill' ? data.skill_version : undefined,
+        dsh_max_output_tokens: data.reviewer === 'dsh_skill' ? data.dsh_max_output_tokens : undefined,
         ...(data.suite === 'ccrab' ? { judge_profile: undefined } : {}),
       }, key, 'create');
       await refresh();
