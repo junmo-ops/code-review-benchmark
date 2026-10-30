@@ -27,9 +27,22 @@ def _completed(rows):
     return finals, sessions
 
 
+def _parse_final(text):
+    if not isinstance(text, str):
+        raise ValueError('DSH 最终答卷不是文本；未生成完整答卷，原始事件已保留，不自动重试')
+    if not text.strip():
+        raise ValueError('DSH 最终答卷为空白；completed 仅表示执行结束，不表示检视答卷有效。'
+                         '原始事件和会话已保留，不按零意见评分，不自动续写或重试')
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f'DSH 最终答卷不是有效 JSON（第 {error.lineno} 行，第 {error.colno} 列）；'
+                         '原始输出已保留，不自动修补或重试') from None
+
+
 def convert(item, cfg, rows, lines, requests):
     finals, sessions = _completed(rows)
-    answer = json.loads(finals[0].get('text', ''))
+    answer = _parse_final(finals[0].get('text', ''))
     if not isinstance(answer, dict) or answer.get('status') != 'complete' or not isinstance(answer.get('comments'), list):
         raise ValueError('DSH 答卷不是完整 JSON 协议')
     for comment in answer['comments']:

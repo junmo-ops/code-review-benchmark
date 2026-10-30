@@ -10,19 +10,11 @@ from urllib.parse import urlsplit
 import httpx
 
 from runner.storage import save
+from .wire import response_observations
 
 
 def response_usage(body):
-    usage = None
-    for line in body.decode('utf-8', 'replace').splitlines():
-        if line.startswith('data:') and line[5:].strip() != '[DONE]':
-            try:
-                value = json.loads(line[5:])
-            except ValueError:
-                continue
-            if isinstance(value, dict) and value.get('usage'):
-                usage = value['usage']
-    return usage
+    return response_observations(body, 'text/event-stream')['usage']
 
 
 def summarize(records):
@@ -123,8 +115,10 @@ class Handler(BaseHTTPRequestHandler):
                               headers_seconds=round(time.monotonic() - self.request_started, 3))
                 save(self.server.evidence, self.server.records)
                 body = _bounded_response(reply, self.server.deadline, record, self.request_started)
+        observed = response_observations(body, reply.headers.get('Content-Type', 'application/json'),
+                                         self.server.redact)
         record.update(status='responded', http_status=reply.status_code,
-                      usage=response_usage(body))
+                      usage=observed.pop('usage'), wire_response=observed)
         self.send_response(reply.status_code)
         self.send_header('Content-Type', reply.headers.get('Content-Type', 'application/json'))
         self.send_header('Content-Length', str(len(body)))
