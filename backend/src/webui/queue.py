@@ -40,6 +40,9 @@ class Queue:
     def claim(self):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            barrier = db.execute("SELECT value FROM meta WHERE key='recovery_required'").fetchone()
+            if barrier and json.loads(barrier['value']):
+                return None
             row=db.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY rowid LIMIT 1").fetchone()
             if not row:return None
             job=json.loads(row['job']);job.update(status='running',started_at=now(),message='Worker 已领取')
@@ -66,10 +69,17 @@ class Queue:
             return json.loads(row['value']) if row else None
     def recover(self):
         # Called only while holding the exclusive worker lock. Do not replay interrupted jobs.
-        for job in self.jobs().values():
-            if job['status'] in {'running','cancelling'}:
-                self.update(job['id'],dict(status='interrupted',ended_at=now(),message='Worker 曾中断；确认旧进程与容器已停止后，人工恢复'))
-                self.meta('recovery_required',True)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            rows = db.execute("SELECT id,job FROM jobs WHERE status IN ('running','cancelling')").fetchall()
+            for row in rows:
+                job = json.loads(row['job'])
+                job.update(status='interrupted', ended_at=now(),
+                           message='Worker 曾中断；确认旧进程与容器已停止后，人工恢复')
+                db.execute('UPDATE jobs SET status=?,job=? WHERE id=?',
+                           ('interrupted', json.dumps(job), row['id']))
+            if rows:
+                db.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('recovery_required', 'true'))
 
     def acknowledge_recovery(self, actor):
         with self.connect() as db:
@@ -148,8 +158,8 @@ class DurableDashboard(Dashboard):
         jobs=[j for j in self.jobs.values() if j['key']==key]
         if jobs:out['profile']=max(jobs,key=lambda j:j['created_at'])['profile']
         return out
-    def snapshot(self):
-        self.sync();out=super().snapshot();out['queue_mode']=True
+    def snapshot(self, compact=False):
+        self.sync();out=super().snapshot(compact=compact);out['queue_mode']=True
         heartbeat=self.queue.meta('heartbeat') or 0
         out['worker_ready']=time.time()-heartbeat<15 and not self.queue.meta('recovery_required')
         out['recovery_required']=bool(self.queue.meta('recovery_required'))
@@ -161,4 +171,7 @@ class DurableDashboard(Dashboard):
             from deployment.run_storage import request_run_sync
             request_run_sync(self.data)
     def stop(self,id,actor=None):self.queue.stop(id,actor)
-    def shutdown(self):pass  # Web shutdown must not stop a worker job.
+    def shutdown(self):
+        # Web shutdown stops only its resource importer, never the task Worker.
+        from .case_import import stop
+        stop(self)

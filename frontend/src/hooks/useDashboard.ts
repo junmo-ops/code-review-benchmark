@@ -15,7 +15,7 @@ export function useDashboard() {
     stateRequest.current = true;
     try {
       await bootstrap();
-      const incoming = parseSnapshot(await api<unknown>('/api/state'));
+      const incoming = parseSnapshot(await api<unknown>('/api/state?view=summary'));
       if (alive.current) {
         setState(incoming);
         setError('');

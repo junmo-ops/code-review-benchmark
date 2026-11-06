@@ -35,6 +35,7 @@ class ContainerAccessTests(unittest.TestCase):
         }
 
     def tearDown(self):
+        self.dashboard.shutdown()
         self.env.stop()
         self.temp.cleanup()
 

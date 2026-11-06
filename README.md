@@ -11,6 +11,7 @@ code-review-benchmark/
 │   └── package.json           前端依赖与构建命令
 ├── backend/
 │   ├── src/
+│   │   ├── application/       提交校验、执行计划、任务执行与分页查询
 │   │   ├── webui/             API、任务队列、模型与资源管理
 │   │   ├── runner/            进程、Git、存储和公共运行契约
 │   │   ├── reviewers/         LCR、服务端 Agent 等检视工具适配
@@ -41,7 +42,7 @@ code-review-benchmark/
 
 ## 首次准备
 
-需要 Node 22.22、Python 3.12 和 Git。在项目根目录执行：
+推荐 Node 22.22、Python 3.12 和 Git。开发环境的 Python 范围为 3.12–3.14，生产镜像固定 3.12；包元数据和项目检查使用同一范围。在项目根目录执行：
 
 ```bash
 npm run setup
@@ -78,7 +79,10 @@ npm start
 | `npm run backend -- --port 8765` | 单独启动本地 API |
 | `npm run frontend` | 单独启动开发前端，后端需另行启动 |
 | `npm run build` | 前端类型检查和生产构建 |
-| `npm run check` | 后端语法、目录及改动函数复杂度校验，前端 lint |
+| `npm run check` | Python 语法、目录和函数复杂度，前端与脚本 lint，TypeScript 类型检查 |
+| `npm run verify` | check、前端生产构建、离线回归和 Git 差异检查 |
+| `npm run e2e` | 本地浏览器业务回归，使用模拟执行器，不调用真实模型或 COS |
+| `npm run e2e:explore` | 上传、队列、异常恢复与持续交互的故障探索 |
 | `npm run cli -- --timeout-seconds 900 status --run-id 批次编号` | 调用原测评命令行 |
 
 安装后的后端还提供 `bench-api`、`bench-cli`、`bench-cloud`、`bench-mcr`、`bench-ccrab` 命令，使用前需激活 `.venv`。后端包依赖仓库内的 `data/` 和 `vendor/`，生产镜像包含这些资源。
@@ -93,5 +97,11 @@ npm start
 详见 [单服务部署](deployment/单服务部署.md)。从旧项目更新时，根目录 Python 入口及 Dockerfile 已迁移，需要同步移除行内仓库的旧文件，并把流水线 Dockerfile 路径改为 `backend/Dockerfile`。
 
 历史批次的运行记录与日志保留。适配器源文件位置调整后，旧批次可能触发既有版本一致性保护；新测评使用新目录冻结版本，不自动放宽旧批次评分校验。
+
+本地与生产共用 `webui/wsgi.py` 的 Flask 路由，本地入口只负责回环 HTTP 传输和会话校验。`application/` 分别管理提交校验、命令计划、执行过程和查询；Dashboard 保留兼容入口，评分仍由原案例集和裁判适配器负责。队列恢复在同一 SQLite 事务中标记中断任务并设置恢复屏障，领取任务也在事务内检查屏障。
+
+页面轮询使用 `/api/state?view=summary`；批次列表使用 `/api/runs?page=1&page_size=10&suite=&search=`，详情使用 `/api/run?key=批次标识`。列表每页最多 100 条，摘要缓存最多 4096 条、最长 30 秒；文件或任务状态变化会使缓存失效。缓存仅用于列表展示，详情和执行前的版本检查仍读取当前数据。旧 `/api/state` 完整响应继续兼容脚本。
+
+多模型对比的代码指纹已修正为包含 `backend/src/comparison/` 的真实实现。旧实验仍可查看报告；冻结指纹不匹配的实验不能继续执行，应新建实验，不将历史实验自动迁移到新协议实现。
 
 开发校验和 ZIP 交付统一流程见 [开发校验与交付](docs/开发校验与交付.md)：改动后运行 `npm run check`，发布前运行 `npm run verify`，未提交改动包使用 `npm run package:changes`。

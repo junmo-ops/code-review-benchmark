@@ -15,7 +15,8 @@ export function useRemote<T>(path: string | undefined, interval = 0) {
         if (alive) setResult({ path, data });
       } catch (error) {
         if (alive)
-          setResult({ path, error: error instanceof Error ? error.message : String(error) });
+          setResult((previous) => ({ path, data: previous.path === path ? previous.data : undefined,
+            error: error instanceof Error ? error.message : String(error) }));
       } finally {
         pending = false;
       }

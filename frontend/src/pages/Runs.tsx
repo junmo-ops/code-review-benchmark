@@ -1,28 +1,21 @@
 import { Button, Card, Col, Input, Progress, Row, Space, Table, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useState } from 'react';
+import { query } from '../api';
+import { useRemote } from '../hooks/useRemote';
 import { useWorkbench } from '../context';
 import { canSubmit, pct, runStatus, stamp, suiteName } from '../presentation';
-import { Heading, Status } from '../components/Common';
+import { ErrorAlert, Heading, Status } from '../components/Common';
 import type { Run } from '../types';
 export function Runs() {
   const { state, newRun, openRun, importBusy } = useWorkbench();
   const [filter, setFilter] = useState(''),
     [search, setSearch] = useState('');
-  const grouped = new Set(state.comparisons.flatMap((c) => c.report.groups.map((g) => g.key)));
-  const runs = state.runs
-    .filter((r) => !grouped.has(r.key))
-    .filter(
-      (r) =>
-        !filter ||
-        r.suite === filter ||
-        (filter === 'swe_prbench_llm' && r.suite === 'swe_prbench'),
-    )
-    .filter((r) =>
-      `${r.display_name ?? r.name} ${r.model} ${suiteName(state, r.suite)}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-    );
+  const [pagination, setPagination] = useState({ page: 1, size: 10 });
+  const result = useRemote<{ items: Run[]; total: number; page: number }>(query('/api/runs', {
+    page: String(pagination.page), page_size: String(pagination.size), suite: filter, search,
+  }), 4000);
+  const runs = result.data?.items ?? [];
   const columns = [
     {
       title: '批次 / 案例集',
@@ -100,7 +93,7 @@ export function Runs() {
             <Card
               hoverable
               className={filter === s.id ? 'selected-card' : ''}
-              onClick={() => setFilter(filter === s.id ? '' : s.id)}
+              onClick={() => { setFilter(filter === s.id ? '' : s.id); setPagination((value) => ({ ...value, page: 1 })); }}
               title={s.name}
               extra={s.role}
             >
@@ -111,21 +104,25 @@ export function Runs() {
         ))}
       </Row>
       <Card
-        title={`测评批次 · ${runs.length}`}
+        title={`测评批次 · ${result.data?.total ?? 0}`}
         extra={
           <Input.Search
             allowClear
             placeholder="搜索批次或模型"
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => { setSearch(event.target.value); setPagination((value) => ({ ...value, page: 1 })); }}
           />
         }
       >
+        <ErrorAlert error={result.error} />
         <Table
           rowKey="key"
           dataSource={runs}
           columns={columns}
           scroll={{ x: 900 }}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
+          loading={!result.data && !result.error}
+          pagination={{ current: result.data?.page ?? pagination.page, pageSize: pagination.size,
+            total: result.data?.total ?? 0, showSizeChanger: true,
+            onChange: (page, size) => setPagination({ page, size }) }}
         />
       </Card>
     </>

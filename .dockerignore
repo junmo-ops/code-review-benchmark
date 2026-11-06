@@ -26,7 +26,6 @@ output
 wheelhouse
 server-wheelhouse
 windows-wheelhouse
-backend/tests
 *.zip
 *.tgz
 *.tar.gz

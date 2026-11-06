@@ -5,7 +5,6 @@ import logging
 import re
 from pathlib import Path
 import threading
-import time
 import traceback
 from types import SimpleNamespace
 import uuid
@@ -15,6 +14,8 @@ from .service import now, save
 
 ACTIVE = {'queued', 'running'}
 _workers = {}
+_stops = {}
+_owners = {}
 _guard = threading.Lock()
 
 
@@ -111,13 +112,35 @@ def start(dashboard):
         thread = _workers.get(key)
         if thread and thread.is_alive():
             return
-        thread = threading.Thread(target=_worker, args=(dashboard,), daemon=True,
+        stop_event = threading.Event()
+        _stops[key] = stop_event
+        _owners[key] = dashboard
+        thread = threading.Thread(target=_worker, args=(dashboard, stop_event), daemon=True,
                                   name='case-import-worker')
         _workers[key] = thread
         thread.start()
 
 
-def _worker(dashboard):
+def stop(dashboard, timeout=15):
+    """Release idle workers and locks when a local server or test app closes."""
+    key = str(dashboard.state.resolve())
+    with _guard:
+        if _owners.get(key) is not dashboard:
+            return
+        thread = _workers.get(key)
+        event = _stops.get(key)
+        if event:
+            event.set()
+    if thread and thread is not threading.current_thread():
+        thread.join(timeout=timeout)
+    with _guard:
+        if thread is _workers.get(key) and (thread is None or not thread.is_alive()):
+            _workers.pop(key, None)
+            _stops.pop(key, None)
+            _owners.pop(key, None)
+
+
+def _worker(dashboard, stop_event):
     folder = _directory(dashboard)
     folder.mkdir(parents=True, exist_ok=True)
     with (folder / 'worker.lock').open('a+b') as lock:
@@ -127,11 +150,11 @@ def _worker(dashboard):
             return
         try:
             _recover(dashboard)
-            while True:
+            while not stop_event.is_set():
                 task = current(dashboard)
                 if task and task['status'] == 'queued':
                     _execute(dashboard, task)
-                time.sleep(1)
+                stop_event.wait(1)
         except Exception:
             logging.getLogger(__name__).error('案例导入后台进程异常：\n%s',
                                               dashboard.redact(traceback.format_exc()))

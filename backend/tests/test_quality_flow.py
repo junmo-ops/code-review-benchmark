@@ -77,9 +77,20 @@ class QualityFlowTests(unittest.TestCase):
         self.assertFalse(target.with_suffix('.zip.part').exists())
 
     def test_selected_delivery_excludes_unrelated_changes(self):
+        git = patch.object(self.pack, 'git_names', return_value=['changed.py'])
+        git.start()
+        self.addCleanup(git.stop)
         names, deleted = self.pack.select_changes(['changed.py', 'new.ts', 'unrelated.py'],
                                                    ['removed.py'], ['changed.py', 'new.ts'])
         self.assertEqual(names, ['changed.py', 'new.ts'])
         self.assertEqual(deleted, [])
         with self.assertRaises(ValueError):
             self.pack.select_changes(['changed.py'], [], ['unknown.py'])
+
+    def test_ast_fingerprint_preserves_empty_fields_across_python_versions(self):
+        source = 'def example(value):\n    return value\n'
+        fingerprint = next(iter(self.check.functions(ast.parse(source))))
+        self.assertIn('posonlyargs=[]', fingerprint)
+        self.assertIn('kwonlyargs=[]', fingerprint)
+        self.assertIn('decorator_list=[]', fingerprint)
+        self.assertNotIn('type_params=[]', fingerprint)

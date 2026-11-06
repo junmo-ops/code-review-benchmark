@@ -2,6 +2,8 @@
 import argparse
 from datetime import datetime
 import hashlib
+import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -46,6 +48,12 @@ def build_archive(target, names, deleted):
                 data = path.read_bytes()
                 digests[name] = hashlib.sha256(data).hexdigest()
                 info = zipfile.ZipInfo.from_file(path, arcname=name)
+                if os.name == 'nt':
+                    # Windows chmod cannot represent POSIX execute bits. Preserve
+                    # script entrypoints in deliveries created on Windows too.
+                    mode = 0o755 if data.startswith(b'#!') else 0o644
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFREG | mode) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
                 archive.writestr(info, data)
             if deleted:

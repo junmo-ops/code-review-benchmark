@@ -298,7 +298,8 @@ export function RunDetail({
   const { modal } = App.useApp();
   const { run: perform, busy, error } = useAction();
   const ownRequest = useRequestScope(runKey);
-  const record = state.runs.find((r) => r.key === runKey);
+  const detail = useRemote<{ run: Run | null }>(query('/api/run', { key: runKey }), 2000);
+  const record = detail.data?.run ?? state.runs.find((r) => r.key === runKey);
   const [selectedProfile, setProfile] = useState<string>();
   const profile = selectedProfile ?? profileForRun(record, state.profiles);
   const jobs = state.jobs.filter((j) => j.key === runKey),
@@ -352,7 +353,7 @@ export function RunDetail({
       footer={null}
       className="detail-modal"
     >
-      <ErrorAlert error={error} />
+      <ErrorAlert error={error || detail.error} />
       {record && (
         <RunHeader
           record={record}

@@ -198,7 +198,7 @@ def _run_container():
         # Validate Web configuration before starting a Worker or listening.
         if role in {'all', 'web'}:
             from webui.wsgi import create_app
-            create_app()
+            create_app(start_background=False)
         if os.environ.get('BENCH_STORAGE_MODE') == 'ephemeral':
             print('试运行：容器重建会丢失进度、配置和结果，请及时导出。', flush=True)
         services = _start_services(role, port, children)

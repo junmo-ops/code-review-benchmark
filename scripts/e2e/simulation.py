@@ -1,4 +1,4 @@
-"""External LCR binary identity is simulated only in the isolated Linux harness."""
+"""External LCR binary identity is simulated only in the isolated browser harness."""
 import os
 
 

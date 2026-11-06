@@ -10,6 +10,7 @@ import { exploration } from './exploration.mjs';
 import { ContainerHarness, reachable } from './container.mjs';
 import { containerScenarios } from './container-scenarios.mjs';
 import { realScenarios } from './real-repositories.mjs';
+import { npmCommand } from '../npm-command.mjs';
 const containerMode = process.argv.includes('--container');
 const exploring = process.argv.includes('--explore') || containerMode;
 const realMode = Boolean(process.env.E2E_REAL_SUITE);
@@ -26,6 +27,7 @@ const errors = [];
 let serverError;
 let cleaned = false;
 let fatalError = null;
+let browserInfo;
 async function playwright() {
   const require = createRequire(import.meta.url);
   try {
@@ -82,7 +84,7 @@ async function main() {
   if (realMode && !containerMode) throw new Error('真实仓库验收请使用 e2e:container，以限制后端资源并隔离数据。');
   const { chromium } = await playwright();
   await mkdir(output, { recursive: true });
-  const build = spawnSync('npm', ['--prefix', 'frontend', 'run', 'build', '--', '--outDir', join(output, 'frontend-dist')], { cwd: root, stdio: 'inherit', shell: windows });
+  const build = spawnSync(...npmCommand(['--prefix', 'frontend', 'run', 'build', '--', '--outDir', join(output, 'frontend-dist')]), { cwd: root, stdio: 'inherit' });
   if (build.status !== 0) throw new Error('前端构建失败，未启动回归');
   const data = join(output, 'runtime');
   if (containerMode) {
@@ -94,6 +96,7 @@ async function main() {
   if (containerRuntime) await containerRuntime.checkWorktreeRecovery();
   browser = await chromium.launch({ headless: !process.argv.includes('--headed'),
     ...(process.env.E2E_BROWSER_CHANNEL ? { channel: process.env.E2E_BROWSER_CHANNEL } : {}) });
+  browserInfo = { channel: process.env.E2E_BROWSER_CHANNEL || 'chromium', version: browser.version() };
   context = await browser.newContext({ baseURL: url, viewport: { width: 1440, height: 1000 } });
   // All browser requests must stay inside this isolated local server.
   await context.route('**/*', (route) => new URL(route.request().url()).origin === url ? route.continue() : route.abort());
@@ -106,16 +109,26 @@ async function main() {
 }
 function launchServer(data, extra = []) {
   const log = createWriteStream(join(output, 'backend.log'), { flags: 'a' });
-  server = containerMode ? containerRuntime.launch() : spawn(python, [join(root, 'scripts/e2e/server.py'), '--data', data, ...extra], { cwd: root, detached: !windows });
+  server = containerMode ? containerRuntime.launch() : spawn(python, [join(root, 'scripts/e2e/server.py'), '--data', data, ...extra], {
+    cwd: root, detached: !windows, env: { ...process.env, PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' },
+  });
   server.once('error', (error) => { serverError = error; });
   server.stdout.pipe(log, { end: false }); server.stderr.pipe(log, { end: false });
   server.once('close', () => log.end());
 }
 function killTree(pid) {
-  if (windows) spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-  else {
+  if (windows) {
+    const stopped = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8' });
+    if (stopped.status !== 0 && processAlive(pid)) {
+      throw new Error(`无法停止回归进程树 ${pid}：${stopped.error?.message || stopped.stderr || stopped.stdout}`);
+    }
+  } else {
     try { process.kill(-pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
+}
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
 }
 async function restartServer(page, fixtures) {
   if (containerMode) return restartContainer(fixtures);
@@ -150,10 +163,8 @@ async function stopBackend() {
     catch (error) { fatalError ??= error.stack; process.exitCode = 1; }
   }
   if (!containerMode && server?.pid && server.exitCode === null && server.signalCode === null) {
-    if (windows) spawnSync('taskkill', ['/PID', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
-    else {
-      try { process.kill(-server.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') console.error(error.message); }
-    }
+    try { killTree(server.pid); }
+    catch (error) { fatalError ??= error.stack; process.exitCode = 1; console.error(error.message); }
   }
 }
 async function cleanup() {
@@ -164,7 +175,7 @@ async function cleanup() {
   await stopBackend();
   await mkdir(output, { recursive: true });
   if (errors.length && !process.exitCode) process.exitCode = 1;
-  await writeFile(join(output, 'results.json'), JSON.stringify({ status: process.exitCode ? "failed" : "passed", mode: containerMode ? "container-2g" : exploring ? "explore" : "regression", results, browserErrors: errors, fatalError }, null, 2));
+  await writeFile(join(output, 'results.json'), JSON.stringify({ status: process.exitCode ? "failed" : "passed", mode: containerMode ? "container-2g" : exploring ? "explore" : "regression", browser: browserInfo, results, browserErrors: errors, fatalError }, null, 2));
   console.log(`回归产物：${output}`);
 }
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => {

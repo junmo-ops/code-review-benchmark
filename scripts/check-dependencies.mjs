@@ -17,4 +17,10 @@ for (const section of ['dependencies', 'devDependencies']) {
 if (mismatches.length) {
   throw new Error(`前端依赖清单与锁文件不一致：${mismatches.join(', ')}。请同步行内验证过的 package-lock.json，不能打包旧锁文件。`);
 }
+const incomplete = Object.entries(lock.packages).filter(([name, entry]) =>
+  name && !entry.link && (!entry.version || !entry.resolved || !entry.integrity),
+).map(([name]) => name);
+if (incomplete.length) {
+  throw new Error(`前端锁文件依赖记录不完整：${incomplete.join(', ')}。请按原锁定版本补全元数据，不能忽略可选依赖。`);
+}
 console.log(`依赖清单与锁文件一致：${fileURLToPath(folder)}`);

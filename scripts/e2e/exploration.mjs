@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { listPollingRecovery } from './run-list.mjs';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -157,19 +158,19 @@ async function duplicateSave({ page }) {
 async function jsonRecovery({ page }) {
   await page.goto('/models');
   let failures = 2;
-  await page.route('**/api/state', (route) => failures-- > 0
+  await page.route('**/api/state?view=summary', (route) => failures-- > 0
     ? route.fulfill({ status: 503, contentType: 'text/html', body: '<h1>Unavailable</h1>' }) : route.continue());
   try {
     await page.getByRole('button', { name: '刷新', exact: true }).click();
     await page.getByText(/HTTP 503.*非 JSON/).waitFor();
     await page.getByText(/HTTP 503.*非 JSON/).waitFor({ state: 'hidden', timeout: 15000 });
     await page.getByText('服务已连接', { exact: true }).waitFor();
-  } finally { await page.unroute('**/api/state'); }
+  } finally { await page.unroute('**/api/state?view=summary'); }
 }
 async function malformedState({ page }) {
   await page.goto('/models');
   let once = true;
-  await page.route('**/api/state', (route) => {
+  await page.route('**/api/state?view=summary', (route) => {
     if (!once) return route.continue();
     once = false;
     return route.fulfill({ status: 200, json: { unexpected: 'gateway response' } });
@@ -179,7 +180,7 @@ async function malformedState({ page }) {
     await page.getByText(/工作台状态响应格式无效/).waitFor({ timeout: 10000 });
     await page.getByText(/工作台状态响应格式无效/).waitFor({ state: 'hidden', timeout: 10000 });
     await page.getByText('服务已连接', { exact: true }).waitFor();
-  } finally { await page.unroute('**/api/state'); }
+  } finally { await page.unroute('**/api/state?view=summary'); }
 }
 async function multiTab({ page }) {
   const second = await page.context().newPage();
@@ -263,5 +264,6 @@ export const exploration = [
   ['corrupt-upload-local-storage', staleStorage], ['expired-upload-session', (ctx) => staleStorage(ctx, true)],
   ['lost-import-completion-response', lostCompletion], ['lost-chunk-response-resume', lostChunk],
   ['rapid-double-save', duplicateSave], ['html-503-polling-recovery', jsonRecovery],
+  ['run-list-polling-recovery', listPollingRecovery],
   ['malformed-state-response-recovery', malformedState], ['multi-tab-model-edit', multiTab], ['abrupt-server-exit-recovery', abruptRestart], ['bounded-queue-navigation-soak', soak],
 ];

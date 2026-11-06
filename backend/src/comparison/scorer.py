@@ -13,8 +13,8 @@ PARAMETERS = dict(temperature=0, max_tokens=8192, timeout_seconds=180, max_retri
 
 
 def identity():
-    paths = list((ROOT/'comparison').glob('*.py')) + [ROOT/'backend/src/evaluators/martian.py', ROOT/'vendor/martian/offline/code_review_benchmark/step3_judge_comments.py']
-    return {str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
+    paths = list((ROOT/'backend/src/comparison').glob('*.py')) + [ROOT/'backend/src/evaluators/martian.py', ROOT/'vendor/martian/offline/code_review_benchmark/step3_judge_comments.py']
+    return {p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
 
 
 def count_matches(gold_count, candidate_count, edges):

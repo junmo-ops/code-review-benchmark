@@ -18,7 +18,7 @@ class ServerTests(unittest.TestCase):
         self.env=patch.dict(os.environ,{'BENCH_DATA_ROOT':str(self.root/'persistent'),'BENCH_CONFIG_ROOT':str(self.root/'config'),'BENCH_SERVER_MODE':'1','BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
         self.env.start();self.app=DurableDashboard(self.root)
         save(self.root/'config/model.local.json',dict(LCR_LLM_MODEL='test',LCR_LLM_TOKEN='secret-do-not-store',LCR_LLM_BASE_URL='https://model.test',JUDGE_MODEL='test',JUDGE_API_KEY='judge-secret'))
-    def tearDown(self):self.env.stop();self.tmp.cleanup()
+    def tearDown(self):self.app.shutdown();self.env.stop();self.tmp.cleanup()
     def submit(self,name='one'):
         return self.app.submit(dict(action='create',suite='aacr',dataset='pilot1.jsonl',name=name))
     def test_durable_claim_duplicate_and_cancel(self):

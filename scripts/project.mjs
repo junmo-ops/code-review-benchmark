@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { npmCommand } from "./npm-command.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
@@ -23,11 +24,11 @@ const env = {
 const children = new Set();
 let stopping = false;
 function invoke(command, args) {
+  if (command === "npm") [command, args] = npmCommand(args);
   const result = spawnSync(command, args, {
     cwd: root,
     env,
     stdio: "inherit",
-    shell: windows && command === "npm",
   });
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -67,12 +68,12 @@ function stop(code = 0) {
   }
 }
 function launch(command, args, childEnv = env) {
+  if (command === "npm") [command, args] = npmCommand(args);
   const child = spawn(command, args, {
     cwd: root,
     env: childEnv,
     stdio: "inherit",
     detached: !windows,
-    shell: windows && command === "npm",
   });
   children.add(child);
   child.once("error", (error) => {
@@ -124,6 +125,7 @@ function check() {
 function verify() {
   check();
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
+  invoke(python, [join(root, "tools/check_regressions.py")]);
   invoke("git", ["diff", "--check"]);
   invoke("git", ["diff", "--cached", "--check"]);
   console.log("本地校验通过；可以打包交付。未调用模型或外部 COS。");

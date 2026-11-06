@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { reportSummaryScenario } from './report-summary.mjs';
+import { runPagination } from './run-list.mjs';
 import { join } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -166,4 +167,5 @@ export const scenarios = [
   ['error-isolation-and-delete-feedback', errors], ['full-workflow', workflow], ['report-summary-and-details', reportSummaryScenario],
   ['queue-cancel-and-import-during-run', queue], ['partial-failure-scoring', partial],
   ['504-retry', retry], ['worker-interruption-resume', recovery], ['resource-deletion-history', deletion],
+  ['run-list-pagination-and-search', runPagination],
 ];

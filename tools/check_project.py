@@ -1,6 +1,7 @@
 """Validate source layout, Python syntax and complexity of changed functions."""
 import ast
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import subprocess
@@ -46,8 +47,9 @@ class Complexity(ast.NodeVisitor):
 
 
 def functions(tree):
-    # Python 3.12 adds an empty type_params field; keep baseline fingerprints portable.
-    return {ast.dump(node, include_attributes=False).replace(', type_params=[]', ''): node for node in ast.walk(tree)
+    # Preserve the original baseline representation across Python AST dump defaults.
+    options = {'show_empty': True} if 'show_empty' in inspect.signature(ast.dump).parameters else {}
+    return {ast.dump(node, include_attributes=False, **options).replace(', type_params=[]', ''): node for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
@@ -85,6 +87,8 @@ def check_layout():
 
 
 def main():
+    if not (3, 12) <= sys.version_info[:2] < (3, 15):
+        raise SystemExit('请使用 Python 3.12–3.14；生产镜像固定 Python 3.12。')
     git_available = subprocess.run(['git', 'rev-parse', '--is-inside-work-tree'],
                                    cwd=ROOT, capture_output=True).returncode == 0
     errors = check_layout()

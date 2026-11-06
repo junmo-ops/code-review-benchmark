@@ -1,4 +1,4 @@
-"""Server-only WSGI application, behind an authenticated reverse proxy."""
+"""Shared HTTP application with explicit local and server authentication policies."""
 import os
 import secrets
 import subprocess
@@ -69,7 +69,7 @@ def _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_pass
     return _authorize_origin(public, csrf)
 
 
-def create_app(dashboard=None):
+def _server_settings():
     public=os.environ.get('BENCH_PUBLIC_URL','').rstrip('/')
     parsed=urlsplit(public)
     proxy=os.environ.get('BENCH_PROXY_TOKEN','')
@@ -85,14 +85,38 @@ def create_app(dashboard=None):
         raise RuntimeError('请设置至少 32 字符的 CSRF Token；代理模式还需代理校验密钥')
     if mode == 'basic' and (not basic_user or not basic_password):
         raise RuntimeError('试运行须设置 BENCH_BASIC_USER 和 BENCH_BASIC_PASSWORD')
+    return public, parsed, proxy, csrf, mode, basic_user, basic_password
+
+
+def _authorize_local(token):
+    port = request.environ['SERVER_PORT']
+    hosts = {f'127.0.0.1:{port}', f'localhost:{port}'}
+    if request.host not in hosts:
+        return jsonify(error='只接受本机访问'), 403
+    origin = request.headers.get('Origin')
+    if origin and origin not in {'http://' + host for host in hosts}:
+        return jsonify(error='不接受跨站请求'), 403
+    protected = request.method not in {'GET', 'HEAD'} or (
+        request.path.startswith('/api/') and request.path != '/api/session')
+    if protected and not secrets.compare_digest(request.headers.get('X-Dashboard-Token', ''), token):
+        return jsonify(error='页面会话失效，请刷新'), 403
+    g.bench_user, g.bench_role = 'local', 'operator'
+    _set_upload_limit()
+    return None
+
+
+def create_app(dashboard=None, *, local_token=None, start_background=True):
+    settings = None if local_token is not None else _server_settings()
+    csrf = local_token if local_token is not None else settings[3]
     app=Flask(__name__,static_folder=None);app.config['MAX_CONTENT_LENGTH']=16384
-    frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', PROJECT_ROOT/'frontend-dist')).resolve()
+    default_frontend = PROJECT_ROOT/'frontend'/'dist' if local_token is not None else PROJECT_ROOT/'frontend-dist'
+    frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', default_frontend)).resolve()
     pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/guide'}
     dashboard=dashboard or DurableDashboard()
     @app.before_request
     def authorize():
         # The gateway must overwrite identity headers, never forward browser values.
-        return _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_password)
+        return _authorize_local(local_token) if local_token is not None else _authorize_request(*settings)
     @app.after_request
     def headers(response):
         response.headers['Cache-Control']='public, max-age=31536000, immutable' if getattr(g,'frontend_asset',False) else 'no-store'
@@ -106,8 +130,11 @@ def create_app(dashboard=None):
         return response
     @app.errorhandler(404)
     @app.errorhandler(405)
+    @app.errorhandler(400)
+    @app.errorhandler(415)
     def missing_route(exc):
-        return jsonify(error='接口或请求方法不存在'), exc.code
+        message = '请求内容必须是有效的 JSON' if exc.code in {400, 415} else '接口或请求方法不存在'
+        return jsonify(error=message), exc.code
     @app.errorhandler(ValueError)
     def invalid(exc):return jsonify(error=dashboard.redact(str(exc))),400
     @app.errorhandler(KeyError)
@@ -117,6 +144,14 @@ def create_app(dashboard=None):
         app.logger.error('请求处理失败：%s %s\n%s', request.method, request.path,
                          dashboard.redact(details))
         return jsonify(error='文件或参数不可用，请检查记录'),400
+    @app.errorhandler(Exception)
+    def unexpected(exc):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(exc, HTTPException):
+            return jsonify(error='请求无法处理'), exc.code
+        details = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        app.logger.error('请求处理失败：%s %s\n%s', request.method, request.path, dashboard.redact(details))
+        return jsonify(error='服务暂时无法完成请求，请稍后重试并查看服务日志'), 500
     @app.errorhandler(413)
     def too_large(exc):
         from .case_upload import limits
@@ -164,7 +199,7 @@ def create_app(dashboard=None):
     @app.get('/api/cases/imports')
     def case_import_status():
         from .case_import import current
-        return jsonify(task=current(dashboard))
+        return jsonify(task=current(dashboard, request.args.get('id')))
     @app.post('/api/uploads/start')
     def start_upload():
         if os.environ.get('BENCH_CASE_UPLOAD') != '1':
@@ -238,6 +273,8 @@ def create_app(dashboard=None):
         return jsonify(manage_repository(dashboard, payload))
     @app.post('/api/recovery')
     def acknowledge_recovery():
+        if not getattr(dashboard, 'queue_mode', False):
+            raise ValueError('本地模式没有独立任务队列')
         value = request.get_json()
         if not isinstance(value, dict) or value.get('confirmed') is not True:
             raise ValueError('请先确认旧任务进程和容器已停止')
@@ -250,6 +287,8 @@ def create_app(dashboard=None):
     @app.get('/readyz')
     def readiness():
         import time
+        if not getattr(dashboard, 'queue_mode', False):
+            return jsonify(status='ready'), 200
         ready = os.environ.get('BENCH_CONTAINER_ROLE', 'web') != 'all' or time.time() - (dashboard.queue.meta('heartbeat') or 0) < 15
         status = 'recovery_required' if dashboard.queue.meta('recovery_required') else 'ready'
         return jsonify(status=status if ready else 'worker_unavailable'), 200 if ready and status == 'ready' else 503
@@ -258,7 +297,24 @@ def create_app(dashboard=None):
         return jsonify(csrf_token=csrf, access_role=g.bench_role)
     @app.get('/api/state')
     def state():
-        value=dashboard.snapshot();value['access_role']=g.bench_role;return jsonify(value)
+        value=dashboard.snapshot(compact=request.args.get('view') == 'summary')
+        value['access_role']=g.bench_role
+        return jsonify(value)
+    @app.get('/api/runs')
+    def runs():
+        if getattr(dashboard, 'queue_mode', False):
+            dashboard.sync()
+        try:
+            page = int(request.args.get('page', '1'))
+            size = int(request.args.get('page_size', '10'))
+        except ValueError:
+            raise ValueError('分页参数无效') from None
+        return jsonify(dashboard.queries.page(page, size, request.args.get('suite', ''), request.args.get('search', '')))
+    @app.get('/api/run')
+    def run_detail():
+        if getattr(dashboard, 'queue_mode', False):
+            dashboard.sync()
+        return jsonify(run=dashboard.queries.detail(request.args.get('key')))
     @app.get('/api/log')
     def log():return jsonify(dashboard.logs(request.args['job']))
     @app.get('/api/comparison-case')
@@ -307,8 +363,10 @@ def create_app(dashboard=None):
         data=request.get_json()
         if not isinstance(data,dict):raise ValueError('请求必须为对象')
         dashboard.stop(data['job'],actor=g.bench_user[:200]);return jsonify(ok=True)
-    from .case_import import start
-    start(dashboard)
+    if start_background:
+        from .case_import import start
+        start(dashboard)
+    app.extensions['benchmark_dashboard'] = dashboard
     from runner.diagnostics import install_request_diagnostics
     install_request_diagnostics(app)
     return app

@@ -1,17 +1,13 @@
 """Dashboard facade: allowlisted commands, persisted jobs, no new scoring logic."""
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import signal
-import subprocess
 import sys
 import threading
-import time
-import uuid
 from runner.runtime import data_root, config_root
+from application.files import read, save, now
 
 from runner.paths import PROJECT_ROOT as ROOT
 CATALOG = [
@@ -23,21 +19,6 @@ CATALOG = [
 CATALOG.append(dict(id='ccrab', name='c-CRAB', role='执行验证专项', description='单例适配实验 · 修复后运行发布测试', datasets=['ccrab-pilot1.jsonl']))
 ACTIVE = {'queued', 'running', 'cancelling'}
 NAME = re.compile(r'^[A-Za-z0-9_-]{1,100}$')
-
-
-def read(path):
-    return json.loads(Path(path).read_text(encoding='utf-8'))
-
-
-def save(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix('.tmp')
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-    temp.replace(path)
-
-
-def now():
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 class Dashboard:
@@ -52,6 +33,8 @@ class Dashboard:
         self.cancelled = threading.Event()
         self.worker = None
         self.active = None
+        from application.queries import RunQueries
+        self.queries = RunQueries(self)
         # Restart never silently resumes or retries paid requests.
         for path in (self.state.glob('jobs/*.json') if load_jobs else []):
             try:
@@ -318,7 +301,7 @@ class Dashboard:
                 continue
             if len(result) >= 1500:
                 break
-            result.append(dict(path=str(rel), size=p.stat().st_size, report=p.suffix == '.md'))
+            result.append(dict(path=rel.as_posix(), size=p.stat().st_size, report=p.suffix == '.md'))
         return result
 
     def artifact(self, key, name):
@@ -412,17 +395,8 @@ class Dashboard:
             mode = 'ephemeral'
         return status, mode
 
-    def snapshot(self):
-        runs = []
-        paths = list((self.data / 'runs').glob('*/run-config.json')) + list((self.data / 'runs/mcr').glob('*/run-config.json'))
-        paths += list((self.data/'runs/ccrab').glob('*/run-config.json'))
-        paths += [p for p in (self.data/'runs/ccrab').glob('*/config.json') if not (p.parent/'run-config.json').exists()]
-        for path in paths:
-            key = str(path.parent.relative_to(self.data / 'runs'))
-            try:
-                runs.append(self.describe(key))
-            except (OSError, ValueError, KeyError, AttributeError) as exc:
-                runs.append(dict(key=key, name=path.parent.name, suite='unknown', status='unreadable', error='批次数据不完整或格式不兼容', cases=[], artifacts=[], completed=0, total=0, metrics={}, created=''))
+    def snapshot(self, compact=False):
+        runs = [] if compact else self.queries.all(details=True)
         with self.lock:
             jobs = [dict(j) for j in sorted(self.jobs.values(), key=lambda j: j['created_at'], reverse=True)[:50]]
             for job in jobs:
@@ -449,210 +423,18 @@ class Dashboard:
                         storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
     def command(self, key, stage, profile, task=None, retry=False, init=None):
-        if stage=='comparison':
-            manifest=read(self.run_dir(key)/'experiment.json')
-            limit=len(manifest['groups'])*(len(manifest['case_ids'])*(manifest['case_timeout_seconds']+manifest['judge_case_timeout_seconds']+60)+300)
-            return [sys.executable,'-m','comparison.runner','--key',key],self.environment(profile),limit
-        run_id = key.split('/')[-1]
-        env = self.environment(profile)
-        cfg = self.config(key) if init is None else init
-        if cfg.get('reviewer', cfg.get('reviewer_id')) in {'server_agent', 'cline_skill'}:
-            return self._agent_command(stage, run_id, env, cfg, init, task)
-        if key.startswith('ccrab/'):
-            return self._ccrab_command(stage, run_id, env, cfg)
-        if key.startswith('mcr/'):
-            entry, args, limit = self._mcr_arguments(stage, run_id, cfg, init, task, retry)
-        else:
-            entry, args, limit = self._review_arguments(key, stage, run_id, cfg, init, task, retry)
-        command = [sys.executable, str(self.root/entry), '--timeout-seconds', str(limit)]
-        if profile != 'environment':
-            command += ['--config', str(self.configs/profile)]
-        else:
-            # Existing wrappers load model.local.json by default. Empty explicit config preserves env semantics.
-            path = self.state/'environment.local.json'
-            save(path, {})
-            command += ['--config', str(path)]
-        env['LCR_DIAGNOSTICS_DIR'] = str(self.run_dir(key)/'diagnostics')
-        return command+args, env, limit
+        from application.planning import ExecutionPlanner
+        return ExecutionPlanner(self).command(key, stage, profile, task, retry, init)
 
-    def _agent_command(self, stage, run_id, env, cfg, init, task):
-        args=[stage,'--run-id',run_id,'--runs-root',str(self.data/'runs')]
-        limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
-        if stage == 'eval':
-            limit = self._scoring_budget(cfg, self.data/'runs'/run_id)
-        if init is not None:
-            args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
-        if task:args+=['--instance',task]
-        if stage=='review':args+=['--external-timeout-seconds',str(limit)]
-        return [sys.executable,str(self.root/'backend/src/cloud.py')]+args,env,limit
-
-    def _ccrab_command(self, stage, run_id, env, cfg):
-        if stage not in {'init','check','run'}:raise ValueError('c-CRAB 不支持该操作')
-        if stage=='run':
-            from executable.dashboard import verify
-            verify(self.root,cfg,env)
-        env['PATH']=str(self.root/'bin')+os.pathsep+env.get('PATH','')
-        return [sys.executable,'-m','executable.dashboard',stage,'--run-id',run_id],env,2700 if stage=='run' else 120
-
-    def _mcr_arguments(self, stage, run_id, cfg, init, task, retry):
-        limit = 900
-        args = [stage, "--run-id", run_id]
-        entry = 'backend/src/mcr.py'
-        if init is not None:
-            args += ['--dataset', 'data/'+init['dataset'], '--reviewer', init['reviewer'], '--max-output-tokens', str(init['max_tokens'])]
-        if task:
-            args += ['--task', task]
-        if stage == 'review':
-            limit = 780 if cfg['reviewer'] == 'lcr' else 900
-        if retry:
-            args.append('--retry')
-        return entry, args, limit
-
-    def _review_arguments(self, key, stage, run_id, cfg, init, task, retry):
-        limit = 900
-        args = [stage, "--run-id", run_id]
-        entry = 'backend/src/local.py'
-        if init is not None:
-            args += ['--dataset', str(self.dataset_path(init['dataset'])), '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
-            if init['reviewer'] == 'lcr':
-                args += ['--max-case-retries', str(init.get('max_case_retries', 1))]
-        if task:
-            args += ['--instance', task]
-        if stage == 'review':
-            limit = self._review_budget(key, cfg, task)
-        if stage == 'eval':
-            limit = self._scoring_budget(cfg, self.run_dir(key))
-        if retry:
-            args.append('--retry')
-        return entry, args, limit
-
-    @staticmethod
-    def _scoring_budget(cfg, run):
-        if cfg.get('suite', {}).get('id') == 'aacr' and cfg.get('evaluator', {}).get('id', 'original') == 'original':
-            from suites.aacr.evaluation_resume import scoring_budget
-            return scoring_budget(run, cfg)
-        return 900
-
-    def _review_budget(self, key, cfg, task):
-        # Bound one batch review command by the slowest case, since cases run concurrently.
-        from runner.cloud import checked_instances
-        items = checked_instances(self.run_dir(key)/'dataset.jsonl', cfg['suite']['id'])
-        if task:
-            items = [i for i in items if i.instance_id == task]
-        limits=[]
-        attempts = cfg.get('max_case_retries', 1) + 1
-        backoff = sum(min(5 * retry, 15) for retry in range(1, attempts))
-        for item in items:
-            repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
-            base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
-            files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-            one_attempt = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 120
-            limits.append(one_attempt * attempts + backoff)
-        case_jobs = max(1, cfg.get('case_jobs', 1))
-        batch_budget = sum(max(limits[offset:offset + case_jobs])
-                           for offset in range(0, len(limits), case_jobs))
-        limit = batch_budget + 60 * len(items) * attempts
-        return limit
 
     def submit(self, request):
         if os.environ.get('BENCH_SERVER_MODE') and os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
             from .case_assets import status
             if not status(self.root, self.data)['ready']:
                 raise ValueError('请先在网页上传并准备至少一份案例 ZIP')
-        action = request.get('action')
-        request = dict(request)
-        role_config = None
-        profile = request.get('review_profile', request.get('profile', 'model.local.json')) if action=='create' else request.get('profile', 'model.local.json')
-        self.environment(profile)  # Reject invalid profile before queuing.
-        if type(request.get('start_after_create',False)) is not bool:
-            raise ValueError('开始选项必须为布尔值')
-        if action == 'create':
-            suite = request.get('suite')
-            entry = next((s for s in self.catalog() if s['id'] == suite), None)
-            enabled = os.environ.get('BENCH_ENABLED_SUITES', '')
-            if enabled and suite not in enabled.split(','):
-                raise ValueError('本部署未启用该案例集')
-            if not entry or request.get('dataset') not in [dataset['id'] for dataset in entry['datasets']]:
-                raise ValueError('案例集与数据清单不匹配')
-            run_id = request.get('name')
-            if not isinstance(run_id, str) or not NAME.fullmatch(run_id):
-                raise ValueError('批次名只支持字母、数字、下划线和短横线，最长 100 字符')
-            key = (suite+'/' if suite in {'mcr','ccrab'} else '')+run_id
-            if self.run_dir(key).exists():
-                raise ValueError('批次名已存在，请使用新名称')
-            reviewer = request.get('reviewer', 'lcr')
-            evaluator = request.get('evaluator', 'martian')
-            if reviewer not in ({'lcr','llm_direct'} if suite == 'mcr' else {'lcr'} if suite=='ccrab' else {'lcr','server_agent','cline_skill'}):
-                raise ValueError('该案例集不支持所选检视对象')
-            if reviewer=='cline_skill' and (suite!='aacr' or request['dataset']!='pilot1.jsonl'):
-                raise ValueError('Cline + Skill 当前仅开放 AACR 单例试跑')
-            if reviewer=='server_agent':
-                from reviewers.server_agent.adapter import load_config
-                try:load_config()
-                except OSError:raise ValueError('请先配置 agent.local.json；参见 docs/服务端Agent接入.md') from None
-            if 'review_profile' in request:
-                from .profiles import compose_roles
-                role_config = compose_roles(self, profile, request.get('judge_profile'), suite!='ccrab')
-            if suite=='ccrab':
-                from executable.dashboard import identity
-                identity(self.root,self.environment(profile))
-                if evaluator!='executable':raise ValueError('c-CRAB 必须使用发布测试')
-            elif evaluator not in {'martian','original'} or (suite == 'codefuse_cr' and evaluator != 'martian'):
-                raise ValueError('该案例集不支持所选裁判')
-            timeout = request.get('timeout_minutes', 10)
-            tokens = request.get('max_tokens', 32768)
-            if type(timeout) is not int or not 1 <= timeout <= 120 or type(tokens) is not int or not 1 <= tokens <= 131072:
-                raise ValueError('超时或输出上限不在允许范围内')
-            case_jobs = request.get('case_jobs', 1)
-            if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
-                raise ValueError('案例并发必须为 1–16 的整数')
-            if (suite in {'mcr','ccrab'} or reviewer != 'lcr') and case_jobs != 1:
-                raise ValueError('案例并发仅适用于单轮 LCR 测评')
-            max_case_retries = request.get('max_case_retries', 1 if reviewer == 'lcr' else 0)
-            if type(max_case_retries) is not int or not 0 <= max_case_retries <= 2:
-                raise ValueError('失败案例自动重试次数必须为 0–2')
-            if reviewer != 'lcr' and max_case_retries:
-                raise ValueError('失败案例自动重试当前仅支持 LCR')
-            spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator, timeout_minutes=timeout, max_tokens=tokens, case_jobs=case_jobs, max_case_retries=max_case_retries)
-        else:
-            key = request.get('key')
-            self.config(key)
-            spec = None
-            warning = self.compatibility(key)
-            if warning and (action != 'export' or key.startswith('mcr/')):
-                raise ValueError(warning)
-            common = {'check','preview','review','eval','report','export','recover','workflow'}
-            if key.startswith('mcr/'):
-                common = {'check','review','eval','report','export','compare-martian','workflow'}
-            if action not in common:
-                raise ValueError('不支持的操作')
-            if key.startswith('ccrab/'):
-                common={'check','workflow'}
-                if action=='workflow' and not self.describe(key)['can_run']:
-                    raise ValueError('该批次已有执行痕迹；请查看结果或新建批次')
-                if request.get('task') or request.get('retry'):raise ValueError('c-CRAB 单例实验不支持恢复或自动重试')
-            if action not in common:raise ValueError('不支持的操作')
-            if request.get('task') and request['task'] not in {c['id'] for c in self.cases(key)}:
-                raise ValueError('案例不属于本批次')
-            if action == 'workflow' and request.get('task'):
-                raise ValueError('一键检视并评分需要选择全部案例；单例请使用分步检视按钮')
-            if action == 'recover' and not request.get('task'):
-                raise ValueError('请选择要恢复的单个案例')
-        with self.lock:
-            if self.active and not getattr(self,'queue_mode',False):
-                raise ValueError('已有任务执行中。请等待完成或先停止，避免仓库与日志冲突。')
-            if role_config is not None:
-                from .profiles import save_run_profile
-                profile = save_run_profile(self, role_config)
-                request['profile'] = profile
-            job_id = uuid.uuid4().hex
-            job = dict(id=job_id, key=key, action=action, start_after_create=bool(action=='create' and request.get('start_after_create')),  profile=profile, status='queued', created_at=now(), step='', completed_steps=0, total_steps=0, message='等待执行', exit_code=None)
-            try:
-                return self.enqueue(job, request, spec)
-            except Exception:
-                if role_config is not None:
-                    (self.configs/profile).unlink(missing_ok=True)
-                raise
+        from application.submissions import SubmissionService
+        from .profiles import compose_roles, save_run_profile
+        return SubmissionService(self, compose_roles, save_run_profile).submit(request)
 
     def enqueue(self, job, request, spec):
         from .case_import import benchmark_submission
@@ -676,170 +458,17 @@ class Dashboard:
             self.jobs[job_id].update(changes)
             save(self.state/'jobs'/f'{job_id}.json', self.jobs[job_id])
 
-    def _continue_partial_review(self, job, steps, index, stage, code, timed_out=False):
-        # AACR's evaluator can score complete answers while explicitly excluding failed cases.
-        if (code == 0 and not timed_out) or stage != 'review' or job['action'] not in {'workflow', 'create'}:
-            return False
-        if job['action'] == 'create' and not job.get('start_after_create'):
-            return False
-        if self.config(job['key']).get('suite', {}).get('id') != 'aacr':
-            return False
-        return any(next_stage == 'eval' for next_stage, _, _ in steps[index + 1:])
-
-    def _execute_stage(self, job_id, job, request, stage, task, init, log):
-        cmd, env, limit = self.command(job['key'], stage, job['profile'], task,
-                                       bool(request.get('retry')), init)
-        env['PYTHONUTF8'] = '1'
-        log.write(f'\n[{now()}] {stage + (" · " + task if task else "")}\n'
-                  + self.redact(' '.join(cmd)) + '\n')
-        process = None
-        reader = None
-        try:
-            process_options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt'
-                               else {'start_new_session': True})
-            process = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True, encoding='utf-8',
-                                       errors='replace', **process_options)
-            self.update(job_id, pid=process.pid)
-            stream = process.stdout
-
-            def output():
-                try:
-                    for line in stream:
-                        log.write(self.redact(line))
-                except (OSError, ValueError):
-                    # The main process exit code remains authoritative if a child retains the pipe.
-                    pass
-
-            reader = threading.Thread(target=output, daemon=True)
-            reader.start()
-            deadline = time.monotonic() + limit + 30
-            timed_out = False
-            while process.poll() is None:
-                cancelled = self.cancelled.wait(.15)
-                deadline_reached = time.monotonic() > deadline
-                if cancelled or deadline_reached:
-                    from local import terminate
-                    terminate(process)
-                    timed_out = deadline_reached and not cancelled
-                    break
-            reader.join(timeout=10)
-            if reader.is_alive():
-                log.write('主命令已退出；仍有子进程持有日志流，按主命令退出码继续。\n')
-            else:
-                stream.close()
-            return process.returncode, timed_out
-        finally:
-            if reader and reader.is_alive():
-                reader.join(timeout=1)
-            if process is not None and process.poll() is None:
-                from local import terminate
-                terminate(process)
 
     def plan(self, job, request, spec):
-        if job['action'] == 'comparison':
-            return [('comparison', None, None)]
-        if spec is not None:
-            return [('init', None, spec)]
-        key, action = job['key'], job['action']
-        if key.startswith('ccrab/'):
-            return self._plan_ccrab(action)
-        return self._plan_run(key, action, request)
+        from application.planning import ExecutionPlanner
+        return ExecutionPlanner(self).plan(job, request, spec)
 
-    @staticmethod
-    def _plan_ccrab(action):
-        return [('check', None, None)] + ([('run', None, None)] if action == 'workflow' else [])
-
-    def _plan_run(self, key, action, request):
-        mcr = key.startswith('mcr/')
-        case_ids = [c['id'] for c in self.cases(key)]
-        if request.get('task'):
-            case_ids = [request['task']]
-        if action == 'check':
-            return [('prepare-repos' if mcr else 'check', None, None)]
-        if action == 'review' and not request.get('task') and not mcr and self.config(key).get('reviewer', 'lcr') == 'lcr':
-            return [('review', None, None)]
-        if action in {'review','preview','recover'}:
-            return [(action, case, None) for case in case_ids]
-        if action == 'workflow':
-            return self._plan_workflow(key, request, mcr, case_ids)
-        if action == 'eval' and self.summary(key):
-            raise ValueError(self._existing_score_message(key))
-        return [(action, request.get('task') if mcr else None, None)]
-
-    def _plan_workflow(self, key, request, mcr, case_ids):
-        cfg = self.config(key)
-        steps = [] if mcr and cfg['reviewer'] == 'llm_direct' else [('prepare-repos' if mcr else 'check', None, None)]
-        review_steps = [('review', None, None)] if not mcr and cfg.get('reviewer', 'lcr') == 'lcr' and not request.get('task') else [('review', case, None) for case in case_ids]
-        eval_steps = [] if self.summary(key) or cfg.get('simulation') else [('eval', None, None)]
-        return steps + review_steps + eval_steps
-
-    def _run_work_stage(self, job_id, job, request, steps, index, stage, task, init, log):
-        label = stage + (' · ' + task if task else '')
-        self.update(job_id, step=label, step_started_at=now(), completed_steps=index, message="正在执行")
-        from runner.diagnostics import phase, event
-        with phase('benchmark.stage', job_id=job_id, key=job['key'], stage=stage):
-            code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
-        event('benchmark.stage.result', job_id=job_id, stage=stage, exit_code=code,
-              status='timeout' if timed_out else 'exited')
-        self.update(job_id, exit_code=code)
-        if self.cancelled.is_set():
-            return 'cancelled'
-        if code != 0 or timed_out:
-            if stage == 'comparison':
-                raise ValueError('对比实验存在失败或未完成案例，请查看对比报告与日志；不自动重试。')
-            if self._continue_partial_review(job, steps, index, stage, code, timed_out):
-                reason = '外层时限已到，检视进程已停止' if timed_out else '检视存在未完成案例'
-                log.write(f'{reason}；继续评分结构完整的答卷，失败案例将从评分中排除。\n')
-                self.update(job_id, completed_steps=index+1, message='检视部分失败，正在评分已完成案例')
-                return 'partial'
-            if timed_out:
-                raise ValueError('页面外层执行时限已到，进程已停止，保留日志')
-            raise ValueError('本步骤失败，后续步骤未执行。请查看日志；已完成答卷保留。')
-        self.update(job_id, completed_steps=index+1)
-        return 'complete'
-
-    def _prepare_job_repositories(self, job_id, job, spec, log):
-        def progress(stage, message, completed=0, total=0, **details):
-            if self.cancelled.is_set():
-                raise ValueError('准备仓库期间收到停止请求')
-            log.write(f'[{now()}] {message}\n')
-            log.flush()
-            self.update(job_id, message=message)
-        self.prepare_case_repositories(spec, job['key'], job['action'], progress=progress)
 
     def work(self, job_id, request, spec):
-        partial_review = False
-        log_path = self.state/'jobs'/f'{job_id}.log'
-        try:
-            job = self.jobs[job_id]
-            steps = self.plan(job, request, spec)
-            self.update(job_id, status='running', started_at=now(), total_steps=len(steps), message='正在执行')
-            with log_path.open('a', encoding='utf-8', buffering=1) as log:
-                self._prepare_job_repositories(job_id, job, spec, log)
-                for index, (stage, task, init) in enumerate(steps):
-                    if self.cancelled.is_set():
-                        break
-                    outcome = self._run_work_stage(job_id, job, request, steps, index, stage, task, init, log)
-                    if outcome == 'cancelled':
-                        break
-                    partial_review = partial_review or outcome == 'partial'
-                    if stage=='init' and request.get('start_after_create') and not self.cancelled.is_set():
-                        steps.extend(self.plan(dict(job,key=job['key'],action='workflow'),{},None))
-                        self.update(job_id,total_steps=len(steps))
-            message = ('已停止，已写入的结果保留' if self.cancelled.is_set() else
-                       '评分已完成；部分案例检视失败，请查看案例状态与日志' if partial_review else '执行完成')
-            self.update(job_id, status='cancelled' if self.cancelled.is_set() else 'succeeded', message=message, ended_at=now())
-        except BaseException as exc:
-            detail = self.redact(str(exc)) if isinstance(exc, ValueError) else type(exc).__name__+'；请查看日志和批次原始证据'
-            with log_path.open('a', encoding='utf-8') as log:
-                log.write('\n'+detail+'\n')
-            self.update(job_id, status='cancelled' if self.cancelled.is_set() else 'failed', message=detail, ended_at=now())
-        finally:
-            with self.lock:
-                self.active = None
+        from application.execution import JobExecutor
+        return JobExecutor(self).work(job_id, request, spec)
 
-    def stop(self, job_id):
+    def stop(self, job_id, actor=None):
         with self.lock:
             if self.active != job_id:
                 raise ValueError('任务已结束或不是当前任务')
@@ -859,6 +488,8 @@ class Dashboard:
         return dict(text=self.redact(data.decode('utf-8', 'replace')), truncated=size>200000)
 
     def shutdown(self):
+        from .case_import import stop
+        stop(self)
         with self.lock:
             active = self.active
         if active:
