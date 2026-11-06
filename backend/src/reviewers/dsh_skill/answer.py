@@ -2,6 +2,7 @@
 import json
 from pathlib import PurePosixPath
 from .gateway import summarize
+from .jsonextract import extract_json_object
 
 
 def _finding(comment, lines):
@@ -36,8 +37,18 @@ def _parse_final(text):
     try:
         return json.loads(text)
     except json.JSONDecodeError as error:
-        raise ValueError(f'DSH 最终答卷不是有效 JSON（第 {error.lineno} 行，第 {error.colno} 列）；'
-                         '原始输出已保留，不自动修补或重试') from None
+        line, column = error.lineno, error.colno
+    # The review model occasionally wraps the required object in prose (e.g.
+    # "I have verified ...\n\n{...}").  Salvage the last complete top-level
+    # object; anything else is still a failed answer, never a complete one.
+    wrapped = extract_json_object(text)
+    if wrapped is not None:
+        try:
+            return json.loads(wrapped)
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f'DSH 最终答卷不是有效 JSON（第 {line} 行，第 {column} 列）；'
+                     f'提取末段 JSON 对象也未成功；原始输出已保留，不自动修补或重试') from None
 
 
 def convert(item, cfg, rows, lines, requests):

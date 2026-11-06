@@ -2,12 +2,13 @@
 import hashlib
 import json
 import shutil
+import stat
 from types import SimpleNamespace
 
 from runner.paths import PROJECT_ROOT
 from runner.runtime import data_root
 from runner.storage import save
-from .runtime import IsolationError
+from .runtime import IsolationError, runtime_mode
 
 
 def validate_mode(mode, version):
@@ -20,6 +21,26 @@ def validate_mode(mode, version):
 def identity_digest(record):
     content = json.dumps(record, sort_keys=True, ensure_ascii=True, separators=(',', ':')).encode()
     return hashlib.sha256(content).hexdigest()
+
+
+def harden_snapshot(folder):
+    """Make a frozen Skill snapshot physically un-writable by the same user.
+
+    Only meaningful in POD mode: it shares the host filesystem with the DSH
+    process (ADR-0002) and bash is not path-scoped by the software guard, so a
+    Skill script can otherwise write into its own frozen directory (e.g.
+    Python bytecode caches like ``scripts/__pycache__/*.pyc``), which later
+    fails ``verify_staged`` and stops the batch after a completed review.
+    Removing write bits makes any such write fail with EACCES instead; Python
+    silently skips ``__pycache__``, and legitimate script outputs (repo, work
+    dir) are untouched.
+    """
+    for path in (folder, *folder.rglob('*')):
+        if path.is_symlink():
+            raise IsolationError('Skill 快照不能包含链接，无法加固')
+        mode = (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+                | (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH if path.is_dir() else 0))
+        path.chmod(mode)
 
 
 def verify_frozen(cfg, run):
@@ -50,6 +71,8 @@ def bind(args, cfg, run):
     shutil.copytree(source / 'content', destination / 'content')
     shutil.copyfile(source / 'package.zip', destination / 'package.zip')
     save(destination / 'manifest.json', record)
+    if runtime_mode() == 'pod':
+        harden_snapshot(destination)
     skill_assets.verify_copy(destination, record)
     cfg.update(skill_version=record['id'], skill_identity=record)
 
@@ -73,6 +96,8 @@ def stage(cfg, run, work):
     verify(cfg, run)
     if cfg['skill_mode'] == 'skill':
         shutil.copytree(run / 'skill', work / 'skill-version')
+        if runtime_mode() == 'pod':
+            harden_snapshot(work / 'skill-version')
         verify_staged(cfg, work)
 
 
@@ -83,6 +108,24 @@ def verify_staged(cfg, work):
             verify_copy(work / 'skill-version', cfg['skill_identity'])
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise IsolationError('DSH 案例 Skill 快照内容不一致，停止批次') from error
+
+
+def verify_after_execution(cfg, work):
+    """Post-run staged-snapshot check.
+
+    POD mode shares the host filesystem with untrusted execution (ADR-0002)
+    and cannot guarantee OS-level write prevention, so a snapshot mutation
+    after a run is a capability violation of that case: the loading proof is
+    void, the case must not publish a quality answer, but the batch continues.
+    Any other mode keeps the original fail-closed semantics: a mutation there
+    means the isolation boundary itself was broken.
+    """
+    try:
+        verify_staged(cfg, work)
+    except IsolationError as error:
+        if cfg.get('dsh_policy', {}).get('runtime_mode') != 'pod' or cfg.get('skill_mode') != 'skill':
+            raise
+        raise ValueError('DSH 案例执行期间冻结 Skill 快照被改动，该案例不发布质量答卷；批次继续') from error
 
 
 def integrity(cfg):

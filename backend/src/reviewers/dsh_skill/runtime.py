@@ -14,7 +14,7 @@ VERSION = '0.2.1-rc.2'
 RUNTIME = PROJECT_ROOT / 'dependencies/dsh'
 MODULES = RUNTIME / 'node_modules'
 ENTRY = MODULES / '@deepseek-ai/dsh/lib/bin.js'
-POLICY = dict(request_retries=0, compaction_retries=0, overflow_retries=0,
+POLICY = dict(request_retries=0, compaction_retries=1, overflow_retries=1,
               compaction_failure='abort_turn_no_recovery', context_window=131072, max_output_tokens=8192,
               compaction='fixed_default_threshold', tools=['read', 'glob', 'grep'],
               tool_read_scope='case_and_task_input_only',
@@ -34,7 +34,8 @@ def policy(mode, max_output_tokens=8192):
     if selected == 'pod':
         result['isolation'] = 'pod_shared_process_software_guards_only'
     if mode == 'skill':
-        result.update(tools=[*POLICY['tools'], 'skill'], tool_read_scope='case_task_and_bound_skill_only')
+        result.update(tools=[*POLICY['tools'], 'write', 'edit', 'bash', 'skill'],
+                      tool_read_scope='case_task_and_bound_skill_only')
     return result
 
 
@@ -138,10 +139,10 @@ def namespace():
                    '--tmpfs', '/home', '--setenv', 'PATH', '/usr/bin:/bin']
 
 
-def probe():
+def probe(skill=False):
     if runtime_mode() == 'pod':
         from .pod import probe as pod_probe
-        pod_probe()
+        pod_probe(skill=skill)
         return
     _probe_namespace()
 
@@ -183,13 +184,17 @@ def command(work, prompt):
         from .pod import command as pod_command
         return pod_command(work, prompt)
     skill = ['--ro-bind', str(work / 'skill-version/content'), '/skill'] if (work / 'skill-version').exists() else []
+    # Skill mode may write inside the case workspace (issues.json, reports);
+    # baseline keeps the head snapshot read-only.
+    repo_bind = ['--bind', str(work / 'repo'), '/work'] if (work / 'skill-version').exists() \
+        else ['--ro-bind', str(work / 'repo'), '/work']
     return namespace() + skill + [
         '--ro-bind', str(node()), '/node', '--ro-bind', str(MODULES), '/runtime/node_modules',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/bridge.mjs'), '/bridge.mjs',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/compaction.mjs'), '/compaction.mjs',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/scope.mjs'), '/scope.mjs',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/candidate.mjs'), '/candidate.mjs',
-        '--ro-bind', str(work / 'repo'), '/work',
+        *repo_bind,
         '--ro-bind', str(work / 'input'), '/input',
         '--bind', str(work / 'home'), '/home/dsh',
         '--ro-bind', str(work / 'model.sock'), '/model.sock',

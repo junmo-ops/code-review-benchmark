@@ -2,9 +2,11 @@
 import hashlib
 from html import escape
 import json
+from posixpath import join as posixjoin
 from pathlib import Path, PurePosixPath
 
 from runner.storage import save
+from .jsonextract import loads_tolerant
 from .supervisor import evidence_path
 
 
@@ -16,8 +18,10 @@ def _expected(cfg, run, redact, evidence):
     record = cfg['skill_identity']
     path = '/skill/' + record['main']
     if cfg['dsh_policy'].get('runtime_mode') == 'pod':
-        manifest = json.loads(evidence_path(evidence, '.manifest.json').read_text())
-        path = str(Path(manifest['execution_root']) / 'skill-version/content' / record['main'])
+        manifest = json.loads(evidence_path(evidence, '.manifest.json').read_text(encoding='utf-8'))
+        # Pure POSIX join: the base string must mirror the Linux execution_root
+        # exactly; a platform Path() would mangle it on Windows.
+        path = posixjoin(manifest['execution_root'], 'skill-version', 'content', record['main'])
     main = (run / 'skill/content' / record['main']).read_bytes().decode('utf-8')
     base = escape(str(PurePosixPath(path).parent), quote=False)
     return redact('\n'.join(['<skill_content name="candidate-skill">', '<skill_resources>',
@@ -53,7 +57,7 @@ def _tool_load(row, rows, expected):
 def _sessions(evidence, session_id):
     sessions = []
     for path in sorted(evidence.parent.glob(evidence.name + '.session-*.jsonl')):
-        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        rows = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
         if rows and rows[0].get('type') == 'session' and rows[0].get('id') == session_id:
             sessions.extend(rows)
     return sessions
@@ -83,21 +87,42 @@ def _proof(rows, inputs, expected):
     return proof
 
 
-def _require_supported(evidence, rows, events):
-    basis = [dict(name=r['data']['name'], arguments=r['data'].get('arguments'), session_seq=r['seq'])
-             for r in rows if r.get('type') == 'tool/call'
-             and r['data'].get('name') not in {'read', 'glob', 'grep', 'skill'}]
-    basis.extend(_policy_denials(rows))
+def _complete_review(events):
+    """A final event carrying a parsed `complete` verdict counts as a delivered
+    review: the Skill met its contract inside the allowed surface."""
     for event in events:
         if event.get('type') != 'final':
             continue
-        try:
-            answer = json.loads(event.get('text', ''))
-        except ValueError:
+        parsed = loads_tolerant(event.get('text', ''))
+        if isinstance(parsed, dict) and parsed.get('status') == 'complete':
+            return True
+    return False
+
+
+def _require_supported(evidence, rows, events, allowed):
+    # Skill mode may legitimately use write/edit/bash next to the inspection
+    # tools; only capabilities outside the frozen policy count as evidence that
+    # the Skill depends on a disabled one.
+    basis = [dict(name=r['data']['name'], arguments=r['data'].get('arguments'), session_seq=r['seq'])
+             for r in rows if r.get('type') == 'tool/call'
+             and r['data'].get('name') not in allowed]
+    denials = _policy_denials(rows)
+    for event in events:
+        if event.get('type') != 'final':
             continue
+        answer = loads_tolerant(event.get('text', ''))
         if isinstance(answer, dict) and answer.get('status') == 'unsupported':
             basis.append(dict(name='declared_requirement', reason=answer.get('reason')))
-    status = dict(status='unsupported' if basis else 'supported', basis=basis)
+    # Path-level scope denials (e.g. a probing glob of the case root or a
+    # resource directory) reflect one-off exploration, not a capability the
+    # Skill depends on; once a complete review was still delivered, they are
+    # recorded for audit without vetoing the answer. Only when the Skill had no
+    # way to complete inside the policy do the denials become dependency
+    # evidence.
+    if not _complete_review(events):
+        basis.extend(denials)
+    status = dict(status='unsupported' if basis else 'supported',
+                  basis=basis, denied_exploration=([] if basis else denials))
     save(evidence_path(evidence, '.skill-support.json'), status)
     if basis:
         raise ValueError('Skill 依赖禁用能力，不支持本期只读检视；不发布质量分')
@@ -126,7 +151,7 @@ def verify(cfg, run, evidence, events, redact):
     if cfg['skill_mode'] == 'baseline':
         return dict(mode='baseline', loaded=False)
     expected = _expected(cfg, run, redact, evidence)
-    inputs = json.loads(evidence_path(evidence, '.model-inputs.json').read_text())
+    inputs = json.loads(evidence_path(evidence, '.model-inputs.json').read_text(encoding='utf-8'))
     ids = [e.get('sessionId') for e in events if e.get('type') == 'session']
     if len(ids) != 1:
         raise ValueError('Skill 会话身份不完整')
@@ -138,5 +163,6 @@ def verify(cfg, run, evidence, events, redact):
     result = dict(mode='skill', version=cfg['skill_version'], name=cfg['skill_identity']['name'],
                   loaded=True, evidence=proof)
     save(evidence_path(evidence, '.skill-load.json'), result)
-    _require_supported(evidence, sessions, events)
+    allowed = set(cfg.get('dsh_policy', {}).get('tools') or ['read', 'glob', 'grep'])
+    _require_supported(evidence, sessions, events, allowed)
     return result

@@ -1,4 +1,5 @@
 """Imported Skill selection through authenticated API and the durable queue."""
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -6,6 +7,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 import test_skill_assets as assets
 from webui.queue import DurableDashboard
@@ -227,6 +229,51 @@ class SkillReviewApiTests(unittest.TestCase):
             self.assertNotEqual(probe.stage('recover', '--instance', 'local.case').returncode, 0)
             self.assertFalse((probe.run / 'results/local.case.json').exists())
             self.assertEqual(len(model.requests), 1)
+
+    def test_pod_execution_cannot_mutate_frozen_skill_snapshot(self):
+        # Regression for the batch kill that hit leancode-review in POD mode:
+        # the staged Skill snapshot shares the host filesystem (ADR-0002) and
+        # bash is not path-scoped by the software guard, so a Skill script
+        # running inside the frozen directory (e.g. Python __pycache__) used to
+        # add files there; the post-run integrity check then stopped the whole
+        # batch after a completed review. The snapshot is hardened read-only
+        # during stage(), so the same host-side write is blocked at the OS
+        # layer and the completed review keeps its integrity proof. Only a root
+        # runner could still write (DAC_OVERRIDE); that case then fails alone
+        # (no quality answer) instead of stopping the batch.
+        self.upload(package())
+        version = self.request('/api/skills').json['versions'][0]['id']
+        active = {}
+
+        def response(body, index):
+            manifest = json.loads((active['probe'].run / 'raw/local.case.manifest.json').read_text())
+            content = Path(manifest['execution_root']) / 'skill-version' / 'content'
+            with contextlib.suppress(OSError):
+                (content / 'scripts' / '__pycache__').mkdir()
+                (content / 'scripts' / '__pycache__' / 'x.pyc').write_bytes(b'x')
+                (content / 'references' / 'rules.txt').write_bytes(b'modified by skill script')
+            return dict(content='{"status":"complete","comments":[]}'), 'stop'
+
+        with patch.dict(os.environ, BENCH_DSH_RUNTIME_MODE='pod'), \
+                serve(response) as model, \
+                case(model, skill_version=version, assets_root=self.temp.name) as probe:
+            active['probe'] = probe
+            result = probe.review()
+            self.assertFalse((probe.run / 'dsh-system-error.json').exists(),
+                             result.stdout + result.stderr)
+            if result.returncode == 0:
+                target = probe.run / 'results/local.case.json'
+                self.assertTrue(target.exists(), result.stdout + result.stderr)
+                integrity = json.loads((probe.run / 'raw/local.case.skill-integrity.json').read_text())
+                self.assertEqual(integrity['status'], 'complete')
+            else:
+                # Root runner bypassed the chmod fence: the case fails alone
+                # and is excluded from quality answers; the batch continues.
+                outcome = json.loads((probe.run / 'raw/local.case.outcome.json').read_text())
+                self.assertEqual(outcome['status'], 'failed')
+                self.assertFalse((probe.run / 'results/local.case.json').exists())
+                integrity = json.loads((probe.run / 'raw/local.case.skill-integrity.json').read_text())
+                self.assertEqual(integrity['status'], 'tampered')
 
     def test_failed_case_does_not_hide_changed_frozen_skill_conditions(self):
         self.upload(package())

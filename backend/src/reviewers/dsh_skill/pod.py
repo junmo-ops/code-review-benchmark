@@ -23,7 +23,7 @@ def command(work, prompt):
             '--profile', 'headless', '--patch', str(work / 'launch-policy.json'), '--json', prompt]
 
 
-def probe():
+def probe(skill=False):
     from .process_tree import subreaper
     with subreaper(), tempfile.TemporaryDirectory(prefix='dsh-pod-preflight-') as directory:
         root = Path(directory)
@@ -31,27 +31,42 @@ def probe():
             (root / name).mkdir(parents=True)
         (root / 'repo/allowed').write_text('case data')
         (root / 'repo/escape').symlink_to('/etc')
-        _probe_guards(root)
+        _probe_guards(root, skill=skill)
 
 
-def _probe_guards(root):
+def _probe_guards(root, skill=False):
     from .supervisor import execute, evidence_path
     script = '''
 const { apply } = await import(process.argv[1]);
-const paths = JSON.parse(process.argv[2]);
+const options = JSON.parse(process.argv[2]);
 let guard;
-apply({ tools: { guard(fn) { guard = fn; } }, provide() {} }, paths);
+apply({ tools: { guard(fn) { guard = fn; } }, provide() {} }, options);
 const check = (name, args) => guard({ name, arguments: args });
 if (check('read', { file_path: 'allowed' })) process.exit(71);
 for (const target of ['/etc/os-release', '../input/../../etc/os-release', 'escape/os-release']) {
   if (!String(check('read', { file_path: target })).includes('BENCH_DSH_SCOPE_DENIED')) process.exit(72);
 }
-for (const name of ['write', 'edit', 'bash', 'web_fetch', 'subagent']) {
-  if (!check(name, { file_path: 'allowed' })) process.exit(73);
+if (options.writes) {
+  if (check('write', { file_path: 'allowed' })) process.exit(73);
+  if (!String(check('write', { file_path: '../input/escape' })).includes('BENCH_DSH_SCOPE_DENIED')) process.exit(74);
+  if (!String(check('edit', { file_path: '/etc/escape' })).includes('BENCH_DSH_SCOPE_DENIED')) process.exit(75);
+} else {
+  for (const name of ['write', 'edit', 'bash']) {
+    if (!check(name, { file_path: 'allowed' })) process.exit(73);
+  }
+}
+if (options.commands) {
+  if (check('bash', { command: 'echo ok' })) process.exit(76);
+} else if (!check('bash', { command: 'echo ok' })) {
+  process.exit(77);
+}
+for (const name of ['web_fetch', 'subagent']) {
+  if (!check(name, {})) process.exit(78);
 }
 '''
     command = [str(runtime.node()), '--input-type=module', '-e', script,
-               runtime.script('scope.mjs'), json.dumps(runtime.locations(root))]
+               runtime.script('scope.mjs'),
+               json.dumps(dict(paths=runtime.locations(root), commands=skill, writes=skill))]
     record = execute(command, root, root / 'probe', time.monotonic() + 10, str)
     if record['exit_code']:
         error = evidence_path(root / 'probe', '.stderr.txt').read_text()

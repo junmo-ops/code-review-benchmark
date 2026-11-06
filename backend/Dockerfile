@@ -15,7 +15,7 @@ RUN node /build-tools/company-npm-lock.mjs --registry="$NPM_REGISTRY" && npm run
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1
 USER root
-ARG BENCH_DSH_ENABLED=0
+ARG BENCH_DSH_ENABLED=1
 ARG BENCH_DSH_RUNTIME_MODE=pod
 ARG NPM_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/
 WORKDIR /opt/deployments
