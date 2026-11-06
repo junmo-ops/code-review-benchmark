@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from reviewers.dsh_skill import adapter, policy, runtime
+from reviewers.dsh_skill import adapter, answer, policy, runtime
 
 
 def _bundle_root():
@@ -127,7 +127,7 @@ class ExecutionClassificationTests(unittest.TestCase):
 
 class RetryClassificationTests(unittest.TestCase):
     def test_only_answer_format_failures_are_retried(self):
-        self.assertTrue(adapter._retryable_failure(ValueError('DSH 最终答卷不是有效 JSON')))
+        self.assertTrue(adapter._retryable_failure(answer.FinalAnswerFormatError('DSH 最终答卷不是有效 JSON')))
         self.assertFalse(adapter._retryable_failure(ValueError('DSH 执行失败，详见脱敏原始日志')))
         self.assertFalse(adapter._retryable_failure(ValueError('Skill 依赖禁用能力')))
         self.assertFalse(adapter._retryable_failure(runtime.IsolationError('隔离启动失败')))

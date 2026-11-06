@@ -1,6 +1,7 @@
 """Add execution facts to ordinary reports without changing either scoring protocol."""
 import json
 from .gateway import summarize
+from runner import case_attempts
 
 MARKER = '\n## DSH 检视执行条件\n'
 
@@ -25,10 +26,26 @@ def subject(cfg):
 
 
 def execution_conditions(cfg):
+    tools = cfg['dsh_policy'].get('tools', [])
     if cfg['dsh_policy'].get('runtime_mode') == 'pod':
-        return ('POD 内运行（无操作系统级沙盒）；仅软件工具和路径限制，'
-                '不保证阻止进程访问同容器数据或网络，不与沙盒模式混作相同执行条件。')
-    return 'Bubblewrap 只读沙盒；独立进程、挂载和网络命名空间。'
+        isolation = ('POD 内运行（无操作系统级沙盒）；不保证阻止进程访问同容器数据或网络。'
+                     'bash 命令不受文件工具路径检查约束。')
+    else:
+        access = '案例快照可写' if 'write' in tools else '案例快照只读'
+        isolation = 'Bubblewrap 沙盒；独立进程、挂载和网络命名空间；' + access + '。'
+    return isolation + ' 不同权限、重试或隔离条件的结果不能全部归因于 Skill 本身。'
+
+
+def retry_conditions(cfg):
+    policy = cfg.get('case_execution_policy', {})
+    attempts = policy.get('max_attempts')
+    label = str(attempts) if attempts is not None else '历史批次未记录'
+    runtime_policy = cfg['dsh_policy']
+    return (f"整例预算 {cfg['timeout_minutes']} 分钟；案例最多尝试 {label} 次；新策略下多次尝试共享整例预算。"
+            f"模型请求重试 {runtime_policy.get('request_retries', '未记录')} 次，"
+            f"压缩重试 {runtime_policy.get('compaction_retries', '未记录')} 次，"
+            f"溢出恢复 {runtime_policy.get('overflow_retries', '未记录')} 次。"
+            '仅答卷格式失败允许整例重试；失败尝试的已知用量一并累计。')
 
 
 def annotate(run, cfg, items):
@@ -40,7 +57,7 @@ def annotate(run, cfg, items):
              text,
              execution_conditions(cfg),
              '每案例全新会话，head 快照与 merge-base diff；工具：' + ' / '.join(cfg['dsh_policy']['tools']) + '。',
-             f"整例预算 {cfg['timeout_minutes']} 分钟；模型、压缩失败和上下文溢出额外重试均关闭。",
+             retry_conditions(cfg),
              f"单次模型输出上限 {cfg['dsh_policy']['max_output_tokens']} tokens；上下文窗口 {cfg['dsh_policy']['context_window']} tokens。", '',
              '| 案例 | 检视状态 / 评分范围 | 已知检视用量 | 请求覆盖 | 检视秒数 | 清理秒数 | Skill 加载 / 能力 |',
              '|---|---|---|---|---:|---:|---|']
@@ -60,14 +77,16 @@ def annotate(run, cfg, items):
 def _case_line(run, item, status, scored):
     execution = run / 'raw' / (item.safe_id + '.execution.json')
     record = json.loads(execution.read_text()) if execution.exists() else {}
-    elapsed = record.get('supervised_seconds', '未提供')
+    accounting = case_attempts.totals(run, item.safe_id)
+    elapsed = (accounting['elapsed_seconds'] if accounting['accounting_complete']
+               else record.get('supervised_seconds', '未提供'))
     cleanup = record.get('cleanup_seconds', '未提供')
     scope = '评分范围未提供' if scored is None else '已评分' if item.instance_id in scored else '未评分 / 排除'
-    prefix = f'| {item.instance_id} | {status}；{scope} | '
+    count = accounting['attempt_count'] or '历史未记录'
+    prefix = f'| {item.instance_id} | {status}；{scope}；尝试 {count} 次 | '
     path = run / 'results' / (item.safe_id + '.json')
     if not path.exists():
-        requests = run / 'raw' / (item.safe_id + '.requests.json')
-        records = json.loads(requests.read_text()) if requests.exists() else []
+        records = case_attempts.request_records(run, item.safe_id)
         usage, coverage = summarize(records)
         return prefix + f'{json.dumps(usage)} | {coverage} | {elapsed} | {cleanup} | {_support(run, item)} |'
     answer = json.loads(path.read_text())

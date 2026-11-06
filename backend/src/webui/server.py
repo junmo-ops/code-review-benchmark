@@ -9,6 +9,7 @@ import re
 import secrets
 import subprocess
 import tempfile
+import traceback
 import signal
 from urllib.parse import parse_qs, urlsplit
 import zipfile
@@ -68,6 +69,7 @@ def handler_for(app, token):
             except (ValueError, KeyError, OSError) as exc:
                 return self._handle_get_error(exc)
             except Exception:
+                print(app.redact(traceback.format_exc()), flush=True)
                 self.send(500, {'error':'读取失败，请查看页面服务终端'})
 
         def _dispatch_get(self, parsed, query):

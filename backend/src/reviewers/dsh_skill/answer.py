@@ -5,6 +5,10 @@ from .gateway import summarize
 from .jsonextract import extract_json_object
 
 
+class FinalAnswerFormatError(ValueError):
+    """A completed turn with an unusable final serialization."""
+
+
 def _finding(comment, lines):
     if not isinstance(comment, dict):
         raise ValueError('意见必须为对象')
@@ -30,10 +34,10 @@ def _completed(rows):
 
 def _parse_final(text):
     if not isinstance(text, str):
-        raise ValueError('DSH 最终答卷不是文本；未生成完整答卷，原始事件已保留，不自动重试')
+        raise FinalAnswerFormatError('DSH 最终答卷不是文本；未生成完整答卷，原始事件已保留，是否重试由冻结执行策略决定')
     if not text.strip():
-        raise ValueError('DSH 最终答卷为空白；completed 仅表示执行结束，不表示检视答卷有效。'
-                         '原始事件和会话已保留，不按零意见评分，不自动续写或重试')
+        raise FinalAnswerFormatError('DSH 最终答卷为空白；completed 仅表示执行结束，不表示检视答卷有效。'
+                         '原始事件和会话已保留，不按零意见评分，是否重试由冻结执行策略决定')
     try:
         return json.loads(text)
     except json.JSONDecodeError as error:
@@ -47,8 +51,8 @@ def _parse_final(text):
             return json.loads(wrapped)
         except json.JSONDecodeError:
             pass
-    raise ValueError(f'DSH 最终答卷不是有效 JSON（第 {line} 行，第 {column} 列）；'
-                     f'提取末段 JSON 对象也未成功；原始输出已保留，不自动修补或重试') from None
+    raise FinalAnswerFormatError(f'DSH 最终答卷不是有效 JSON（第 {line} 行，第 {column} 列）；'
+                     f'提取末段 JSON 对象也未成功；原始输出已保留，是否重试由冻结执行策略决定') from None
 
 
 def convert(item, cfg, rows, lines, requests):

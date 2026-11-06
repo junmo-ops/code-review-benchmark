@@ -12,6 +12,7 @@ from . import runtime
 from . import answer, gateway, loading, policy, selection, supervisor
 from .supervisor import evidence_path
 from runner.storage import save, validate_answer
+from runner import case_attempts
 
 CAPABILITIES = frozenset({'git_range', 'findings'})
 REPO = None
@@ -38,8 +39,14 @@ def freeze(args, cfg, run):
     cfg.update(dsh_policy=runtime.policy(cfg['skill_mode'], cfg['dsh_max_output_tokens']),
                repository_mode='head_snapshot_plus_merge_base_diff',
                process_timeout_policy='whole_case_deadline_with_separate_cleanup')
+    cfg['case_execution_policy'] = case_execution_policy()
     runtime.probe(cfg.get('skill_mode') == 'skill')
     save(run / 'dsh-frozen-config.json', cfg)
+
+
+def case_execution_policy():
+    return dict(version=1, max_attempts=2, retry_on=['answer_format'],
+                budget_scope='whole_case', evidence='per_attempt')
 
 
 def configure(cfg, run):
@@ -47,6 +54,9 @@ def configure(cfg, run):
     CFG = cfg
     selection.verify_frozen(cfg, run)
     selection.verify(cfg, run)
+    execution = cfg.get('case_execution_policy')
+    if execution is not None and execution != case_execution_policy():
+        raise runtime.IsolationError('DSH 案例执行策略版本不匹配；历史批次不能静默套用新策略')
     if cfg.get('dsh_policy') != runtime.policy(cfg['skill_mode'], cfg.get('dsh_max_output_tokens', 8192)):
         raise runtime.IsolationError('DSH 冻结模式或权限配置无效')
 
@@ -183,23 +193,35 @@ def _stage_review(items, run, preview=False):
 
 def run_case(item, run):
     started = time.monotonic()
-    for attempt in (1, 2):
-        try:
-            _run_case(item, run)
+    try:
+        result = case_attempts.execute(run, item.safe_id, budget_seconds=CFG['timeout_minutes'] * 60,
+                              max_attempts=CFG.get('case_execution_policy', {}).get('max_attempts', 1),
+                              invoke=lambda deadline: _run_case(item, run, deadline),
+                              retryable=_retryable_failure, redact=redact)
+        _account_answer(item, run, result)
+    except (ValueError, OSError) as error:
+        save(run / 'raw' / (item.safe_id + '.outcome.json'), dict(
+            status='stopped' if isinstance(error, runtime.IsolationError) else 'failed',
+            reviewer='dsh_skill', reason=redact(str(error)),
+            elapsed_seconds=round(time.monotonic() - started, 3)))
+        raise
+
+
+def _account_answer(item, run, result=None):
+    target = run / 'results' / (item.safe_id + '.json')
+    if result is None:
+        if not target.exists():
             return
-        except (ValueError, OSError) as error:
-            if attempt == 1 and _retryable_failure(error):
-                continue
-            suffix = '（第 2 次执行仍失败，不继续重试）' if attempt == 2 else ''
-            save(run / 'raw' / (item.safe_id + '.outcome.json'), dict(
-                status='stopped' if isinstance(error, runtime.IsolationError) else 'failed',
-                reviewer='dsh_skill', reason=redact(str(error)) + suffix,
-                elapsed_seconds=round(time.monotonic() - started, 3)))
-            raise
+        result = validate_answer(item, target)
+    accounting = case_attempts.totals(run, item.safe_id)
+    if accounting['attempt_count']:
+        result['execution_attempts'] = accounting
+        if accounting['accounting_complete']:
+            result['duration_seconds'] = accounting['elapsed_seconds']
+    save(target, result)
 
 
-def _run_case(item, run):
-    deadline = time.monotonic() + CFG['timeout_minutes'] * 60
+def _run_case(item, run, deadline):
     evidence = run / 'raw' / item.safe_id
     evidence.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='bench-dsh-') as directory:
@@ -209,6 +231,8 @@ def _run_case(item, run):
         save(evidence_path(evidence, '.manifest.json'), _manifest(item, lines, work))
         if CFG['skill_mode'] == 'skill':
             save(evidence_path(evidence, '.skill-integrity.json'), dict(status='pending'))
+        if time.monotonic() >= deadline:
+            raise ValueError('案例总预算已耗尽，不再发起模型检视')
         old_handler = signal.signal(signal.SIGTERM, _interrupt)
         try:
             record = _execute_case(run, work, evidence, deadline)
@@ -219,17 +243,13 @@ def _run_case(item, run):
                 raise ValueError(_execution_error(raw))
             if CFG['skill_mode'] == 'skill':
                 save(evidence_path(evidence, '.skill-integrity.json'), selection.integrity(CFG))
-            recover_answer(item, run)
+            return recover_answer(item, run, publish=False)
         finally:
             signal.signal(signal.SIGTERM, old_handler)
 
 
 def _retryable_failure(error):
-    # Only the answer-format class (prose-wrapped or unparsable final text) is
-    # retried once: the transient shape of a model reply, not an execution or
-    # capability verdict. Retrying any other failure would double case cost
-    # without resolving it.
-    return isinstance(error, ValueError) and str(error).startswith('DSH 最终答卷')
+    return isinstance(error, answer.FinalAnswerFormatError)
 
 
 def _execute_case(run, work, evidence, deadline):
@@ -325,10 +345,11 @@ def _save_sessions(work, evidence):
         target.write_text(redact(path.read_text(errors='replace')), encoding='utf-8')
 
 
-def recover_answer(item, run):
+def recover_answer(item, run, publish=True):
     target = run / 'results' / (item.safe_id + '.json')
     if target.exists():
         validate_answer(item, target)
+        _account_answer(item, run)
         return
     evidence = run / 'raw' / item.safe_id
     outcome = evidence_path(evidence, '.outcome.json')
@@ -344,7 +365,7 @@ def recover_answer(item, run):
         raise ValueError('DSH 执行清单不符合冻结批次')
     raw = evidence_path(evidence, '.stdout.jsonl')
     rows = [json.loads(line) for line in raw.read_text().splitlines() if line.strip()]
-    requests = json.loads(evidence_path(evidence, '.requests.json').read_text())
+    requests = case_attempts.request_records(run, item.safe_id)
     if CFG['skill_mode'] == 'skill':
         integrity = json.loads(evidence_path(evidence, '.skill-integrity.json').read_text())
         if integrity != selection.integrity(CFG):
@@ -354,13 +375,15 @@ def recover_answer(item, run):
     result['skill'] = skill
     result.update(duration_seconds=record['supervised_seconds'], cleanup_seconds=record['cleanup_seconds'],
                   raw_sha256=hashlib.sha256(raw.read_bytes()).hexdigest())
-    save(target, result)
+    if publish:
+        _account_answer(item, run, result)
+    return result
 
 
 def write_summary(items, run):
-    from .reporting import subject, _loading, _support, completion, execution_conditions
+    from .reporting import subject, _loading, _support, completion, execution_conditions, retry_conditions
     lines = ['# DSH + Skill 执行记录', '', subject(CFG) + '；DSH ' + runtime.VERSION,
-             execution_conditions(CFG),
+             execution_conditions(CFG), retry_conditions(CFG),
              '检视用量仅统计模型通道已知值，与裁判用量分开；缺失不计零。',
              completion(run, items)[0], '']
     for item in items:
@@ -374,6 +397,10 @@ def write_summary(items, run):
             lines.append(f'- {item.instance_id}：无完整答卷，不按零意见评分；{_support(run, item)}。')
         execution = run / 'raw' / (item.safe_id + '.execution.json')
         record = json.loads(execution.read_text()) if execution.exists() else {}
+        accounting = case_attempts.totals(run, item.safe_id)
+        if accounting['accounting_complete']:
+            record['supervised_seconds'] = accounting['elapsed_seconds']
+        lines.append(f"  执行尝试 {accounting['attempt_count'] or '历史未记录'} 次；逐次证据见 execution-attempts/。")
         lines.append(f"  原始执行状态 {record.get('status', '未提供')}；检视秒数 "
                      f"{record.get('supervised_seconds', '未提供')}；清理秒数 {record.get('cleanup_seconds', '未提供')}。")
     (run / 'run-summary.zh-CN.md').write_text('\n'.join(lines) + '\n')

@@ -102,6 +102,7 @@ def identity():
         raise IsolationError('此 DSH 锁定依赖要求 Node >=22.19.0')
     sources = sorted(Path(__file__).parent.glob('*.py')) + [PROJECT_ROOT / 'scripts/dsh' / name
                                                           for name in ('bridge.mjs', 'compaction.mjs', 'scope.mjs', 'candidate.mjs')]
+    sources.append(PROJECT_ROOT / 'backend/src/runner/case_attempts.py')
     distribution = {}
     if (RUNTIME / 'headless-distribution.json').exists():
         from deployment.dsh_release_validation import validate_installed
