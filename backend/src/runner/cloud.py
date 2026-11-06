@@ -194,6 +194,7 @@ def init_run(args, run):
     if reviewer_id=='server_agent':
         remote=reviewer.load_config()
         cfg.update(simulation=remote['simulation'],repository_mode='remote_fixed_commit_ranges',process_timeout_policy='whole_case_wait_timeout',diff_mode=remote['diff_mode'],review_endpoint_sha256=None,requested_model_only=True)
+        reviewer.company.freeze(remote, cfg)
     if reviewer_id=='cline_skill':
         cfg.update(process_timeout_policy='whole_case_timeout_plus_20_seconds',repository_mode='head_snapshot_plus_merge_base_diff',pilot_only=True)
     if reviewer_id == 'dsh_skill':

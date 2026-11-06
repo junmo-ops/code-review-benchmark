@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, quote
 import httpx
 from runner.storage import ROOT, save, validate_answer
 from runner.runtime import config_root
+from . import company
 
 CAPABILITIES=frozenset({'git_range','findings'})
 CONFIG=None
@@ -20,25 +21,46 @@ REPO=None
 def load_config():
     path=Path(os.getenv('BENCH_AGENT_CONFIG',str(config_root(ROOT)/'agent.local.json')))
     c=json.loads(path.read_text(encoding='utf-8'))
+    if c.get('contract') == company.CONTRACT:
+        return company.validate(c)
+    return validate_draft(c)
+
+
+def validate_draft(c):
     if c.get('contract')!='review-service-v1-draft':raise ValueError('服务端 Agent 协议版本无效')
     allowed={'contract','base_url','simulation','token_env','paths','repositories','diff_mode','poll_seconds','request_timeout_seconds','request_fields','response_fields','result_fields','comment_fields','status_values'}
     if set(c)-allowed:raise ValueError('Agent 配置包含未知字段；凭证只能通过环境变量设置')
+    validate_mappings(c)
+    validate_connection(c)
+    validate_repositories(c)
+    validate_auth(c)
+    return c
+
+
+def validate_mappings(c):
     for name in ('request_fields','response_fields','result_fields','comment_fields','status_values'):
         m=c.get(name,{})
         if not isinstance(m,dict) or any(not isinstance(k,str) or not isinstance(v,str) or not v for k,v in m.items()):raise ValueError('字段映射必须为非空字符串映射')
+
+
+def validate_connection(c):
     u=urlsplit(c.get('base_url',''))
     if u.scheme not in ('http','https') or not u.netloc or u.username or u.password or u.query or u.fragment:raise ValueError('Agent base_url 无效')
     for k in ('create','status','result'):
         p=c.get('paths',{}).get(k,'')
         if not p.startswith('/') or p.startswith('//') or '?' in p or '#' in p or '..' in p:raise ValueError('Agent 路径无效')
         if k!='create' and '{task_id}' not in p:raise ValueError('查询路径需要 {task_id}')
+
+
+def validate_repositories(c):
     if not isinstance(c.get('repositories'),dict) or not c['repositories']:raise ValueError('需配置案例仓库到服务端仓库标识的映射')
     if any(not isinstance(k,str) or not isinstance(v,str) or not k or not v for k,v in c['repositories'].items()):raise ValueError('仓库映射必须为非空字符串')
     if c.get('diff_mode') not in ('merge_base','direct'):raise ValueError('明确配置 diff_mode')
     if type(c.get('simulation')) is not bool:raise ValueError('必须明确 simulation 开关')
-    for name,default,maximum in [('poll_seconds',3,60),('request_timeout_seconds',20,60)]:
-        v=c.get(name,default)
-        if type(v) not in (int,float) or not 0.01<=v<=maximum:raise ValueError('Agent 请求时限或轮询间隔无效')
+    company.validate_limits(c)
+
+
+def validate_auth(c):
     env=c.get('token_env','BENCH_AGENT_TOKEN')
     if not isinstance(env,str) or not env.replace('_','').isalnum():raise ValueError('token_env 无效')
     if not c['simulation'] and not os.getenv(env):raise ValueError('请通过 '+env+' 配置服务鉴权，不发送模型 API Key')
@@ -53,8 +75,10 @@ def redact(text):
 
 def tool_identity():
     c=load_config()
+    files = sorted(Path(__file__).parent.glob('*.py'))
+    code_hash = hashlib.sha256(b''.join(p.read_bytes() for p in files)).hexdigest()
     return {'contract':c['contract'],'config_sha256':hashlib.sha256(json.dumps(c,sort_keys=True).encode()).hexdigest(),
-            'adapter_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+            'adapter_sha256':code_hash}
 
 
 def configure(cfg,run):
@@ -63,12 +87,16 @@ def configure(cfg,run):
 
 
 def require_model(cfg):
+    if CONFIG['contract'] == company.CONTRACT:
+        return
     if os.getenv('LCR_LLM_MODEL')!=cfg['review_model']:raise ValueError('被测模型与批次不一致')
 
 
 def check_repos(items):
     for item in items:
         if not CONFIG['repositories'].get(item.repo):raise ValueError('缺少服务端仓库映射：'+item.repo)
+        if CONFIG['contract'] == company.CONTRACT:
+            payload(item)
     print('仓库映射已配置；本地检查不证明服务端存在这些提交。结果必须回传实际范围。')
 
 
@@ -83,6 +111,8 @@ def field(data,path):
 
 
 def payload(item):
+    if CONFIG['contract'] == company.CONTRACT:
+        return company.payload(item, REPO, CONFIG, RUN)
     values=dict(repository=CONFIG['repositories'][item.repo],base_commit=item.base_commit,head_commit=item.head_commit,
                 diff_mode=CONFIG['diff_mode'],model=CFG['review_model'])
     names=CONFIG.get('request_fields',{})
@@ -95,7 +125,7 @@ def request(method,kind,task_id=None,body=None,key=None,remaining=20):
     if remaining<=0:raise ValueError('本地等待时限已到，远端任务未确认停止')
     path=CONFIG['paths'][kind].replace('{task_id}',quote(task_id or '',safe=''))
     headers={'Accept':'application/json'}
-    token=os.getenv(CONFIG.get('token_env','BENCH_AGENT_TOKEN'),'')
+    token='' if CONFIG['contract'] == company.CONTRACT else os.getenv(CONFIG.get('token_env','BENCH_AGENT_TOKEN'),'')
     if token:headers['Authorization']='Bearer '+token
     if key:headers['Idempotency-Key']=key
     # No redirects, implicit retries, or model-provider credentials.
@@ -105,11 +135,17 @@ def request(method,kind,task_id=None,body=None,key=None,remaining=20):
         if r.status_code not in (200,201,202):raise ValueError('Agent HTTP '+str(r.status_code))
         data=r.json()
         if not isinstance(data,dict):raise ValueError('Agent 响应必须为 JSON 对象')
-        return data
+        return company.normalize(data, kind, task_id) if CONFIG['contract'] == company.CONTRACT else data
     except httpx.HTTPError as exc:raise ValueError('Agent 网络请求失败：'+type(exc).__name__) from None
 
 
 def convert(item,data,task_id):
+    if CONFIG['contract'] == company.CONTRACT:
+        return company.convert(item, data, task_id, RUN)
+    return convert_draft(item, data, task_id)
+
+
+def convert_draft(item,data,task_id):
     maps=CONFIG.get('result_fields',{})
     get=lambda key:field(data,maps.get(key,key))
     if get('task_id')!=task_id or CONFIG.get('status_values',{}).get(get('status'),get('status'))!='succeeded' or get('complete') is not True:raise ValueError('结果不完整或任务不匹配')
@@ -121,25 +157,78 @@ def convert(item,data,task_id):
     version=get('engine_version')
     if not isinstance(version,str) or not version.strip():raise ValueError('结果缺少实际引擎版本')
     if get('failed_files')!=0 or type(get('failed_files')) is not int:raise ValueError('存在文件失败或失败数不明确，不评分')
-    rows=get('comments')
+    comments=convert_comments(get('comments'))
+    summary=convert_usage(get('usage'))
+    return dict(instance_id=item.instance_id,repo=item.repo,base_commit=item.base_commit,head_commit=item.head_commit,reviewer='server_agent',
+                review=dict(status='complete',comments=comments,summary=summary,llm={'model':get('model')}),
+                service=dict(task_id=task_id,engine_version=version,scope=actual,simulation=CONFIG['simulation'],timing=data.get('timing')))
+
+
+def convert_comments(rows):
     if not isinstance(rows,list):raise ValueError('comments 必须为数组，零意见用空数组')
     comments=[];cm=CONFIG.get('comment_fields',{})
     for c in rows:
         values={k:field(c,cm.get(k,k)) for k in ('path','start_line','end_line','content')}
-        p=values['path'];start=values['start_line'];end=values['end_line'];text=values['content']
-        if not isinstance(p,str) or not p or p.startswith(('/','\\')) or '\\' in p or ':' in p or '..' in PurePosixPath(p).parts or type(start) is not int or type(end) is not int or start<1 or end<start or not isinstance(text,str) or not text.strip():raise ValueError('检视意见位置或内容无效')
+        validate_comment(values)
         comments.append(values)
+    return comments
+
+
+def validate_comment(values):
+    p=values['path'];start=values['start_line'];end=values['end_line'];text=values['content']
+    if not isinstance(p,str) or not p or p.startswith(('/','\\')) or '\\' in p or ':' in p or '..' in PurePosixPath(p).parts or type(start) is not int or type(end) is not int or start<1 or end<start or not isinstance(text,str) or not text.strip():raise ValueError('检视意见位置或内容无效')
+
+
+def convert_usage(usage):
     summary={}
-    usage=get('usage')
     if usage is not None:
         if not isinstance(usage,dict):raise ValueError('usage 无效')
         for k in ('input_tokens','output_tokens','total_tokens'):
             v=usage.get(k)
             if v is not None and (type(v) is not int or v<0):raise ValueError('Token 用量无效')
             if v is not None:summary[k]=v
-    return dict(instance_id=item.instance_id,repo=item.repo,base_commit=item.base_commit,head_commit=item.head_commit,reviewer='server_agent',
-                review=dict(status='complete',comments=comments,summary=summary,llm={'model':get('model')}),
-                service=dict(task_id=task_id,engine_version=version,scope=actual,simulation=CONFIG['simulation'],timing=data.get('timing')))
+    return summary
+
+
+def raise_remote_failure(item, raw, data, state):
+    save(raw/(item.safe_id+'.result.json'),json.loads(redact(json.dumps(data,ensure_ascii=False))))
+    message='服务任务 '+state+'，未形成完整答卷'
+    if CONFIG['contract']==company.CONTRACT:
+        reason=data.get('error')
+        if isinstance(reason,str) and reason.strip():message+='：'+redact(reason.strip())[:2000]
+    raise ValueError(message)
+
+
+def poll_case(item,run,record,record_path,execution,started,deadline,event):
+    raw=run/'raw';task_id=record['task_id']
+    while time.monotonic()<deadline:
+        d=request('GET','status',task_id,remaining=deadline-time.monotonic())
+        status_value=field(d,CONFIG.get('response_fields',{}).get('status','status'))
+        state=CONFIG.get('status_values',{}).get(status_value,status_value)
+        if state not in ('queued','running','succeeded','failed','partial','cancelled'):raise ValueError('服务返回未知任务状态')
+        record.update(state=state,last_status_time=time.time());save(record_path,record)
+        event('status',task_id=task_id,state=state)
+        print('服务状态：',state,flush=True)
+        save(execution,dict(status='running',task_id=task_id,remote_status=state,elapsed_seconds=round(time.monotonic()-started,3)))
+        if state in ('failed','partial','cancelled'):raise_remote_failure(item,raw,d,state)
+        if state=='succeeded':
+            d=request('GET','result',task_id,remaining=deadline-time.monotonic())
+            save(raw/(item.safe_id+'.result.json'),json.loads(redact(json.dumps(d,ensure_ascii=False))))
+            answer=convert(item,d,task_id)
+            if CONFIG['simulation']:
+                save(raw/(item.safe_id+'.simulation.json'),answer);status='simulation_complete';print('模拟流程完成；不生成正式答卷，不允许评分。')
+            else:save(run/'results'/(item.safe_id+'.json'),answer);status='exited'
+            return status
+        time.sleep(min(CONFIG.get('poll_seconds',3),max(0,deadline-time.monotonic())))
+    return None
+
+
+def load_record(item,record_path,resume):
+    record=json.loads(record_path.read_text(encoding='utf-8')) if record_path.exists() else None
+    if record and not resume:raise ValueError('已有服务任务记录。使用恢复查询，禁止重复创建；创建响应未知时请先找维护方核实幂等键。')
+    if resume and (not record or not record.get('task_id')):raise ValueError('没有已知任务 ID，不能自动恢复或重新创建')
+    if record and record.get('request')!=payload(item):raise ValueError('保存的请求与当前案例不一致，拒绝恢复')
+    return record
 
 
 def run_case(item,run,preview=False,resume=False):
@@ -148,10 +237,7 @@ def run_case(item,run,preview=False,resume=False):
         save(run/'preview'/(item.safe_id+'.json'),payload(item));print('仅生成服务端请求预览，不创建任务：',item.instance_id);return
     if (run/'results'/(item.safe_id+'.json')).exists():validate_answer(item,run/'results'/(item.safe_id+'.json'));return
     started=time.monotonic();deadline=started+process_timeout(item)
-    record=json.loads(record_path.read_text(encoding='utf-8')) if record_path.exists() else None
-    if record and not resume:raise ValueError('已有服务任务记录。使用恢复查询，禁止重复创建；创建响应未知时请先找维护方核实幂等键。')
-    if resume and (not record or not record.get('task_id')):raise ValueError('没有已知任务 ID，不能自动恢复或重新创建')
-    if record and record.get('request')!=payload(item):raise ValueError('保存的请求与当前案例不一致，拒绝恢复')
+    record=load_record(item,record_path,resume)
     status='running';error=None
     save(execution,dict(status='running',task_id=(record or {}).get('task_id')))
     def event(kind,**values):
@@ -168,25 +254,8 @@ def run_case(item,run,preview=False,resume=False):
             if not isinstance(task_id,str) or not task_id or len(task_id)>200:raise ValueError('服务未返回有效任务 ID')
             record.update(task_id=task_id,state='submitted');save(record_path,record);event('submitted',task_id=task_id)
         task_id=record['task_id'];print('服务任务 ID：',task_id,flush=True)
-        while time.monotonic()<deadline:
-            d=request('GET','status',task_id,remaining=deadline-time.monotonic())
-            status_value=field(d,CONFIG.get('response_fields',{}).get('status','status'))
-            state=CONFIG.get('status_values',{}).get(status_value,status_value)
-            if state not in ('queued','running','succeeded','failed','partial','cancelled'):raise ValueError('服务返回未知任务状态')
-            record.update(state=state,last_status_time=time.time());save(record_path,record)
-            event('status',task_id=task_id,state=state)
-            print('服务状态：',state,flush=True)
-            save(execution,dict(status='running',task_id=task_id,remote_status=state,elapsed_seconds=round(time.monotonic()-started,3)))
-            if state in ('failed','partial','cancelled'):raise ValueError('服务任务 '+state+'，未形成完整答卷')
-            if state=='succeeded':
-                d=request('GET','result',task_id,remaining=deadline-time.monotonic())
-                save(raw/(item.safe_id+'.result.json'),json.loads(redact(json.dumps(d,ensure_ascii=False))))
-                answer=convert(item,d,task_id)
-                if CONFIG['simulation']:
-                    save(raw/(item.safe_id+'.simulation.json'),answer);status='simulation_complete';print('模拟流程完成；不生成正式答卷，不允许评分。')
-                else:save(run/'results'/(item.safe_id+'.json'),answer);status='exited'
-                return
-            time.sleep(min(CONFIG.get('poll_seconds',3),max(0,deadline-time.monotonic())))
+        status=poll_case(item,run,record,record_path,execution,started,deadline,event)
+        if status is not None:return
         status='remote_wait_timeout';raise ValueError('本地等待超时，服务端任务未确认停止；可恢复查询同一任务，不要重复创建')
     except Exception as exc:
         error=redact(str(exc))[:2000]

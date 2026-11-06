@@ -404,12 +404,12 @@ class Dashboard:
     def _prepare_builtin_repositories(self, spec, key, suite, progress):
         from .case_storage import CaseAssetStorage, _sha256
         if spec is not None:
-            if spec.get('reviewer') == 'server_agent':
+            if spec.get('reviewer') == 'server_agent' and not _agent_needs_local_repositories():
                 return
             dataset = self.dataset_path(spec['dataset'])
         else:
             config = self.config(key)
-            if config.get('reviewer') == 'server_agent':
+            if config.get('reviewer') == 'server_agent' and not _agent_needs_local_repositories():
                 return
             dataset = self.run_dir(key) / 'dataset.jsonl'
             if _sha256(dataset) != config.get('dataset_sha256'):
@@ -894,3 +894,8 @@ class Dashboard:
             self.stop(active)
             if self.worker:
                 self.worker.join(timeout=20)
+
+
+def _agent_needs_local_repositories():
+    from reviewers.server_agent.adapter import load_config, company
+    return load_config()['contract'] == company.CONTRACT
