@@ -25,7 +25,7 @@ AACR_COMPATIBLE_REVISIONS = {
     "backend/src/suites/aacr/evaluator.py": {
         "previous": {"881c95275bea4f9c860fb6d9a5d617cc1f1267392c935b7f92055798fed7a81b",
                      "72a75921d544b7ecbfd35db16c3650223b9838863adc7c9d8b79da056c76de0a"},
-        "current": {"ac4dd894636b5682b5a127a8c4b10819ef48edafd3ca389a50ec2b19b091c9d9"},
+        "current": {"0c498a21f5c354af1b39c58fc6fe117968def8a471a51073c017350e1b0440ce"},
     },
     "backend/src/suites/aacr/report.py": {
         "previous": {"f701e07ae5cd4f44dfcaed5da09e74816e83304502babf0ea860282bc81f0edb"},

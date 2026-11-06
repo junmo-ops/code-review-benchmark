@@ -23,7 +23,7 @@ import { useConfirmAction } from '../hooks/useConfirmAction';
 import { readUploadSession, restoreUpload } from '../uploads';
 import type { BatchItem } from '../hooks/useUploadBatch';
 import { useUploadBatch } from '../hooks/useUploadBatch';
-import { canSubmit, editable, resourceImportTask } from '../presentation';
+import { canSubmit, editable } from '../presentation';
 import { ErrorAlert, Heading, Status } from '../components/Common';
 import type { Dataset, ImportTask, Repository, UploadSession } from '../types';
 function validUploadFiles(files: UploadFile[], limit: number) {
@@ -41,7 +41,10 @@ async function waitForImport(task: ImportTask, update: (task: ImportTask) => voi
   if (current.status !== 'succeeded')
     throw new Error(current.message || '导入失败，请查看服务日志');
 }
-function ResourceUpload({ repository }: { repository: boolean }) {
+export function ResourceUpload({ kind, uploadLimits }: {
+  kind: 'dataset' | 'repository' | 'skill';
+  uploadLimits?: { upload_max_bytes: number; upload_max_label: string };
+}) {
   const { state, task, importBusy, setTask, refresh } = useWorkbench();
   const [files, setFiles] = useState<UploadFile[]>([]),
     [percent, setPercent] = useState(0),
@@ -49,10 +52,10 @@ function ResourceUpload({ repository }: { repository: boolean }) {
     [pending, setPending] = useState<UploadSession | null>(null);
   const { busy, error, run } = useAction();
   const { message } = App.useApp();
-  const limit = state.case_assets?.upload_max_bytes ?? 2 * 1024 ** 3;
+  const config = uploadLimits ?? state.case_assets;
+  const limit = config?.upload_max_bytes ?? 2 * 1024 ** 3;
   const disabled = !editable(state) || importBusy || busy;
   const valid = validUploadFiles(files, limit);
-  const kind = repository ? 'repository' : 'dataset';
   const storageKey = `bench.upload.session.v1.${kind}`;
   const batch = useUploadBatch(kind, task);
   const updateBatch = batch.update;
@@ -119,7 +122,7 @@ function ResourceUpload({ repository }: { repository: boolean }) {
     persist(null);
     batch.clear();
     setFiles([]);
-    setNotice('已结束本批次，已导入的仓库不受影响');
+    setNotice('已结束本批次，已导入的资源不受影响');
   };
   const execute = () =>
     run(async () => {
@@ -148,22 +151,22 @@ function ResourceUpload({ repository }: { repository: boolean }) {
     return <Alert message="当前工作台未开启资源管理，或账号为只读权限。" type="info" showIcon />;
   return (
     <Card
-      title={repository ? '导入 / 更新仓库' : '导入案例集'}
+      title={uploadTitles[kind]}
       extra={<Tag>不会调用模型</Tag>}
       className="section-gap"
     >
       <UploadPicker
-        repository={repository}
+        kind={kind}
         disabled={pickerBlocked(editable(state), false, busy)}
         files={files}
-        limitLabel={state.case_assets.upload_max_label ?? '2 GiB'}
+        limitLabel={config?.upload_max_label ?? '2 GiB'}
         onChange={(list) => {
           setFiles(list);
           setNotice('');
         }}
       />
       <ImportFeedback
-        task={visibleImportTask(task, repository, batch.items.map((item) => item.taskId), busy, pending)}
+        task={visibleImportTask(task, kind, batch.items.map((item) => item.taskId), busy, pending)}
         notice={notice}
         busy={busy}
         percent={percent}
@@ -190,18 +193,16 @@ function ResourceUpload({ repository }: { repository: boolean }) {
         disabled={disabled || !valid}
         onClick={() => void execute()}
       >
-        {uploadLabel(Boolean(pending), repository)}
+        {pending ? '继续上传并导入' : uploadCommands[kind]}
       </Button>
     </Card>
   );
 }
 function pickerBlocked(allowed: boolean, active: boolean, busy: boolean) { return !allowed || active || busy; }
-function uploadLabel(pending: boolean, repository: boolean) {
-  if (pending) return '继续上传并导入';
-  return repository ? '导入仓库' : '确认导入';
-}
-function visibleImportTask(task: ImportTask | null, repository: boolean, ids: (string | undefined)[], busy: boolean, pending: UploadSession | null) {
-  const relevant = resourceImportTask(task, repository);
+const uploadTitles = { dataset: '导入案例集', repository: '导入 / 更新仓库', skill: '导入待测 Skill 包' };
+const uploadCommands = { dataset: '确认导入', repository: '导入仓库', skill: '导入 Skill' };
+function visibleImportTask(task: ImportTask | null, kind: string, ids: (string | undefined)[], busy: boolean, pending: UploadSession | null) {
+  const relevant = task?.kind === kind ? task : null;
   if (!relevant) return null;
   if (ids.length) return ids.includes(relevant.id) ? relevant : null;
   return busy || pending ? null : relevant;
@@ -358,7 +359,7 @@ export function Assets({ repository = false }: { repository?: boolean }) {
         }
       />
       <div ref={uploadRef}>
-        <ResourceUpload key={String(repository)} repository={repository} />
+        <ResourceUpload key={String(repository)} kind={repository ? 'repository' : 'dataset'} />
       </div>
       <Card title={repository ? '已登记仓库' : '已登记案例集'}>
         {repository ? (
@@ -409,13 +410,13 @@ export function Assets({ repository = false }: { repository?: boolean }) {
 }
 
 function UploadPicker({
-  repository,
+  kind,
   disabled,
   files,
   limitLabel,
   onChange,
 }: {
-  repository: boolean;
+  kind: 'dataset' | 'repository' | 'skill';
   disabled: boolean;
   files: UploadFile[];
   limitLabel: string;
@@ -423,7 +424,7 @@ function UploadPicker({
 }) {
   return (
     <Upload.Dragger
-      multiple={repository}
+      multiple={kind === 'repository'}
       accept=".zip"
       disabled={disabled}
       fileList={files}
@@ -431,16 +432,16 @@ function UploadPicker({
       onChange={(info) => onChange(info.fileList)}
     >
       <UploadOutlined className="upload-icon" />
-      <p>{repository ? '选择或拖入仓库 ZIP，支持批量上传' : '选择或拖入案例配置 ZIP'}</p>
+      <p>{pickerLabels[kind]}</p>
       <Typography.Text type="secondary">
-        {repository
-          ? '需包含 .git 历史；也支持仓库补充包'
-          : '仅需案例清单和仓库引用，已有仓库可复用'}{' '}
+        {pickerDescriptions[kind]}{' '}
         · 单文件上限 {limitLabel}
       </Typography.Text>
     </Upload.Dragger>
   );
 }
+const pickerLabels = { dataset: '选择或拖入案例配置 ZIP', repository: '选择或拖入仓库 ZIP，支持批量上传', skill: '选择或拖入 Skill ZIP' };
+const pickerDescriptions = { dataset: '仅需案例清单和仓库引用，已有仓库可复用', repository: '需包含 .git 历史；也支持仓库补充包', skill: 'SKILL.md 及完整配套资源' };
 function ImportFeedback({
   task,
   notice,

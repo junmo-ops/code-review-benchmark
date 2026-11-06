@@ -1,5 +1,7 @@
 import { Alert, Button, Segmented, Select, Space } from 'antd';
 import { useState } from 'react';
+import { useAction } from '../hooks/useAction';
+import { ErrorAlert } from './Common';
 import { download } from '../api';
 import { reportDetails, reportSummary } from '../reportPresentation';
 import type { Run, TextReply } from '../types';
@@ -11,6 +13,7 @@ export function ReportView({ run, reply, path }: { run: Run; reply?: TextReply; 
   return <LoadedReport run={run} reply={reply} path={path} />;
 }
 function LoadedReport({ run, reply, path }: { run: Run; reply: TextReply; path: string }) {
+  const htmlExport = useAction();
   const [view, setView] = useState('摘要');
   const [selected, setSelected] = useState(0);
   const sections = reportDetails(reply.text);
@@ -22,7 +25,13 @@ function LoadedReport({ run, reply, path }: { run: Run; reply: TextReply; path: 
       <Segmented value={view} options={['摘要', '案例明细']} onChange={setView} />
       <Button disabled={reply.truncated} onClick={() => download(fullName.replace(/\.md$/, '.summary.md'), summary)}>下载报告摘要</Button>
       <Button disabled={reply.truncated} onClick={() => download(fullName, reply.text)}>下载完整报告</Button>
+      <Button disabled={reply.truncated} loading={htmlExport.busy} onClick={() => void htmlExport.run(async () => {
+        const { buildReportHtml } = await import('../reportHtml');
+        const html = buildReportHtml(reply.text, run);
+        download(fullName.replace(/\.md$/, '.html'), new Blob([html], { type: 'text/html;charset=utf-8' }));
+      })}>下载 HTML 报告</Button>
     </Space>
+    <ErrorAlert error={htmlExport.error} />
     {reply.truncated && <Alert type="warning" message="报告超过页面读取上限，当前仅为部分内容，暂不汇总和导出摘要。请在原始文件中下载结果归档获取完整报告。" />}
     {view === '摘要' && !reply.truncated ? <Markdown text={summary} /> : <>
       <Select className="file-select section-gap" aria-label="案例明细章节" value={selected}

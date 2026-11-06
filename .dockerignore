@@ -51,3 +51,27 @@ retry-rehearsals
 
 # Browser acceptance runs locally only
 scripts/e2e
+
+# Never import host Node installations, credentials, or local review evidence.
+**/node_modules
+**/.npm
+**/.cache
+.scratch
+.codex
+.agents
+tools/dsh_local_model.py
+**/*.test.mjs
+**/test-results
+**/playwright-report
+
+# Source producer is published separately; never ship its vendor tree in the benchmark image.
+dependencies/dsh-review-source
+# Historical offline archives are not part of the Git-only deployment path.
+deployment/offline/**
+
+# These exclusions also apply inside any staged input directory.
+**/.env
+**/.env.*
+**/.npmrc
+**/*.pem
+**/*.key

@@ -4,7 +4,7 @@ from runner.runtime import data_root, config_root, docker_context
 from pathlib import Path
 import argparse,datetime,json,os,signal,subprocess,sys,time
 from runner.paths import PROJECT_ROOT as ROOT
-ALLOWED={'LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','LCR_LLM_STREAM','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL','JUDGE_USE_MOCK'}
+ALLOWED={'BENCH_LCR_EFFORT','BENCH_LCR_MAX_TOOLS','BENCH_LCR_CASE_TIMEOUT_SECONDS','BENCH_LCR_REQUEST_TIMEOUT_SECONDS','BENCH_LCR_MAX_TOKENS_BUDGET','LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','LCR_LLM_STREAM','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL','JUDGE_USE_MOCK'}
 
 def process_parents():
     if sys.platform.startswith('linux'):

@@ -6,11 +6,13 @@ import unittest
 from unittest.mock import patch
 from webui.queue import DurableDashboard
 from webui.profiles import create_profile, compose_roles
+from regression_fixtures import seed_datasets
 
 class ModelRoleTests(unittest.TestCase):
     def test_independent_models_are_frozen_in_durable_run(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'BENCH_CONFIG_ROOT':tmp,'BENCH_DATA_ROOT':tmp}):
             root=Path(tmp);dashboard=DurableDashboard(root)
+            seed_datasets(root)
             ids=[]
             for provider in ('qwen','deepseek'):
                 ids.append(create_profile(dashboard,dict(provider=provider,name=provider+' 测试',model=provider,base_url='https://'+provider+'.test/v1',api_key=provider+'-secret'))['id'])

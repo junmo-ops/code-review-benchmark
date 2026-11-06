@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('configure_qwen', ROOT/'tools/configure_qwen.py')
 qwen = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(qwen)

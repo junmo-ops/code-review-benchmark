@@ -39,6 +39,7 @@ function requirePython() {
     throw new Error("未找到 .venv，请先运行 npm run setup");
 }
 function setup() {
+  invoke(process.execPath, [join(root, "scripts/check-dependencies.mjs")]);
   if (!existsSync(python)) {
     const command = process.env.BENCH_PYTHON || (windows ? "py" : "python3");
     invoke(command, ["-m", "venv", join(root, ".venv")]);
@@ -124,6 +125,9 @@ function check() {
 }
 function verify() {
   check();
+  invoke(process.execPath, [
+    "--test", "scripts/check-dependencies.test.mjs", "scripts/npm-registry.test.mjs",
+  ]);
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
   invoke(python, [join(root, "tools/check_regressions.py")]);
   invoke("git", ["diff", "--check"]);

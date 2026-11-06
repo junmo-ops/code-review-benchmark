@@ -20,6 +20,7 @@ import { Login } from './components/Login';
 import { ErrorAlert } from './components/Common';
 import type { Snapshot } from './types';
 const Assets = lazy(() => import('./pages/Assets').then((module) => ({ default: module.Assets })));
+const Skills = lazy(() => import('./pages/Skills').then((module) => ({ default: module.Skills })));
 const Models = lazy(() => import('./pages/Models').then((module) => ({ default: module.Models })));
 const Runs = lazy(() => import('./pages/Runs').then((module) => ({ default: module.Runs })));
 const Jobs = lazy(() => import('./pages/Runs').then((module) => ({ default: module.Jobs })));
@@ -43,6 +44,7 @@ const navigation = [
   { key: '/comparisons', label: '结果对比', icon: <DatabaseOutlined /> },
   { key: '/cases', label: '案例集管理', icon: <FolderOutlined /> },
   { key: '/repositories', label: '仓库管理', icon: <DatabaseOutlined /> },
+  { key: '/skills', label: 'Skill 资源管理', icon: <FolderOutlined /> },
   { key: '/models', label: '模型配置', icon: <SettingOutlined /> },
   { key: '/guide', label: '使用指南', icon: <QuestionCircleOutlined /> },
 ];
@@ -60,7 +62,7 @@ function RuntimeNote({ state }: { state: Snapshot }) {
     return <Alert type="warning" message={storage.message ?? '部分会话检查点未备份，请查看服务日志。'} />;
   if (storage?.status === 'pending')
     return <Alert type="warning" message="等待保存到 COS，请暂缓更新服务。" />;
-  return <Typography.Text type="secondary">运行记录、任务日志与 LCR 会话自动备份到 COS。最近同步：{storage?.last_sync_at ? new Date(storage.last_sync_at).toLocaleString('zh-CN', { hour12: false }) : '尚无成功记录'}。</Typography.Text>;
+  return <Typography.Text type="secondary">运行记录、任务日志、LCR 会话与 DSH 加载证据异步备份到 COS；强杀或网络故障可能丢失尚未同步的数据。最近同步：{storage?.last_sync_at ? new Date(storage.last_sync_at).toLocaleString('zh-CN', { hour12: false }) : '尚无成功记录'}。</Typography.Text>;
 }
 function RuntimeAlerts({ state, refresh }: { state: Snapshot; refresh: () => Promise<void> }) {
   const action = useAction(),
@@ -182,6 +184,7 @@ export default function App() {
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/cases" element={<Assets key="cases" />} />
                   <Route path="/repositories" element={<Assets key="repositories" repository />} />
+                  <Route path="/skills" element={<Skills />} />
                   <Route path="/models" element={<Models />} />
                   <Route path="/experiments" element={<Experiments />} />
                   <Route path="/comparisons" element={<Experiments results />} />
@@ -196,7 +199,7 @@ export default function App() {
                     }
                   />
                 </Routes>
-                <CreateRun selection={selection} close={() => setSelection(undefined)} />
+                {selection && <CreateRun selection={selection} close={() => setSelection(undefined)} />}
                 {params.has('run') && (
                   <RunDetail
                     key={params.get('run')}

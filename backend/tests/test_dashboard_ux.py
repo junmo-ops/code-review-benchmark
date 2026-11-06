@@ -5,10 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from webui.service import Dashboard,save
+from regression_fixtures import seed_datasets
 
 class UXWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.app=Dashboard(self.root)
+        seed_datasets(self.root)
         save(self.root/'model.local.json',dict(LCR_LLM_MODEL='test',LCR_LLM_TOKEN='test',JUDGE_MODEL='test',JUDGE_API_KEY='test'))
     def tearDown(self):self.app.shutdown();self.temp.cleanup()
     def run_create(self,fail=False,start=True):

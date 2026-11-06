@@ -17,6 +17,9 @@ def main():
     tests = ['test_long_tasks', 'test_quality_flow', 'test_case_deletion', 'test_queue_recovery',
              'test_application_queries', 'test_http_contract', 'test_ccrab_dashboard',
              'test_worker_lifecycle', 'test_comparison_identity', 'test_submissions',
+             'test_case_preparation',
+             'test_dsh_gateway', 'test_dsh_answer.AnswerFormatTests', 'test_dsh_replay_probe',
+             'test_dsh_limits.OutputLimitApiTests', 'test_skill_assets',
              'test_container.ContainerAccessTests.test_minimal_public_health_and_honest_storage_state',
              'test_container.ContainerAccessTests.test_csrf_origin_and_domain_still_apply',
              'test_container.ContainerAccessTests.test_missing_password_fails_closed']

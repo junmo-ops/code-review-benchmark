@@ -9,12 +9,15 @@ from unittest.mock import patch
 from runner import cloud
 from reviewers.lcr import adapter
 from webui.service import Dashboard, save
+from regression_fixtures import seed_datasets, simulated_lcr
 
 
 class ConcurrencyTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
+        seed_datasets(self.root)
+        simulated_lcr(self)
         self.app = Dashboard(self.root)
         save(self.root/'model.local.json', {'LCR_LLM_MODEL': 'test'})
 

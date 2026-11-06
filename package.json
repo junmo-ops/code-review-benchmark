@@ -16,6 +16,7 @@
     "check": "node scripts/project.mjs check",
     "cli": "node scripts/project.mjs cli",
     "verify": "node scripts/project.mjs verify",
+    "verify:dsh": "node scripts/dsh/verify.mjs",
     "package:changes": "node scripts/project.mjs package",
     "hooks:install": "git config core.hooksPath .githooks",
     "e2e": "node scripts/e2e/run.mjs",

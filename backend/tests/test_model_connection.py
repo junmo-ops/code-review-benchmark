@@ -3,11 +3,23 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import httpx
 from webui.service import Dashboard
 from webui.profiles import test_connection
 from webui.wsgi import create_app
+
+HTTP_CLIENT = httpx.Client
+
+
+def probe_client(requests, response=None, error=None):
+    def handle(request):
+        requests.append(request)
+        if error:
+            raise error
+        return response
+    return lambda **kwargs: HTTP_CLIENT(transport=httpx.MockTransport(handle), **kwargs)
+
 
 class ConnectionTests(unittest.TestCase):
     def setUp(self):
@@ -17,16 +29,17 @@ class ConnectionTests(unittest.TestCase):
         self.data=dict(provider='qwen',name='test',model='qwen-test',base_url='https://model.test/v1',api_key='secret-review',judge_source='custom',judge_model='judge',judge_base_url='https://judge.test/v1',judge_api_key='secret-judge')
     def tearDown(self):self.env.stop();self.tmp.cleanup()
     def run_probe(self,response=None,error=None):
-        with patch('httpx.Client') as cls:
-            client=cls.return_value.__enter__.return_value
-            client.post.side_effect=error
-            client.post.return_value=response
+        requests=[]
+        with patch('httpx.Client',side_effect=probe_client(requests,response,error)) as cls:
             result=test_connection(self.dashboard,self.data)
-            self.assertEqual(client.post.call_count,1)
+            self.assertEqual(len(requests),1)
             self.assertEqual(cls.call_args.kwargs,dict(timeout=20,follow_redirects=False))
-            for call in client.post.call_args_list:
-                payload=call.kwargs['json'];self.assertEqual(payload['max_tokens'],32)
-                self.assertFalse(payload['stream']);self.assertNotIn('tools',payload)
+            for request in requests:
+                self.assertEqual(request.method,'POST')
+                self.assertEqual(str(request.url),'https://model.test/v1/chat/completions')
+                self.assertEqual(request.headers['Authorization'],'Bearer secret-review')
+                payload=json.loads(request.content);self.assertEqual(payload['max_tokens'],32)
+                self.assertEqual(payload['stream'],self.data.get('stream')=='true');self.assertNotIn('tools',payload)
             self.assertNotIn('secret-',json.dumps(result))
             self.assertEqual(list(Path(self.tmp.name).glob('model*.json')),[])
             return result
@@ -45,13 +58,16 @@ class ConnectionTests(unittest.TestCase):
         (Path(self.tmp.name)/'model.test.local.json').write_text(json.dumps(config))
         client=create_app(self.dashboard).test_client()
         headers={'X-Bench-Proxy-Token':'p'*40,'X-Bench-User':'alice','X-Bench-Role':'viewer','X-Dashboard-Token':'c'*40,'Origin':'https://review.test'}
-        with patch('httpx.Client') as cls:
+        response=httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'OK'}}]})
+        requests=[]
+        with patch('httpx.Client',side_effect=probe_client(requests,response)) as cls:
             def post():return client.post('/api/profiles/test',base_url='https://review.test',headers=headers,json={'profile_id':'model.test.local.json'})
             self.assertEqual(post().status_code,403);cls.assert_not_called()
             headers['X-Bench-Role']='operator';headers['Origin']='https://evil.test'
             self.assertEqual(post().status_code,403);cls.assert_not_called()
             headers['Origin']='https://review.test'
-            cls.return_value.__enter__.return_value.post.return_value=httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'OK'}}]})
             response=post();self.assertEqual(response.status_code,200)
+            self.assertEqual(len(requests),1)
+            self.assertEqual(response.json['results'][0]['status'],'passed')
             self.assertNotIn('secret-',response.text)
         with self.assertRaises(ValueError):test_connection(self.dashboard,{'profile_id':'../../secret'})

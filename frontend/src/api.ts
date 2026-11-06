@@ -142,12 +142,15 @@ export function download(name: string, content: string | Blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export async function downloadExport(key: string) {
-  const response = await fetch(query('/api/export', { key }), {
+  return downloadResource(query('/api/export', { key }), key.split('/').pop() + '-results.tar.gz');
+}
+export async function downloadResource(path: string, filename: string) {
+  const response = await fetch(path, {
     headers: requestHeaders(),
   });
   if (!response.ok) {
     await parse(response);
     return;
   }
-  download(key.split('/').pop() + '-results.tar.gz', await response.blob());
+  download(filename, await response.blob());
 }

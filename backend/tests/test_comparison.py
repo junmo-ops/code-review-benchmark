@@ -11,8 +11,9 @@ from comparison.service import create
 from comparison.runner import run
 from webui.queue import DurableDashboard
 from runner.storage import save
+from regression_fixtures import simulated_lcr
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 
 class MatchingTests(unittest.TestCase):
     def test_one_candidate_cannot_count_twice(self):
@@ -30,6 +31,7 @@ class MatchingTests(unittest.TestCase):
 class ComparisonTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        simulated_lcr(self)
         self.env=patch.dict(os.environ,{'BENCH_CONFIG_ROOT':str(self.root/'configs'),'BENCH_DATA_ROOT':str(self.root)})
         self.env.start();self.app=DurableDashboard(ROOT)
         for i in (1,2):
@@ -68,9 +70,13 @@ class ComparisonTests(unittest.TestCase):
             return int(stage=='review' and key.endswith('g1'))
         async def score(root,suite,case,env):
             save(root/'comparison-scores'/f'{case}.json',{'status':'complete','metrics':counts(1,1,2)})
-        with patch.object(self.app,'command',side_effect=command),patch('comparison.runner.execute',side_effect=execute),patch('comparison.runner.score_case',side_effect=score):
+        with patch.object(self.app,'command',side_effect=command),patch('comparison.runner.execute',side_effect=execute),patch('comparison.runner.score_case',side_effect=score) as scored:
             self.assertEqual(run(self.app,folder),1)
         self.assertEqual(visited[-1],(m['groups'][1]['key'],'review'))
+        scored.assert_awaited_once()
+        self.assertEqual(scored.call_args.args[0],folder.parent/m['groups'][1]['key'])
+        report=build(folder)
+        self.assertEqual([g['cases'][0]['status'] for g in report['groups']],['review_failed','complete'])
         with self.assertRaises(ValueError):run(self.app,folder)
     def test_config_drift_stops_before_execution(self):
         result=create(self.app,self.data);folder=self.app.run_dir(result['key']);m=json.loads((folder/'experiment.json').read_text())

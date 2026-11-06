@@ -2,10 +2,12 @@ import sys,tempfile,json,unittest,argparse
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import cloud
+from runner import cloud
+from regression_fixtures import simulated_lcr
 class CloudTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+  simulated_lcr(self)
   self.items=cloud.checked_instances(cloud.ROOT/'data/pilot5.jsonl')
  def tearDown(self):self.temp.cleanup()
  def test_freeze_101_and_lock(self):

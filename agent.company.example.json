@@ -1,0 +1,27 @@
+{
+  "contract": "company-repo-review-v1",
+  "base_url": "https://codereview.paas.cmbchina.cn",
+  "repositories": {
+    "CherryHQ/cherry-studio": "LV01.30_cherry-studio",
+    "alibaba/spring-ai-alibaba": "LV01.30_spring-ai-alibaba",
+    "bluewave-labs/Checkmate": "LV01.30_Checkmate",
+    "browser-use/browser-use": "LV01.30_browser-use",
+    "comfyanonymous/ComfyUI": "LV01.30_ComfyUI",
+    "dbeaver/dbeaver": "LV01.30_dbeaver",
+    "gofr-dev/gofr": "LV01.30_gofr",
+    "google-gemini/gemini-cli": "LV01.30_gemini-cli",
+    "immich-app/immich": "LV01.30_immich",
+    "infiniflow/ragflow": "LV01.30_ragflow",
+    "kestra-io/kestra": "LV01.30_kestra",
+    "keycloak/keycloak": "LV01.30_keycloak",
+    "microsoft/typescript-go": "LV01.30_typescript-go",
+    "mudler/LocalAI": "LV01.30_LocalAI",
+    "n8n-io/n8n": "LV01.30_n8n",
+    "ollama/ollama": "LV01.30_ollama",
+    "sveltejs/svelte": "LV01.30_svelte",
+    "vllm-project/vllm": "LV01.30_vllm",
+    "wavetermdev/waveterm": "LV01.30_waveterm"
+  },
+  "poll_seconds": 3,
+  "request_timeout_seconds": 20
+}

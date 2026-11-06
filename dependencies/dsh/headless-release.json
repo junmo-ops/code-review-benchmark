@@ -1,0 +1,10 @@
+{
+  "name": "@LV01.38/dsh-review-runtime",
+  "version": "0.2.1-rc.2-review.2",
+  "sourceFingerprint": "9a9196667a228e81c031d1c4c4f077ac11dc30f1f3bceda685bfb750ab2c9b91",
+  "sourcePlanSha256": "b56a5aaf59a697e1f76c41ed0ff0b8ed8e4c221cec7486385a5541d7ff7f9e26",
+  "targetCheckSha256": "0cc03c77fa7956e0635853c8a87f8a271df19284a9ea4fce577dc816f70ca0e3",
+  "generatedFiles": {
+    "node_modules/@deepseek-ai/node-addon-system-linux-x64/prebuilds.json": "9109fdd548695aa31a694a32ec781267e64fb6f2572118843935453811f600cf"
+  }
+}

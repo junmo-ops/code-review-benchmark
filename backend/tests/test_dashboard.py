@@ -12,10 +12,13 @@ from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from webui.service import Dashboard, save, ROOT
 from webui.server import handler_for
+from regression_fixtures import seed_datasets, frontend_environment
 
 class DashboardTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        seed_datasets(self.root)
+        self.enterContext(patch.dict(os.environ, frontend_environment()))
         self.app=Dashboard(self.root)
         save(self.root/'model.local.json',{'LCR_LLM_MODEL':'test','LCR_LLM_TOKEN':'PRIVATE_TEST_KEY','JUDGE_MODEL':'judge','JUDGE_API_KEY':'PRIVATE_JUDGE_KEY'})
     def tearDown(self):
@@ -45,6 +48,7 @@ class DashboardTests(unittest.TestCase):
         save(self.app.state/'jobs/old.json',dict(id='old',status='running',created_at='x'))
         restarted=Dashboard(self.root);self.assertEqual(restarted.jobs['old']['status'],'interrupted');self.assertIsNone(restarted.active)
     def test_existing_scores_do_not_rerun_eval(self):
+        save(self.app.run_dir('old')/'run-config.json', {'reviewer':'lcr'})
         with patch.object(self.app,'cases',return_value=[{'id':'case'}]),patch.object(self.app,'summary',return_value={'f1':0}):
             steps=self.app.plan(dict(key='old',action='workflow'),{},None)
             self.assertEqual([s[0] for s in steps],['check','review'])
@@ -80,11 +84,18 @@ class DashboardTests(unittest.TestCase):
                 conn.request('GET',path,headers={'X-Dashboard-Token':'test-token'})
                 response=conn.getresponse();self.assertEqual(response.status,expected)
                 body=response.read()
-                if expected==200:self.assertIn(b'dashboard-token',body)
+                if expected==200:
+                    self.assertIn(b'id="root"',body)
+                    self.assertNotIn(b'__STYLE_NONCE__',body)
+                    self.assertIn("script-src 'self'",response.getheader('Content-Security-Policy'))
                 conn.close()
             for headers,expected in [({},403),({'X-Dashboard-Token':'test-token','Origin':'http://evil.example'},403),({'X-Dashboard-Token':'test-token'},200)]:
                 conn=http.client.HTTPConnection('127.0.0.1',server.server_port)
                 conn.request('GET','/api/state',headers=headers);response=conn.getresponse();self.assertEqual(response.status,expected);response.read();conn.close()
+            conn=http.client.HTTPConnection('127.0.0.1',server.server_port)
+            conn.request('GET','/api/session');response=conn.getresponse()
+            self.assertEqual(response.status,200)
+            self.assertEqual(json.loads(response.read())['csrf_token'],'test-token');conn.close()
             conn=http.client.HTTPConnection('127.0.0.1',server.server_port);conn.request('POST','/api/jobs',body='{}',headers={'Content-Type':'application/json'})
             response=conn.getresponse();self.assertEqual(response.status,403);response.read();conn.close()
         finally:server.shutdown();server.server_close();thread.join()

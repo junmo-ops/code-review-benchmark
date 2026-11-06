@@ -8,6 +8,10 @@ import { scenarios as regression } from './scenarios.mjs';
 import { journeys } from './journeys.mjs';
 import { continuity } from './continuity.mjs';
 import { importHistory } from './import-history.mjs';
+import { skillUploadRecovery } from './skill-assets.mjs';
+import { dshRecovery } from './dsh-recovery.mjs';
+import { skillPersistence } from './skill-persistence.mjs';
+import { builtinRepository } from './builtin-repository.mjs';
 
 async function draft(page, name) {
   await page.getByRole('button', { name: /新增模型/ }).click();
@@ -266,4 +270,8 @@ export const exploration = [
   ['rapid-double-save', duplicateSave], ['html-503-polling-recovery', jsonRecovery],
   ['run-list-polling-recovery', listPollingRecovery],
   ['malformed-state-response-recovery', malformedState], ['multi-tab-model-edit', multiTab], ['abrupt-server-exit-recovery', abruptRestart], ['bounded-queue-navigation-soak', soak],
+  ['skill-upload-response-loss-recovery', skillUploadRecovery],
+  ...(process.env.E2E_DSH === '1' ? [['dsh-fifty-cancel-restart-zero-call-recovery', dshRecovery]] : []),
+  ...(process.env.E2E_SKILL_COS === '1' ? [['skill-cos-persistence', skillPersistence]] : []),
+  ...(process.env.E2E_BUILTIN_CASE === '1' ? [['builtin-repository-download-failure', (ctx) => builtinRepository(ctx, true)]] : []),
 ];

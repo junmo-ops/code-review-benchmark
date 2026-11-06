@@ -1,9 +1,15 @@
 import { Alert, Space, Tag, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { labels } from '../presentation';
+export function DshRuntimeWarning({ mode, reviewer }: { mode?: string; reviewer?: string }) {
+  if (reviewer !== 'dsh_skill' || mode !== 'pod') return null;
+  return <Alert type="warning" message="POD 内运行，无操作系统级沙盒" description="仅软件工具与路径限制，不保证隔离同容器数据和网络。" />;
+}
+
 export function Status({ status }: { status: string }) {
   const color = {
     failed: 'error',
+    timed_out: 'error',
     partial: 'warning',
     interrupted: 'warning',
     running: 'processing',
@@ -14,6 +20,7 @@ export function Status({ status }: { status: string }) {
     cancelling: 'processing',
     unfinished_check_required: 'warning',
     recoverable_check_required: 'warning',
+    unsupported: 'error',
     answer_with_item_failures: 'warning',
     scored: 'success',
     succeeded: 'success',

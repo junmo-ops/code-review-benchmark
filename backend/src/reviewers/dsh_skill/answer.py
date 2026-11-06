@@ -1,0 +1,71 @@
+"""A complete baseline is not a failed or truncated run with no findings."""
+import json
+from pathlib import PurePosixPath
+from .gateway import summarize
+from .jsonextract import extract_json_object
+
+
+class FinalAnswerFormatError(ValueError):
+    """A completed turn with an unusable final serialization."""
+
+
+def _finding(comment, lines):
+    if not isinstance(comment, dict):
+        raise ValueError('意见必须为对象')
+    path, start, end, content = [comment.get(k) for k in ('path', 'start_line', 'end_line', 'content')]
+    if not isinstance(path, str) or '\\' in path or ':' in path or PurePosixPath(path).is_absolute():
+        raise ValueError('意见路径无效')
+    if path not in lines or type(start) is not int or type(end) is not int:
+        raise ValueError('意见必须定位 head 中的普通文件及整数行号')
+    if not 1 <= start <= end <= lines[path] or not isinstance(content, str) or not content.strip():
+        raise ValueError('意见行号越界或内容为空')
+
+
+def _completed(rows):
+    finals = [r for r in rows if r.get('type') == 'final']
+    ends = [r for r in rows if r.get('type') == 'status' and r.get('phase') == 'turn_end']
+    sessions = [r for r in rows if r.get('type') == 'session']
+    if len(finals) != 1 or len(sessions) != 1 or not ends:
+        raise ValueError('DSH 缺少完整结束记录')
+    if ends[-1].get('reason', {}).get('kind') != 'completed':
+        raise ValueError('DSH 未正常完成检视')
+    return finals, sessions
+
+
+def _parse_final(text):
+    if not isinstance(text, str):
+        raise FinalAnswerFormatError('DSH 最终答卷不是文本；未生成完整答卷，原始事件已保留，是否重试由冻结执行策略决定')
+    if not text.strip():
+        raise FinalAnswerFormatError('DSH 最终答卷为空白；completed 仅表示执行结束，不表示检视答卷有效。'
+                         '原始事件和会话已保留，不按零意见评分，是否重试由冻结执行策略决定')
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        line, column = error.lineno, error.colno
+    # The review model occasionally wraps the required object in prose (e.g.
+    # "I have verified ...\n\n{...}").  Salvage the last complete top-level
+    # object; anything else is still a failed answer, never a complete one.
+    wrapped = extract_json_object(text)
+    if wrapped is not None:
+        try:
+            return json.loads(wrapped)
+        except json.JSONDecodeError:
+            pass
+    raise FinalAnswerFormatError(f'DSH 最终答卷不是有效 JSON（第 {line} 行，第 {column} 列）；'
+                     f'提取末段 JSON 对象也未成功；原始输出已保留，是否重试由冻结执行策略决定') from None
+
+
+def convert(item, cfg, rows, lines, requests):
+    finals, sessions = _completed(rows)
+    answer = _parse_final(finals[0].get('text', ''))
+    if not isinstance(answer, dict) or answer.get('status') != 'complete' or not isinstance(answer.get('comments'), list):
+        raise ValueError('DSH 答卷不是完整 JSON 协议')
+    for comment in answer['comments']:
+        _finding(comment, lines)
+    summary, coverage = summarize(requests)
+    return dict(instance_id=item.instance_id, repo=item.repo, base_commit=item.base_commit,
+                head_commit=item.head_commit, reviewer='dsh_skill',
+                review=dict(status='complete', comments=answer['comments'], summary=summary,
+                            usage_coverage=coverage, llm={'model': cfg['review_model']}),
+                skill=dict(mode='baseline', loaded=False), dsh=cfg['tool_hashes'],
+                session_id=sessions[0]['sessionId'])

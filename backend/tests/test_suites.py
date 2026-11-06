@@ -2,17 +2,19 @@
 import argparse,asyncio,hashlib,json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch,Mock
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 from runner import cloud
 from runner.contracts import ReviewCase
 from runner.process import capture_process
 from suites import registry
 from reviewers.lcr import adapter as lcr
+from regression_fixtures import simulated_lcr
 
 class SuiteTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+        simulated_lcr(self)
     def tearDown(self):self.temp.cleanup()
     def freeze(self, suite='aacr', dataset=None):
         run=self.root/'run';run.mkdir(exist_ok=True)

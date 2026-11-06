@@ -125,29 +125,38 @@ class Dashboard:
         folder = self.run_dir(key)
         cfg = self.config(key)
         if key.startswith('mcr/'):
-            from multiround.core import load, validate_card
-            result = []
-            for case in load(folder / 'dataset.jsonl'):
-                for row in case['rounds']:
-                    sub = folder / 'rounds' / row['task_id']
-                    status = 'pending'
-                    try:
-                        if (sub / 'answer.json').exists():
-                            validate_card(read(sub / 'answer.json'), row, cfg['reviewer'])
-                            status = 'complete'
-                        elif (sub / 'review-status.json').exists():
-                            status = read(sub / 'review-status.json').get('status', 'failed')
-                        elif (sub / 'review').exists():
-                            status = 'unfinished_check_required'
-                    except (ValueError, KeyError, AttributeError):
-                        status = 'invalid_answer'
-                    result.append(dict(id=row['task_id'], status=status, scored=(sub / 'score.json').exists(),
-                                       repo=case['repo'], round=row['round_id']))
-            return result
+            return self._mcr_cases(folder, cfg)
         from runner.cloud import checked_instances, states
         items = checked_instances(folder / 'dataset.jsonl', cfg.get('suite', {}).get('id', 'aacr'))
         values = states(items, folder)
-        return [dict(id=s['instance_id'], status=s['status'], repo=i.repo, scored=False) for s, i in zip(values, items)]
+        from .scoring_scope import scored_case_ids
+        from reviewers.lcr.coverage import cached_case_diagnostics
+        scored = scored_case_ids(folder)
+        return [dict(id=s['instance_id'], status=s['status'], repo=i.repo,
+                     scored=None if scored is None else s['instance_id'] in scored,
+                     **cached_case_diagnostics(folder, i.safe_id)) for s, i in zip(values, items)]
+
+    def _mcr_cases(self, folder, cfg):
+        from multiround.core import load, validate_card
+        from reviewers.lcr.coverage import multi_round_diagnostics
+        result = []
+        for case in load(folder / 'dataset.jsonl'):
+            for row in case['rounds']:
+                sub = folder / 'rounds' / row['task_id']
+                status = 'pending'
+                try:
+                    if (sub / 'answer.json').exists():
+                        validate_card(read(sub / 'answer.json'), row, cfg['reviewer'])
+                        status = 'complete'
+                    elif (sub / 'review-status.json').exists():
+                        status = read(sub / 'review-status.json').get('status', 'failed')
+                    elif (sub / 'review').exists():
+                        status = 'unfinished_check_required'
+                except (ValueError, KeyError, AttributeError):
+                    status = 'invalid_answer'
+                result.append(dict(id=row['task_id'], status=status, scored=(sub / 'score.json').exists(),
+                                   repo=case['repo'], round=row['round_id'], **multi_round_diagnostics(sub)))
+        return result
 
     def summary(self, key):
         root = self.run_dir(key)
@@ -240,6 +249,10 @@ class Dashboard:
         score_status, scored_cases = self._score_status(key, cases, summary)
         return dict(key=key, compatibility_warning=self.compatibility(key), name=key.split('/')[-1], suite='mcr' if mcr else cfg.get('suite', {}).get('id', 'aacr'),
                     simulation=cfg.get('simulation',False), reviewer=cfg.get('reviewer', 'lcr'), model=cfg.get('review_model', '—'), judge_model=cfg.get('judge_model', '—'),
+                    skill_mode=cfg.get('skill_mode'), skill_version=cfg.get('skill_version'),
+                    skill_name=cfg.get('skill_identity', {}).get('name'),
+                    dsh_runtime_version=cfg.get('tool_hashes', {}).get('version') if cfg.get('reviewer') == 'dsh_skill' else None,
+                    dsh_runtime_mode=cfg.get('dsh_policy', {}).get('runtime_mode'),
                     evaluator='Martian 一对一（内部）' if (self.run_dir(key)/'comparison-protocol.json').exists() else 'MCR 一对一' if mcr else cfg.get('evaluator', {}).get('id', 'original'),
                     created=cfg.get('created_at', datetime.datetime.fromtimestamp((self.run_dir(key)/'run-config.json').stat().st_mtime, datetime.timezone.utc).isoformat()),
                     status='simulation_complete' if cfg.get('simulation') and all(c['status']=='simulation_complete' for c in cases) else score_status,
@@ -368,6 +381,26 @@ class Dashboard:
                     CaseAssetStorage(self.data).prepare_dataset_repositories(self.data, suite, digest, progress=progress)
             except RuntimeError as error:
                 raise ValueError(str(error)) from None
+        elif suite == 'aacr':
+            self._prepare_builtin_repositories(spec, key, suite, progress)
+
+    def _prepare_builtin_repositories(self, spec, key, suite, progress):
+        from .case_storage import CaseAssetStorage, _sha256
+        if spec is not None:
+            if spec.get('reviewer') == 'server_agent' and not _agent_needs_local_repositories():
+                return
+            dataset = self.dataset_path(spec['dataset'])
+        else:
+            config = self.config(key)
+            if config.get('reviewer') == 'server_agent' and not _agent_needs_local_repositories():
+                return
+            dataset = self.run_dir(key) / 'dataset.jsonl'
+            if _sha256(dataset) != config.get('dataset_sha256'):
+                raise ValueError('冻结案例清单校验失败；禁止按其他案例恢复仓库')
+        try:
+            CaseAssetStorage(self.data).prepare_builtin_repositories(self.data, suite, dataset, progress)
+        except RuntimeError as error:
+            raise ValueError(str(error)) from None
 
     def _selected_case_asset(self, rows, spec, key):
         if spec is not None:
@@ -419,6 +452,7 @@ class Dashboard:
                     if not case_assets['datasets']:
                         case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
             return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
+                        dsh_runtime_mode=os.environ.get('BENCH_DSH_RUNTIME_MODE', 'sandbox'),
                         active=self.active, case_assets=case_assets, run_storage=run_storage,
                         storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
@@ -427,14 +461,18 @@ class Dashboard:
         return ExecutionPlanner(self).command(key, stage, profile, task, retry, init)
 
 
-    def submit(self, request):
+    def _require_submission_resources(self, request):
         if os.environ.get('BENCH_SERVER_MODE') and os.environ.get('BENCH_CASE_UPLOAD') == '1' and request.get('action') not in {'export', 'report'}:
             from .case_assets import status
             if not status(self.root, self.data)['ready']:
                 raise ValueError('请先在网页上传并准备至少一份案例 ZIP')
+
+    def submit(self, request):
+        self._require_submission_resources(request)
         from application.submissions import SubmissionService
-        from .profiles import compose_roles, save_run_profile
-        return SubmissionService(self, compose_roles, save_run_profile).submit(request)
+        from .creation import prepare
+        from .profiles import save_run_profile
+        return SubmissionService(self, prepare, save_run_profile).submit(request)
 
     def enqueue(self, job, request, spec):
         from .case_import import benchmark_submission
@@ -496,3 +534,8 @@ class Dashboard:
             self.stop(active)
             if self.worker:
                 self.worker.join(timeout=20)
+
+
+def _agent_needs_local_repositories():
+    from reviewers.server_agent.adapter import load_config, company
+    return load_config()['contract'] == company.CONTRACT

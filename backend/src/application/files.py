@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -20,9 +21,21 @@ def save(path, value):
             json.dump(value, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        temporary.replace(path)
+        _replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _replace(source, destination):
+    # Windows readers can briefly hold a handle that prevents atomic replacement.
+    for attempt in range(6):
+        try:
+            source.replace(destination)
+            return
+        except PermissionError as error:
+            if getattr(error, 'winerror', None) not in {5, 32, 33} or attempt == 5:
+                raise
+            time.sleep(.02 * (2 ** attempt))
 
 
 def now():

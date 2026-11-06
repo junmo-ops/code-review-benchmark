@@ -76,11 +76,26 @@ def _evaluate_with_transport(instances, run, config):
 
 
 def _save_audit(run, config, records, status):
-    usage = {key: sum((r.get('usage') or {}).get(key, 0) for r in records)
-             for key in ('prompt_tokens', 'completion_tokens', 'total_tokens')}
+    usage, coverage = _usage_summary(records)
     save(run / 'judge-audit.json', dict(status=status, mock=False, judge_model=os.environ['JUDGE_MODEL'],
-         judge_usage_only=usage, requests=records, semantic_matches=[], eval_rounds=config.get('eval_rounds', 3),
+         judge_usage_only=usage, judge_usage_coverage=coverage,
+         requests=records, semantic_matches=[], eval_rounds=config.get('eval_rounds', 3),
          transport=dict(request_timeout_seconds=REQUEST_TIMEOUT, retry_delays_seconds=list(RETRY_DELAYS))))
+
+
+def _usage_summary(records):
+    fields = ('prompt_tokens', 'completion_tokens', 'total_tokens')
+    totals, known = {}, 0
+    for record in records:
+        usage = record.get('usage')
+        if not isinstance(usage, dict):
+            continue
+        values = {key: value for key in fields
+                  if type(value := usage.get(key)) is int and value >= 0}
+        known += int(len(values) == len(fields))
+        for key, value in values.items():
+            totals[key] = totals.get(key, 0) + value
+    return totals, dict(known_requests=known, requests=len(records))
 
 
 def stage_report(run, config):

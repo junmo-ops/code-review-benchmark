@@ -1,22 +1,23 @@
 FROM csbase.registry.cmbchina.cn/paas/cmb-nodejs-22.22:c86-kylin10-v1 AS node_runtime
 USER root
 ARG NPM_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/
-ARG LCR_VERSION=1.0.9
+ARG LCR_VERSION=2.0.1
 RUN mkdir -p /node-runtime/bin && cp -L "$(command -v node)" /node-runtime/bin/node \
     && cp -a "$(dirname "$(dirname "$(readlink -f "$(command -v npm)")")")" /node-runtime/npm
 RUN npm install --prefix /lcr-runtime --registry="$NPM_REGISTRY" --ignore-scripts --no-audit --no-fund "@LV01.30/leancode-code-review-cli@$LCR_VERSION"
 WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
+COPY scripts/company-npm-lock.mjs /build-tools/company-npm-lock.mjs
+COPY frontend/package.json frontend/package-lock.json frontend/npm-company-artifacts.json ./
+RUN node /build-tools/company-npm-lock.mjs --registry="$NPM_REGISTRY" \
+    && npm ci --include=dev --registry="$NPM_REGISTRY" --no-audit --no-fund
 COPY frontend/ ./
-COPY scripts/ /scripts/
-RUN node /scripts/check-dependencies.mjs \
-    && npm run lint \
-    && node node_modules/eslint/bin/eslint.js /scripts --config /scripts/eslint.config.mjs --max-warnings 0 \
-    && npm run build
+RUN node /build-tools/company-npm-lock.mjs --registry="$NPM_REGISTRY" && npm run build
 
 FROM csbase.registry.cmbchina.cn/paas/cmb-python-3.12:c86-kylin10-v1
 USER root
+ARG BENCH_DSH_ENABLED=1
+ARG BENCH_DSH_RUNTIME_MODE=pod
+ARG NPM_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/
 WORKDIR /opt/deployments
 ENV TZ=Asia/Shanghai PYTHONUTF8=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     BENCH_PROJECT_ROOT=/opt/deployments PYTHONPATH=/opt/deployments/backend/src:/opt/deployments \
@@ -24,7 +25,8 @@ ENV TZ=Asia/Shanghai PYTHONUTF8=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     BENCH_CONFIG_ROOT=/opt/deployments/runtime/models \
     BENCH_FRONTEND_DIST=/opt/deployments/frontend-dist \
     BENCH_STORAGE_MODE=persistent BENCH_RUN_STORAGE_MODE=cos BENCH_CASE_STORAGE_MODE=cos BENCH_ENABLED_SUITES=aacr BENCH_CASE_UPLOAD=1 \
-    BENCH_AUTH_MODE=basic BENCH_CONTAINER_ROLE=all \
+    BENCH_AUTH_MODE=basic BENCH_CONTAINER_ROLE=all BENCH_DSH_ENABLED=${BENCH_DSH_ENABLED} \
+    BENCH_DSH_RUNTIME_MODE=${BENCH_DSH_RUNTIME_MODE} \
     HOME=/opt/deployments/runtime/home \
     NPM_CONFIG_REGISTRY=http://central.jaf.cmbchina.cn/artifactory/api/npm/group-npm/ \
     PATH=/opt/deployments/bin:/opt/deployments/.venv/bin:/usr/local/bin:/usr/bin:/bin
@@ -42,12 +44,11 @@ RUN python3 -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
        --trusted-host central.jaf.cmbchina.cn -r backend/requirements.txt \
     && .venv/bin/python -m pip freeze > /opt/deployments/requirements-container.resolved.txt
 COPY . /opt/deployments/
+RUN .venv/bin/python -m deployment.dsh_release --if-enabled --registry "$NPM_REGISTRY"
 COPY --from=node_runtime /lcr-runtime/node_modules/@LV01.30/leancode-code-review-cli/ /opt/deployments/lcr/
 COPY --from=node_runtime /frontend/dist/ /opt/deployments/frontend-dist/
 COPY deployment/lcr-linux /opt/deployments/bin/lcr
-RUN .venv/bin/python tools/check_project.py \
-    && .venv/bin/python tools/check_regressions.py \
-    && rm -rf frontend && chmod 755 bin/lcr lcr/dist/lcr-linux-x64 \
+RUN rm -rf frontend && chmod 755 bin/lcr lcr/dist/lcr-linux-x64 \
     && git --version && node --version && npm --version && bin/lcr version \
     && .venv/bin/python -m deployment.container --check-build \
     && mkdir -p runtime/models runtime/home \

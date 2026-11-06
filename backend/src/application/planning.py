@@ -18,7 +18,7 @@ class ExecutionPlanner:
         run_id = key.split('/')[-1]
         env = self.context.environment(profile)
         cfg = self.context.config(key) if init is None else init
-        if cfg.get('reviewer', cfg.get('reviewer_id')) in {'server_agent', 'cline_skill'}:
+        if cfg.get('reviewer', cfg.get('reviewer_id')) in {'server_agent', 'cline_skill', 'dsh_skill'}:
             return self._agent_command(stage, run_id, env, cfg, init, task)
         if key.startswith('ccrab/'):
             return self._ccrab_command(stage, run_id, env, cfg)
@@ -39,12 +39,22 @@ class ExecutionPlanner:
 
 
     def _agent_command(self, stage, run_id, env, cfg, init, task):
+        if cfg.get('reviewer', cfg.get('reviewer_id')) == 'dsh_skill':
+            env['BENCH_DSH_OWNER_PID'] = str(os.getpid())
         args=[stage,'--run-id',run_id,'--runs-root',str(self.context.data/'runs')]
         limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
         if stage == 'eval':
             limit = self._scoring_budget(cfg, self.context.data/'runs'/run_id)
         if init is not None:
             args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.context.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
+            if init['reviewer'] == 'dsh_skill':
+                args += ['--skill-mode', init['skill_mode'],
+                         '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox'),
+                         '--dsh-max-output-tokens', str(init.get('dsh_max_output_tokens', 8192))]
+                if init.get('skill_version'):
+                    from reviewers.dsh_skill.selection import identity_digest
+                    args += ['--skill-version', init['skill_version'],
+                             '--skill-identity-sha256', identity_digest(init['skill_identity'])]
         if task:args+=['--instance',task]
         if stage=='review':args+=['--external-timeout-seconds',str(limit)]
         return [sys.executable,str(self.context.root/'backend/src/cloud.py')]+args,env,limit
@@ -68,10 +78,19 @@ class ExecutionPlanner:
         if task:
             args += ['--task', task]
         if stage == 'review':
-            limit = 780 if cfg['reviewer'] == 'lcr' else 900
+            limit = self._mcr_review_budget(run_id, cfg, task) if cfg['reviewer'] == 'lcr' else 900
         if retry:
             args.append('--retry')
         return entry, args, limit
+
+
+    def _mcr_review_budget(self, run_id, cfg, task):
+        from multiround.core import load
+        from reviewers.lcr.options import case_timeout, patch_file_count
+        cases = load(self.context.run_dir('mcr/' + run_id) / 'dataset.jsonl')
+        selected = [row for case in cases for row in case['rounds'] if not task or row['task_id'] == task]
+        return 60 + sum(case_timeout(cfg.get('lcr_options', {}),
+                                    patch_file_count(row['code_diff']['diff']), 10) + 60 for row in selected)
 
 
     def _review_arguments(self, key, stage, run_id, cfg, init, task, retry):
@@ -114,7 +133,8 @@ class ExecutionPlanner:
             repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
             base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
             files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
-            one_attempt = max(1, len([v for v in files.split(b'\0') if v])) * cfg['timeout_minutes'] * 60 + 120
+            from reviewers.lcr.options import case_timeout
+            one_attempt = case_timeout(cfg.get('lcr_options', {}), len([v for v in files.split(b'\0') if v]), cfg['timeout_minutes'])
             limits.append(one_attempt * attempts + backoff)
         case_jobs = max(1, cfg.get('case_jobs', 1))
         batch_budget = sum(max(limits[offset:offset + case_jobs])

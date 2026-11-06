@@ -1,0 +1,292 @@
+{
+  "deepseek": {
+    "common37": {
+      "rounds": [
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 76,
+          "semantic_p": 0.336,
+          "semantic_r": 0.255,
+          "semantic_f1": 0.29,
+          "line_matched": 113,
+          "line_p": 0.5,
+          "line_r": 0.379,
+          "line_f1": 0.431
+        },
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 76,
+          "semantic_p": 0.336,
+          "semantic_r": 0.255,
+          "semantic_f1": 0.29,
+          "line_matched": 114,
+          "line_p": 0.504,
+          "line_r": 0.383,
+          "line_f1": 0.435
+        },
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 77,
+          "semantic_p": 0.341,
+          "semantic_r": 0.258,
+          "semantic_f1": 0.294,
+          "line_matched": 114,
+          "line_p": 0.504,
+          "line_r": 0.383,
+          "line_f1": 0.435
+        }
+      ],
+      "average": {
+        "expected": 298,
+        "generated": 226,
+        "semantic_matched": 76.3333,
+        "semantic_p": 0.3377,
+        "semantic_r": 0.256,
+        "semantic_f1": 0.2913,
+        "line_matched": 113.6667,
+        "line_p": 0.5027,
+        "line_r": 0.3817,
+        "line_f1": 0.4337
+      },
+      "usage": {
+        "input_tokens": 39114601,
+        "output_tokens": 3419635,
+        "seconds": 70431.273
+      }
+    },
+    "full": {
+      "rounds": [
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 76,
+          "semantic_p": 0.336,
+          "semantic_r": 0.255,
+          "semantic_f1": 0.29,
+          "line_matched": 113,
+          "line_p": 0.5,
+          "line_r": 0.379,
+          "line_f1": 0.431
+        },
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 76,
+          "semantic_p": 0.336,
+          "semantic_r": 0.255,
+          "semantic_f1": 0.29,
+          "line_matched": 114,
+          "line_p": 0.504,
+          "line_r": 0.383,
+          "line_f1": 0.435
+        },
+        {
+          "expected": 298,
+          "generated": 226,
+          "semantic_matched": 77,
+          "semantic_p": 0.341,
+          "semantic_r": 0.258,
+          "semantic_f1": 0.294,
+          "line_matched": 114,
+          "line_p": 0.504,
+          "line_r": 0.383,
+          "line_f1": 0.435
+        }
+      ],
+      "average": {
+        "expected": 298,
+        "generated": 226,
+        "semantic_matched": 76.3333,
+        "semantic_p": 0.3377,
+        "semantic_r": 0.256,
+        "semantic_f1": 0.2913,
+        "line_matched": 113.6667,
+        "line_p": 0.5027,
+        "line_r": 0.3817,
+        "line_f1": 0.4337
+      },
+      "usage": {
+        "input_tokens": 39114601,
+        "output_tokens": 3419635,
+        "seconds": 70431.273
+      }
+    },
+    "extra": null
+  },
+  "qwen": {
+    "common37": {
+      "rounds": [
+        {
+          "expected": 298,
+          "generated": 224,
+          "semantic_matched": 94,
+          "semantic_p": 0.42,
+          "semantic_r": 0.315,
+          "semantic_f1": 0.36,
+          "line_matched": 113,
+          "line_p": 0.504,
+          "line_r": 0.379,
+          "line_f1": 0.433
+        },
+        {
+          "expected": 298,
+          "generated": 224,
+          "semantic_matched": 89,
+          "semantic_p": 0.397,
+          "semantic_r": 0.299,
+          "semantic_f1": 0.341,
+          "line_matched": 113,
+          "line_p": 0.504,
+          "line_r": 0.379,
+          "line_f1": 0.433
+        },
+        {
+          "expected": 298,
+          "generated": 224,
+          "semantic_matched": 90,
+          "semantic_p": 0.402,
+          "semantic_r": 0.302,
+          "semantic_f1": 0.345,
+          "line_matched": 113,
+          "line_p": 0.504,
+          "line_r": 0.379,
+          "line_f1": 0.433
+        }
+      ],
+      "average": {
+        "expected": 298,
+        "generated": 224,
+        "semantic_matched": 91,
+        "semantic_p": 0.4063,
+        "semantic_r": 0.3053,
+        "semantic_f1": 0.3487,
+        "line_matched": 113,
+        "line_p": 0.504,
+        "line_r": 0.379,
+        "line_f1": 0.433
+      },
+      "usage": {
+        "input_tokens": 26917802,
+        "output_tokens": 2271255,
+        "seconds": 50842.013000000006
+      }
+    },
+    "full": {
+      "rounds": [
+        {
+          "expected": 440,
+          "generated": 319,
+          "semantic_matched": 116,
+          "semantic_p": 0.364,
+          "semantic_r": 0.264,
+          "semantic_f1": 0.306,
+          "line_matched": 151,
+          "line_p": 0.473,
+          "line_r": 0.343,
+          "line_f1": 0.398
+        },
+        {
+          "expected": 440,
+          "generated": 319,
+          "semantic_matched": 112,
+          "semantic_p": 0.351,
+          "semantic_r": 0.255,
+          "semantic_f1": 0.295,
+          "line_matched": 151,
+          "line_p": 0.473,
+          "line_r": 0.343,
+          "line_f1": 0.398
+        },
+        {
+          "expected": 440,
+          "generated": 319,
+          "semantic_matched": 114,
+          "semantic_p": 0.357,
+          "semantic_r": 0.259,
+          "semantic_f1": 0.3,
+          "line_matched": 151,
+          "line_p": 0.473,
+          "line_r": 0.343,
+          "line_f1": 0.398
+        }
+      ],
+      "average": {
+        "expected": 440,
+        "generated": 319,
+        "semantic_matched": 114,
+        "semantic_p": 0.3573,
+        "semantic_r": 0.2593,
+        "semantic_f1": 0.3003,
+        "line_matched": 151,
+        "line_p": 0.473,
+        "line_r": 0.343,
+        "line_f1": 0.398
+      },
+      "usage": {
+        "input_tokens": 58216304,
+        "output_tokens": 4066832,
+        "seconds": 90806.847
+      }
+    },
+    "extra": {
+      "rounds": [
+        {
+          "expected": 142,
+          "generated": 95,
+          "semantic_matched": 22,
+          "semantic_p": 0.232,
+          "semantic_r": 0.155,
+          "semantic_f1": 0.186,
+          "line_matched": 38,
+          "line_p": 0.4,
+          "line_r": 0.268,
+          "line_f1": 0.321
+        },
+        {
+          "expected": 142,
+          "generated": 95,
+          "semantic_matched": 23,
+          "semantic_p": 0.242,
+          "semantic_r": 0.162,
+          "semantic_f1": 0.194,
+          "line_matched": 38,
+          "line_p": 0.4,
+          "line_r": 0.268,
+          "line_f1": 0.321
+        },
+        {
+          "expected": 142,
+          "generated": 95,
+          "semantic_matched": 24,
+          "semantic_p": 0.253,
+          "semantic_r": 0.169,
+          "semantic_f1": 0.203,
+          "line_matched": 38,
+          "line_p": 0.4,
+          "line_r": 0.268,
+          "line_f1": 0.321
+        }
+      ],
+      "average": {
+        "expected": 142,
+        "generated": 95,
+        "semantic_matched": 23,
+        "semantic_p": 0.2423,
+        "semantic_r": 0.162,
+        "semantic_f1": 0.1943,
+        "line_matched": 38,
+        "line_p": 0.4,
+        "line_r": 0.268,
+        "line_f1": 0.321
+      },
+      "usage": {
+        "input_tokens": 31298502,
+        "output_tokens": 1795577,
+        "seconds": 39964.834
+      }
+    }
+  }
+}

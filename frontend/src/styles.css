@@ -125,5 +125,7 @@ body {
 @media (max-width: 768px) {
   .workspace { padding: 16px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
-  .topbar { height: 58px; padding: 0 16px; }
+  .topbar { height: auto; min-height: 58px; padding: 8px 16px; gap: 8px; flex-wrap: wrap; line-height: 1.4; }
+  .topbar > .ant-typography { flex: 1 1 140px; }
+  .topbar > .ant-space { flex-shrink: 0; margin-left: auto; }
 }

@@ -12,6 +12,8 @@ class JobExecutor:
 
     def _continue_partial_review(self, job, steps, index, stage, code, timed_out=False):
         # AACR's evaluator can score complete answers while explicitly excluding failed cases.
+        if (self.context.run_dir(job['key'])/'dsh-system-error.json').exists():
+            return False
         if (code == 0 and not timed_out) or stage != 'review' or job['action'] not in {'workflow', 'create'}:
             return False
         if job['action'] == 'create' and not job.get('start_after_create'):
