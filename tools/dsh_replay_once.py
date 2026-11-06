@@ -50,13 +50,38 @@ def count(event):
     if event.get('usage'): OUT['usage'] = {k: v for k, v in event['usage'].items() if type(v) is int and k in {'prompt_tokens', 'completion_tokens', 'total_tokens', 'reasoning_tokens'}}
 
 
-def main():
-    if sys.argv[1:] != ['--execute-once']: raise PermissionError('Explicit execution flag required')
-    run = (app := Dashboard(ROOT, load_jobs=False)).data / 'runs' / RUN
-    receipt = Path(tempfile.gettempdir()) / ('dsh-replay-' + hashlib.sha256((str(run) + CASE).encode()).hexdigest()[:24] + '.wire-v2.jsonl')
+def parse_args(argv):
+    if '--execute-once' not in argv:
+        raise PermissionError('Explicit execution flag required')
+    run_id, case = RUN, CASE
+    seen = set()
+    index = 0
+    while index < len(argv):
+        flag = argv[index]
+        if flag == '--execute-once':
+            index += 1
+            continue
+        if flag not in {'--run', '--case'} or index + 1 >= len(argv):
+            raise PermissionError('Unknown probe flag: ' + flag)
+        if flag in seen:
+            raise PermissionError('Duplicate probe flag: ' + flag)
+        seen.add(flag)
+        if flag == '--run':
+            run_id = argv[index + 1]
+        else:
+            case = argv[index + 1]
+        index += 2
+    if not run_id or not case:
+        raise PermissionError('Probe run and case must not be empty')
+    return run_id, case
+
+
+def main(run_id, case):
+    run = (app := Dashboard(ROOT, load_jobs=False)).data / 'runs' / run_id
+    receipt = Path(tempfile.gettempdir()) / ('dsh-replay-' + hashlib.sha256((str(run) + case).encode()).hexdigest()[:24] + '.wire-v2.jsonl')
     if not reserve(receipt): return
-    cfg = json.loads((run / 'run-config.json').read_text()); payload = json.loads((run / 'raw' / (CASE + '.model-inputs.json')).read_text())[-1]
-    with sqlite3.connect((app.state / 'queue.sqlite3').as_uri() + '?mode=ro', uri=True) as db: row = db.execute('SELECT job FROM jobs WHERE run_key=? ORDER BY rowid DESC LIMIT 1', (RUN,)).fetchone()
+    cfg = json.loads((run / 'run-config.json').read_text()); payload = json.loads((run / 'raw' / (case + '.model-inputs.json')).read_text())[-1]
+    with sqlite3.connect((app.state / 'queue.sqlite3').as_uri() + '?mode=ro', uri=True) as db: row = db.execute('SELECT job FROM jobs WHERE run_key=? ORDER BY rowid DESC LIMIT 1', (run_id,)).fetchone()
     endpoint = (env := app.environment(json.loads(row[0])['profile']))['LCR_LLM_BASE_URL']
     if not payload['model'] == env['LCR_LLM_MODEL'] == cfg['review_model'] or hashlib.sha256(endpoint.encode()).hexdigest() != cfg['review_endpoint_sha256'] or not env.get('LCR_LLM_TOKEN'): raise ValueError('Frozen model or endpoint mismatch')
     for sig in (signal.SIGHUP, signal.SIGTERM): signal.signal(sig, interrupted)
@@ -75,7 +100,7 @@ def main():
 
 if __name__ == '__main__':
     logging.disable(logging.CRITICAL)
-    try: main()
+    try: run_id, case = parse_args(sys.argv[1:]); main(run_id, case)
     except BaseException as error: OUT['error'] = type(error).__name__
     finally:
         signal.alarm(0)

@@ -36,12 +36,35 @@ class AnswerFormatTests(unittest.TestCase):
         self.assertIn('第 1 列', str(failure.exception))
         self.assertNotIn('PRIVATE_MODEL_TEXT', str(failure.exception))
 
-    def test_markdown_or_partial_json_is_not_silently_repaired(self):
-        for text in ('```json\n{"status":"complete","comments":[]}\n```',
-                     '{"status":"complete","comments":[',
-                     '{"status":"complete","comments":[]} extra'):
+    def test_truncated_json_is_not_silently_repaired(self):
+        for text in ('{"status":"complete","comments":[',
+                     '{"status":"complete","comments":[]',
+                     'not json at all'):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, '有效 JSON'):
                 self.convert(text)
+
+    def test_prose_wrapped_json_is_salvaged_not_rejected(self):
+        # Regression for archived dbeaver/google-gemini cases: the model wrapped
+        # the required object in prose; the strict whole-text parse failed at
+        # "第 3 行，第 1 列".  Tolerant extraction of the last balanced object
+        # is the approved contract (prose-wrapped answers may be scored).
+        text = ('我认为该提交存在如下问题：\n'
+                '{"status":"complete","comments":[{"path":"sample.py","start_line":1,'
+                '"end_line":1,"content":"缺陷"}]}\n以上意见供参考。')
+        result = self.convert(text)
+        self.assertEqual(result['review']['status'], 'complete')
+        self.assertEqual(len(result['review']['comments']), 1)
+
+    def test_fenced_or_trailing_prose_json_is_salvaged(self):
+        for text in ('```json\n{"status":"complete","comments":[]}\n```',
+                     '{"status":"complete","comments":[]} extra'):
+            with self.subTest(text=text):
+                result = self.convert(text)
+                self.assertEqual(result['review']['comments'], [])
+
+    def test_fence_without_any_object_is_not_salvaged(self):
+        with self.assertRaisesRegex(ValueError, '有效 JSON'):
+            self.convert('```json\n```\n')
 
     def test_explicit_valid_empty_review_still_succeeds(self):
         result = self.convert('\n{"status":"complete","comments":[]}\n')

@@ -106,10 +106,11 @@ class ReplayProbeTests(unittest.TestCase):
         (self.configs / 'model.local.json').write_text(json.dumps(dict(
             LCR_LLM_MODEL='local-probe', LCR_LLM_BASE_URL=endpoint, LCR_LLM_TOKEN='PRIVATE_TOKEN')))
 
-    def invoke(self, flag=True, inline=False):
+    def invoke(self, flag=True, inline=False, extra=()):
         command = [sys.executable, '-' if inline else str(SCRIPT)]
         if flag:
             command.append('--execute-once')
+        command.extend(extra)
         env = dict(os.environ, BENCH_PROJECT_ROOT=str(self.root), BENCH_DATA_ROOT=str(self.data),
                    BENCH_CONFIG_ROOT=str(self.configs), OPENAI_LOG='debug',
                    PYTHONPATH=os.pathsep.join([str(ROOT / 'backend/src'), str(ROOT)]))
@@ -221,6 +222,29 @@ class ReplayProbeTests(unittest.TestCase):
                 self.assertEqual(cached, summary)
                 self.assertEqual(len(model.requests), 1)
                 self.receipt.unlink()
+
+    def test_run_and_case_flags_select_another_frozen_request(self):
+        other_run, other_case = 'aacr-other-run', 'OtherOrg__other-repo@feedbeef'
+        with server(sse('PRIVATE_ANSWER')) as model:
+            self.configure(model.url + '/v1')
+            run_dir = self.data / 'runs' / other_run
+            (run_dir / 'raw').mkdir(parents=True)
+            (run_dir / 'run-config.json').write_text((self.run / 'run-config.json').read_text())
+            payload = dict(model='local-probe', stream=True, max_completion_tokens=31248,
+                           messages=[dict(role='user', content='OTHER_PRIVATE')], custom_field='other')
+            (run_dir / 'raw' / (other_case + '.model-inputs.json')).write_text(
+                json.dumps([{'never': 'replay-the-first-request'}, payload]))
+            with sqlite3.connect(self.data / 'ui-state' / 'queue.sqlite3') as db:
+                db.execute('INSERT INTO jobs VALUES(?,?)',
+                           (other_run, json.dumps({'profile': 'model.local.json'})))
+            receipt = Path(tempfile.gettempdir()) / ('dsh-replay-' + hashlib.sha256(
+                (str(run_dir) + other_case).encode()).hexdigest()[:24] + '.wire-v2.jsonl')
+            self.addCleanup(receipt.unlink, missing_ok=True)
+            result, summary = self.invoke(extra=['--run', other_run, '--case', other_case])
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(model.requests, [('/v1/chat/completions', payload, 'Bearer PRIVATE_TOKEN')])
+            self.assertTrue(summary['delta_nonblank'])
+            self.assertNotIn('OTHER_PRIVATE', result.stdout + result.stderr)
 
     def test_missing_execution_consent_or_changed_endpoint_sends_nothing(self):
         with server(sse()) as model:
