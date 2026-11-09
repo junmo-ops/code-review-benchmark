@@ -36,16 +36,17 @@ def freeze(args, cfg, run):
     selection.bind(args, cfg, run)
     limit = getattr(args, 'dsh_max_output_tokens', None)
     cfg['dsh_max_output_tokens'] = runtime.output_limit(8192 if limit is None else limit)
-    cfg.update(dsh_policy=runtime.policy(cfg['skill_mode'], cfg['dsh_max_output_tokens']),
+    cfg.update(dsh_policy=runtime.policy(cfg['skill_mode'], cfg['dsh_max_output_tokens'], cfg.get('evaluation_mode')),
                repository_mode='head_snapshot_plus_merge_base_diff',
                process_timeout_policy='whole_case_deadline_with_separate_cleanup')
-    cfg['case_execution_policy'] = case_execution_policy()
+    cfg['case_execution_policy'] = case_execution_policy(cfg.get('evaluation_mode'))
     runtime.probe(cfg.get('skill_mode') == 'skill')
     save(run / 'dsh-frozen-config.json', cfg)
 
 
-def case_execution_policy():
-    return dict(version=1, max_attempts=2, retry_on=['answer_format'],
+def case_execution_policy(evaluation_mode=None):
+    return dict(version=1, max_attempts=1 if evaluation_mode == 'stability' else 2,
+                retry_on=[] if evaluation_mode == 'stability' else ['answer_format'],
                 budget_scope='whole_case', evidence='per_attempt')
 
 
@@ -55,9 +56,9 @@ def configure(cfg, run):
     selection.verify_frozen(cfg, run)
     selection.verify(cfg, run)
     execution = cfg.get('case_execution_policy')
-    if execution is not None and execution != case_execution_policy():
+    if execution is not None and execution != case_execution_policy(cfg.get('evaluation_mode')):
         raise runtime.IsolationError('DSH 案例执行策略版本不匹配；历史批次不能静默套用新策略')
-    if cfg.get('dsh_policy') != runtime.policy(cfg['skill_mode'], cfg.get('dsh_max_output_tokens', 8192)):
+    if cfg.get('dsh_policy') != runtime.policy(cfg['skill_mode'], cfg.get('dsh_max_output_tokens', 8192), cfg.get('evaluation_mode')):
         raise runtime.IsolationError('DSH 冻结模式或权限配置无效')
 
 
@@ -150,7 +151,8 @@ def _snapshot(item, work):
     save(inputs / 'REVIEW_REQUEST.json', dict(instance_id=item.instance_id, repo=item.repo,
          base_commit=item.base_commit, head_commit=item.head_commit, merge_base=ancestor))
     (inputs / 'policy.json').write_text(policy.overlay(CFG['review_model'], CFG.get('skill_identity'), work,
-                                                    max_output_tokens=CFG.get('dsh_max_output_tokens', 8192)))
+                                                    max_output_tokens=CFG.get('dsh_max_output_tokens', 8192),
+                                                    evaluation_mode=CFG.get('evaluation_mode')))
     (work / 'home').mkdir()
     return {p.relative_to(repo).as_posix(): _line_count(p)
             for p in repo.rglob('*') if p.is_file() and not p.is_symlink()}
@@ -222,6 +224,12 @@ def _account_answer(item, run, result=None):
 
 
 def _run_case(item, run, deadline):
+    from runner.evaluation import observe
+    kind = 'automatic_retry' if len(case_attempts.records(run, item.safe_id)) > 1 else 'execute'
+    return observe(CFG, run, item.safe_id, lambda: _execute_attempt(item, run, deadline), kind=kind, redact=redact)
+
+
+def _execute_attempt(item, run, deadline):
     evidence = run / 'raw' / item.safe_id
     evidence.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='bench-dsh-') as directory:

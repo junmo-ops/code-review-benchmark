@@ -78,6 +78,13 @@ export interface Run {
   can_run?: boolean;
   case_jobs?: number;
   max_case_retries?: number;
+  evaluation?: {
+    mode: string; total: number; first_observed: number; first_succeeded: number;
+    first_success_rate: number | null; final_complete: number; platform_followups: number;
+    elapsed_seconds: number | null; known_tokens: number | null; token_attempts: number; attempts: number;
+    first_elapsed_seconds: number | null; first_known_tokens: number | null;
+    platform_failures: number; unclassified_failures: number;
+  };
   repair_executed?: boolean;
   case_resources_purged?: boolean;
 }
@@ -133,6 +140,11 @@ export interface Comparison {
   budget?: { judge_seconds?: number; review_seconds?: number };
   report: { groups: Group[]; common_cases: string[]; case_count: number };
 }
+export type ExperimentSummary = Omit<Comparison, 'report'> & {
+  report?: Comparison['report'];
+  case_count?: number;
+  group_count?: number;
+};
 export interface Snapshot {
   platform: string;
   dsh_runtime_mode?: 'sandbox' | 'pod';
@@ -147,7 +159,7 @@ export interface Snapshot {
   runs: Run[];
   jobs: Job[];
   profiles: Profile[];
-  comparisons: Comparison[];
+  comparisons: ExperimentSummary[];
   case_assets?: Assets;
 }
 export interface ImportTask {

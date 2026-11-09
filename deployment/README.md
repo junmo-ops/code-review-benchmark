@@ -8,11 +8,11 @@ Python 3.12 行内容器试运行参见 [容器试运行](容器试运行.md)。
 
 ## 运行结构
 
-浏览器 → HTTPS 认证入口 → Gunicorn / Flask Web → SQLite 队列 → 独立 Worker → 现有测评入口。
+浏览器 → HTTPS 入口 → Gunicorn / Flask Web → SQLite 队列 → 独立 Worker → 现有测评入口。
 
 一个代码仓库，两个 systemd 服务；第一版只有一个 Worker，多个批次排队，单个案例顺序执行。同一批次不能重复排队。Web 和 Worker 不共享内存状态。Web 重启不停止 Worker；关闭浏览器不影响任务。不开启自动付费重试。
 
-Web API 仅绑定 127.0.0.1:8766，由反向代理对外提供 HTTPS。`backend/src/ui.py` 是本机工具，不作为服务器入口。当前所有已认证用户共享项目结果；不是多租户平台。
+Web API 仅绑定 127.0.0.1:8766，由反向代理对外提供 HTTPS。`backend/src/ui.py` 是本机工具，不作为服务器入口。默认免登录，所有访问者共享项目结果并可操作工作台；不是多租户平台。
 
 ## 目录与前提
 
@@ -39,10 +39,10 @@ python3.11 tools/setup.py --suite aacr --dataset data/pilot5.jsonl
 .venv/bin/python -m pip install --no-index --find-links server-wheelhouse -r deployment/requirements.txt
 ```
 
-4. 将 `deployment/server.env.example` 复制到 `/etc/review-lab/server.env`，修改域名及配置路径。用 `secrets.token_urlsafe(48)` 分别生成代理校验密钥与 CSRF Token；不要沿用模板字符串。
+4. 将 `deployment/server.env.example` 复制到 `/etc/review-lab/server.env`，修改域名及配置路径。默认 `BENCH_AUTH_MODE=none`，用 `secrets.token_urlsafe(48)` 生成 CSRF Token；不要沿用模板字符串。
 5. 将行内模型配置写入 `/etc/review-lab/models/model.local.json`，设置服务账号可读。配置文件名须符合 `model*.local.json`；支持平台环境变量作为模型来源。
-6. 配置 HTTPS 认证入口。已有公司 SSO 时由网关校验用户，然后覆盖注入 `X-Bench-User` 和 `X-Bench-Role`（viewer/operator），同时注入 `X-Bench-Proxy-Token`。**不能透传浏览器自带的身份头**。代理 Token 须与服务环境一致。
-7. 没有 SSO 的小范围试用可用 `nginx.conf.example` 的 HTTPS Basic Auth 模板，账号文件由运维创建。该模板所有认证账号都是 operator；只读角色须在网关单独映射。SSO 协议适配未实现，不能把示例称为已接入公司登录。
+6. 按 `nginx.conf.example` 配置 HTTPS 入口。模板不再配置 Basic Auth，打开地址直接进入工作台。
+7. 如需沿用公司认证网关，显式设置 `BENCH_AUTH_MODE=proxy` 和至少 32 字符的 `BENCH_PROXY_TOKEN`。网关验证用户后覆盖注入 `X-Bench-User`、`X-Bench-Role`（viewer/operator）和匹配的 `X-Bench-Proxy-Token`，不能透传浏览器自带的身份头。旧部署如果仍配置 Nginx `auth_basic`，需移除该配置才能免登录。
 8. 安装两个 service 文件，先 `systemctl daemon-reload`，再启动服务：
 
 ```bash
@@ -88,7 +88,7 @@ systemd 自动拉起与“自动重试测评”不同。启动失败或队列暂
 
 ## 验收
 
-1. 无认证不能打开页面或 API；viewer 不能启动/停止任务，伪造身份头和跨站请求被拒绝。
+1. 默认无需账号密码即可打开页面并加载数据；跨站请求、错误域名及缺少页面操作令牌的 API 请求仍被拒绝。选择 `proxy` 模式时，额外验证网关身份及 viewer 只读权限。
 2. 连续提交两个批次，按序执行；重复提交同一批次被拒绝。
 3. 关闭浏览器、重启 Web 后任务继续；日志和结果可再次读取。
 4. 取消排队不调用模型；停止运行任务后无残留检视进程/测试容器。

@@ -23,7 +23,7 @@ import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
 import { active, availableProfiles, canSubmit, caseLabel, pct } from '../presentation';
 import { ErrorAlert, Heading, Status } from '../components/Common';
-import type { Case, Comparison, Evidence, TextReply } from '../types';
+import type { Case, Comparison, ExperimentSummary, Evidence, TextReply } from '../types';
 interface ExperimentValues {
   name: string;
   display_name?: string;
@@ -39,7 +39,7 @@ export function Experiments({ results = false }: { results?: boolean }) {
   return (
     <>
       <Heading
-        title={results ? '结果对比' : '多模型实验'}
+        title={results ? '历史实验与报告' : '多模型实验'}
         description={
           results
             ? '在同一实验的共同评分案例上比较质量、耗时和已记录用量。'
@@ -73,7 +73,7 @@ export function Experiments({ results = false }: { results?: boolean }) {
           {
             title: '实验',
             key: 'name',
-            render: (_: unknown, c: Comparison) => (
+            render: (_: unknown, c: ExperimentSummary) => (
               <Button type="link" onClick={() => openExperiment(c.key, results)}>
                 {c.display_name ?? c.name}
               </Button>
@@ -83,14 +83,14 @@ export function Experiments({ results = false }: { results?: boolean }) {
           {
             title: '评分完成',
             key: 'progress',
-            render: (_: unknown, c: Comparison) =>
-              `${c.report.groups.reduce((n, g) => n + g.scored, 0)} / ${c.report.case_count * c.report.groups.length}`,
+            render: (_: unknown, c: ExperimentSummary) =>
+              c.report ? `${c.report.groups.reduce((n, g) => n + g.scored, 0)} / ${c.report.case_count * c.report.groups.length}` : '打开报告查看',
           },
           {
             title: '共同案例',
             key: 'common',
-            render: (_: unknown, c: Comparison) =>
-              `${c.report.common_cases.length}/${c.report.case_count}`,
+            render: (_: unknown, c: ExperimentSummary) =>
+              c.report ? `${c.report.common_cases.length}/${c.report.case_count}` : '打开报告查看',
           },
         ]}
       />
@@ -277,8 +277,9 @@ export function ExperimentDetail({
   closeEvidence: () => void;
   close: () => void;
 }) {
-  const { state, refresh } = useWorkbench();
-  const comparison = state.comparisons.find((c) => c.key === experimentKey);
+  const { refresh } = useWorkbench();
+  const detail = useRemote<{ experiment: Comparison }>(query('/api/experiment', { key: experimentKey }), 4000);
+  const comparison = detail.data?.experiment;
   const report = useRemote<TextReply>(
     results ? query('/api/artifact', { key: experimentKey, path: 'report.zh-CN.md' }) : undefined,
     4000,
@@ -291,7 +292,8 @@ export function ExperimentDetail({
   if (!comparison)
     return (
       <Modal open onCancel={close} footer={null}>
-        <Alert type="info" message="正在读取实验配置…" />
+        <ErrorAlert error={detail.error} />
+        {!detail.error && <Alert type="info" message="正在读取实验配置…" />}
       </Modal>
     );
   const live = active(comparison.status),
@@ -332,6 +334,7 @@ export function ExperimentDetail({
       width={1200}
       footer={null}
     >
+      <ErrorAlert error={detail.error} />
       <ExperimentActions
         comparison={comparison}
         results={results}

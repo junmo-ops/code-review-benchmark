@@ -119,8 +119,6 @@ body {
 .ant-modal-mask { touch-action: none; }
 .ant-checkbox-group { display: flex; flex-direction: column; gap: 12px; }
 .loading { display: grid; min-height: 50vh; place-items: center; }
-.login-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; }
-.login-page .ant-card { width: min(440px, 100%); }
 
 @media (max-width: 768px) {
   .workspace { padding: 16px; }

@@ -1,6 +1,8 @@
 import { Button, Card, Col, Input, Progress, Row, Space, Table, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { RunComparison } from '../components/RunComparison';
 import { query } from '../api';
 import { useRemote } from '../hooks/useRemote';
 import { useWorkbench } from '../context';
@@ -11,6 +13,8 @@ export function Runs() {
   const { state, newRun, openRun, importBusy } = useWorkbench();
   const [filter, setFilter] = useState(''),
     [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<React.Key[]>([]);
+  const [comparing, setComparing] = useState<string[]>();
   const [pagination, setPagination] = useState({ page: 1, size: 10 });
   const result = useRemote<{ items: Run[]; total: number; page: number }>(query('/api/runs', {
     page: String(pagination.page), page_size: String(pagination.size), suite: filter, search,
@@ -74,8 +78,8 @@ export function Runs() {
   return (
     <>
       <Heading
-        title="单模型测评"
-        description="选择一个模型运行测评；不同案例集分别报告结果。"
+        title="测评批次"
+        description="创建测评，或勾选已有批次对比模型与 Agent 的效果。"
         action={
           <Button
             type="primary"
@@ -113,9 +117,18 @@ export function Runs() {
           />
         }
       >
+        <Space wrap className="section-gap">
+          <Button disabled={selected.length < 2 || selected.length > 6} onClick={() => setComparing(selected.map(String))}>对比结果（{selected.length}）</Button>
+          <Button disabled={!selected.length} onClick={() => setSelected([])}>清空选择</Button>
+          <Typography.Text type="secondary">可跨页选择 2–6 个批次</Typography.Text>
+          <Link to="/experiments">历史实验与报告</Link>
+        </Space>
         <ErrorAlert error={result.error} />
         <Table
           rowKey="key"
+          rowSelection={{ selectedRowKeys: selected, preserveSelectedRowKeys: true,
+            onChange: setSelected, hideSelectAll: true,
+            getCheckboxProps: (row: Run) => ({ disabled: !selected.includes(row.key) && selected.length >= 6 }) }}
           dataSource={runs}
           columns={columns}
           scroll={{ x: 900 }}
@@ -125,6 +138,7 @@ export function Runs() {
             onChange: (page, size) => setPagination({ page, size }) }}
         />
       </Card>
+      {comparing && <RunComparison keys={comparing} close={() => setComparing(undefined)} />}
     </>
   );
 }

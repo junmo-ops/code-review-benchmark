@@ -29,7 +29,7 @@ class BundleLoader(yaml.SafeLoader):
 BundleLoader.add_constructor('tag:yaml.org,2002:js', lambda loader, node: loader.construct_scalar(node))
 
 
-def overlay(model, skill=None, work=None, max_output_tokens=8192):
+def overlay(model, skill=None, work=None, max_output_tokens=8192, evaluation_mode=None):
     source = runtime.MODULES / '@deepseek-ai/dsh-base/cordis.patch.yml'
     bundle = yaml.load(source.read_text(encoding='utf-8'), Loader=BundleLoader)
     rows = bundle[0]['insert']
@@ -66,9 +66,10 @@ def overlay(model, skill=None, work=None, max_output_tokens=8192):
             retryPolicy=dict(mode='normal', maxRetries=0))}),
     }
     patches += [dict(id=name, config=config) for name, config in settings.items()]
+    recovery = 0 if evaluation_mode == 'stability' else 1
     patches += [dict(id='compaction-basic', disabled=True),
                 dict(insert=[dict(id='benchmark-compaction', name=runtime.script('compaction.mjs'),
-                                  config=dict(compactionRetries=1, maxOverflowRetries=1,
+                                  config=dict(compactionRetries=recovery, maxOverflowRetries=recovery,
                                               headroomTokens=16384))]),
                 dict(insert=[dict(id='benchmark-tool-scope', name=runtime.script('scope.mjs'),
                                   config=dict(paths=paths, commands=bool(skill), writes=bool(skill)))]),

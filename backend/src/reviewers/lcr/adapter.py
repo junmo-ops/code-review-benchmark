@@ -32,6 +32,7 @@ WORKER = threading.local()
 LCR_TIMEOUT_MINUTES = 10
 MAX_CASE_RETRIES = 1
 LCR_OPTIONS = {}
+EVALUATION_CONFIG = {}
 PROCESS_TIMEOUT_POLICY = "changed_files * 600 + 120 seconds"
 
 
@@ -315,6 +316,15 @@ def _skip_or_archive_existing_answer(item, run, out, preview):
 
 
 def _run_case_attempt(item, run, out, preview, attempt, retries, resume_session_id=None):
+    from runner.evaluation import observe
+    invoke = lambda: _execute_case_attempt(item, run, out, preview, attempt, retries, resume_session_id)
+    if preview:
+        return invoke()
+    kind = 'session_resume' if resume_session_id else ('automatic_retry' if attempt > 1 else 'execute')
+    return observe(EVALUATION_CONFIG, run, item.safe_id, invoke, kind=kind, redact=redact)
+
+
+def _execute_case_attempt(item, run, out, preview, attempt, retries, resume_session_id=None):
     raw = run_lcr(item, preview, run, resume_session_id=resume_session_id)
     try:
         if preview:
@@ -383,6 +393,8 @@ def _resume_id_from_saved_logs(run, safe_id):
 
 
 def _initial_resume_session(item, run):
+    if EVALUATION_CONFIG.get('evaluation_mode') == 'stability':
+        return None
     session_id = _resume_id_from_saved_logs(run, item.safe_id)
     if not session_id:
         path = run / 'raw' / (item.safe_id + '.execution.json')
@@ -691,7 +703,8 @@ def saved_session_failures(item, run, session_id=None):
 
 
 def configure(cfg, run):
-    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT, MAX_CASE_RETRIES, LCR_OPTIONS
+    global CASE_JOBS, LCR_TIMEOUT_MINUTES, FILE_CONCURRENCY, REPOS_ROOT, MAX_CASE_RETRIES, LCR_OPTIONS, EVALUATION_CONFIG
+    EVALUATION_CONFIG = cfg
     LCR_OPTIONS = cfg.get("lcr_options") or freeze_options()
     os.environ["LCR_LLM_STREAM"] = str(LCR_OPTIONS["stream"]).lower()
     case_jobs = cfg.get('case_jobs', 1)
@@ -701,7 +714,7 @@ def configure(cfg, run):
     retries = cfg.get('max_case_retries', 1)
     if type(retries) is not int or not 0 <= retries <= 2:
         raise ValueError('失败案例自动重试次数必须为 0–2')
-    MAX_CASE_RETRIES = retries
+    MAX_CASE_RETRIES = 0 if cfg.get('evaluation_mode') == 'stability' else retries
     FILE_CONCURRENCY = 1
     REPOS_ROOT = Path(cfg.get('repos_root', ROOT/'repos'))
     LCR_TIMEOUT_MINUTES = cfg['timeout_minutes']

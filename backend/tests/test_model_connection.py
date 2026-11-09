@@ -24,7 +24,7 @@ def probe_client(requests, response=None, error=None):
 class ConnectionTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
-        self.env=patch.dict(os.environ,{'BENCH_CONFIG_ROOT':self.tmp.name,'BENCH_DATA_ROOT':self.tmp.name,'BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
+        self.env=patch.dict(os.environ,{'BENCH_CONFIG_ROOT':self.tmp.name,'BENCH_DATA_ROOT':self.tmp.name,'BENCH_PUBLIC_URL':'https://review.test','BENCH_AUTH_MODE': 'proxy', 'BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
         self.env.start();self.dashboard=Dashboard(Path(self.tmp.name))
         self.data=dict(provider='qwen',name='test',model='qwen-test',base_url='https://model.test/v1',api_key='secret-review',judge_source='custom',judge_model='judge',judge_base_url='https://judge.test/v1',judge_api_key='secret-judge')
     def tearDown(self):self.env.stop();self.tmp.cleanup()

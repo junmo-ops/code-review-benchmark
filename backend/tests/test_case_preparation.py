@@ -18,7 +18,7 @@ from webui.service import Dashboard, save
 
 class BuiltinRepositoryPreparationTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
         self.data = self.root / 'runtime'
         self.enterContext(patch.dict(os.environ, {
             'BENCH_DATA_ROOT': str(self.data), 'BENCH_CONFIG_ROOT': str(self.root / 'models'),
@@ -120,7 +120,9 @@ class BuiltinRepositoryPreparationTests(unittest.TestCase):
 
     def test_remote_mapping_does_not_restore_local_repositories(self):
         self.spec['reviewer'] = 'server_agent'
-        with patch.object(CaseAssetStorage, '_download_object', side_effect=AssertionError('download')):
+        with patch('reviewers.server_agent.adapter.load_config',
+                   return_value={'contract': 'review-service-v1-draft'}), \
+             patch.object(CaseAssetStorage, '_download_object', side_effect=AssertionError('download')):
             self.prepare()
         self.assertFalse((self.data / 'repos/cline__cline').exists())
 

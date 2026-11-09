@@ -37,6 +37,7 @@ class RunQueries:
         self.maximum = maximum
         self.max_age = max_age
         self.cache = OrderedDict()
+        self.index = {}
         self.lock = threading.RLock()
 
     def _stamp(self, folder, job):
@@ -70,9 +71,10 @@ class RunQueries:
             if cached and cached[0] == signature and time.monotonic() - cached[1] < self.max_age:
                 self.cache.move_to_end(key)
                 return deepcopy(cached[2])
-            value = self._read_summary(key)
-            if job and job[-1]:
-                value['profile'] = job[-1]
+        value = self._read_summary(key)
+        if job and job[-1]:
+            value['profile'] = job[-1]
+        with self.lock:
             self.cache[key] = signature, time.monotonic(), value
             self.cache.move_to_end(key)
             while len(self.cache) > self.maximum:
@@ -135,7 +137,7 @@ class RunQueries:
             raise ValueError('分页参数无效，每页最多 100 条')
         names = self._labels()
         items = []
-        for value in self.all():
+        for value in self._index():
             if (self.context.run_dir(value['key']) / 'comparison-protocol.json').is_file():
                 continue
             value['display_name'] = names.get(value['key'], value['name'])
@@ -144,7 +146,46 @@ class RunQueries:
         total = len(items)
         page = min(page, max(1, (total + page_size - 1) // page_size))
         start = (page - 1) * page_size
-        return dict(items=items[start:start + page_size], total=total, page=page, page_size=page_size)
+        jobs = self._jobs()
+        selected = [self._page_summary(value, jobs) for value in items[start:start + page_size]]
+        return dict(items=selected, total=total, page=page, page_size=page_size)
+
+    def _page_summary(self, entry, jobs):
+        key = entry['key']
+        try:
+            value = self._summary(key, self.context.run_dir(key), jobs.get(key))
+        except (OSError, ValueError, KeyError, AttributeError, TypeError):
+            value = unreadable_run(key)
+        value['display_name'] = entry['display_name']
+        return value
+
+    def _index_entry(self, path, key):
+        stamp = file_stamp(path)
+        with self.lock:
+            cached = self.index.get(key)
+            if cached and cached[0] == stamp:
+                return dict(cached[1])
+        try:
+            cfg = self.context.config(key)
+            suite = key.split('/')[0] if '/' in key else cfg.get('suite', {}).get('id', 'aacr')
+            value = dict(key=key, name=key.split('/')[-1], suite=suite,
+                         model=cfg.get('review_model', '—'), created=self._created(key, cfg))
+        except (OSError, ValueError, KeyError, AttributeError, TypeError):
+            value = unreadable_run(key)
+        with self.lock:
+            self.index[key] = stamp, value
+        return dict(value)
+
+    def _index(self):
+        # Only compact immutable metadata is indexed; case results are loaded after paging.
+        root = self.context.data / 'runs'
+        entries = [self._index_entry(path, path.parent.relative_to(root).as_posix())
+                   for path in run_paths(self.context.data)]
+        keys = {entry['key'] for entry in entries}
+        with self.lock:
+            for key in self.index.keys() - keys:
+                del self.index[key]
+        return sorted(entries, key=lambda value: (value.get('created', ''), value['key']), reverse=True)
 
     @staticmethod
     def _matches(value, suite, search):

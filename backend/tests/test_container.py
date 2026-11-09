@@ -1,4 +1,3 @@
-import base64
 import os
 from pathlib import Path
 import subprocess
@@ -22,8 +21,7 @@ class ContainerAccessTests(unittest.TestCase):
             'BENCH_DATA_ROOT': str(self.root / 'data'),
             'BENCH_CONFIG_ROOT': str(self.root / 'models'),
             'BENCH_PUBLIC_URL': 'https://review.test',
-            'BENCH_AUTH_MODE': 'basic', 'BENCH_BASIC_USER': 'trial',
-            'BENCH_BASIC_PASSWORD': 'private-password',
+            'BENCH_AUTH_MODE': 'none',
             'BENCH_CSRF_TOKEN': 'c' * 40,
             'BENCH_ENABLED_SUITES': 'aacr', 'BENCH_STORAGE_MODE': 'ephemeral',
             'BENCH_CONTAINER_ROLE': 'all',
@@ -32,7 +30,6 @@ class ContainerAccessTests(unittest.TestCase):
         self.dashboard = DurableDashboard(self.root)
         self.client = create_app(self.dashboard).test_client()
         self.headers = {
-            'Authorization': 'Basic ' + base64.b64encode(b'trial:private-password').decode(),
             'X-Dashboard-Token': 'c' * 40,
         }
 
@@ -41,17 +38,25 @@ class ContainerAccessTests(unittest.TestCase):
         self.env.stop()
         self.temp.cleanup()
 
-    def test_requires_login_and_rejects_forged_proxy_headers(self):
-        spoof = {'X-Bench-User': 'trial', 'X-Bench-Role': 'operator',
-                 'X-Bench-Proxy-Token': 'p' * 40}
-        response = self.client.get('/', base_url='https://review.test', headers=spoof)
-        self.assertEqual(response.status_code, 401)
-        self.assertIn('Basic', response.headers['WWW-Authenticate'])
-        self.assertEqual(self.client.get('/', base_url='https://review.test',
-                                         headers=self.headers).status_code, 200)
+    def test_direct_access_without_login(self):
+        for mode in (None, 'none', 'basic'):
+            with self.subTest(mode=mode), patch.dict(os.environ):
+                os.environ.pop('BENCH_AUTH_MODE', None)
+                if mode:
+                    os.environ['BENCH_AUTH_MODE'] = mode
+                client = create_app(self.dashboard).test_client()
+                response = client.get('/', base_url='https://review.test')
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn('WWW-Authenticate', response.headers)
+                session = client.get('/api/session', base_url='https://review.test')
+                self.assertEqual(session.json['access_role'], 'operator')
+                spoof = {'X-Bench-User': 'forged', 'X-Bench-Role': 'viewer',
+                         'X-Dashboard-Token': session.json['csrf_token']}
+                self.assertEqual(client.get('/api/state', base_url='https://review.test',
+                                            headers=spoof).status_code, 200)
 
     def test_csrf_origin_and_domain_still_apply(self):
-        headers = {'Authorization': self.headers['Authorization']}
+        headers = {}
         self.assertEqual(self.client.get('/api/state', base_url='https://review.test',
                                          headers=headers).status_code, 403)
         headers.update(self.headers, Origin='https://evil.test')
@@ -75,10 +80,11 @@ class ContainerAccessTests(unittest.TestCase):
         self.assertEqual(response.json['storage_mode'], 'ephemeral')
         self.assertEqual([c['id'] for c in response.json['catalog']], ['aacr'])
 
-    def test_missing_password_fails_closed(self):
-        with patch.dict(os.environ, {'BENCH_BASIC_PASSWORD': ''}):
-            with self.assertRaises(RuntimeError):
-                create_app(self.dashboard)
+    def test_legacy_basic_needs_no_password(self):
+        with patch.dict(os.environ, {'BENCH_AUTH_MODE': 'basic', 'BENCH_BASIC_USER': '',
+                                     'BENCH_BASIC_PASSWORD': ''}):
+            client = create_app(self.dashboard).test_client()
+            self.assertEqual(client.get('/', base_url='https://review.test').status_code, 200)
 
 
 @unittest.skipIf(os.name == 'nt', 'Container supervisor uses POSIX sessions')

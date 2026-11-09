@@ -22,7 +22,8 @@ def main():
              'test_dsh_limits.OutputLimitApiTests', 'test_skill_assets',
              'test_container.ContainerAccessTests.test_minimal_public_health_and_honest_storage_state',
              'test_container.ContainerAccessTests.test_csrf_origin_and_domain_still_apply',
-             'test_container.ContainerAccessTests.test_missing_password_fails_closed']
+             'test_container.ContainerAccessTests.test_legacy_basic_needs_no_password',
+             'test_container.ContainerAccessTests.test_direct_access_without_login']
     result = subprocess.run([sys.executable, '-m', 'unittest', *tests, '-v'], cwd=ROOT, env=env)
     return result.returncode
 

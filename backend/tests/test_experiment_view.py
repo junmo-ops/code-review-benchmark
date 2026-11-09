@@ -11,7 +11,7 @@ from webui.wsgi import create_app
 class ExperimentViewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
-        self.env=patch.dict('os.environ',{'BENCH_DATA_ROOT':str(self.root),'BENCH_CONFIG_ROOT':str(self.root/'configs'),'BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
+        self.env=patch.dict('os.environ',{'BENCH_DATA_ROOT':str(self.root),'BENCH_CONFIG_ROOT':str(self.root/'configs'),'BENCH_PUBLIC_URL':'https://review.test','BENCH_AUTH_MODE': 'proxy', 'BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
         self.env.start();self.app=Dashboard(ROOT,load_jobs=False)
         self.key='compare-test';self.group='compare-test-g1';self.control=self.app.run_dir(self.key);self.run=self.app.run_dir(self.group)
         self.control.mkdir(parents=True)

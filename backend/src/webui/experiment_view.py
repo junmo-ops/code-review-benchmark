@@ -31,7 +31,7 @@ def submit_named(app,data,comparison=False):
 def decorate(app,experiments,runs):
     path=app.state/'display-names.json';names=read(path) if path.exists() else {}
     for item in runs+experiments:item['display_name']=names.get(item['key'],item['name'])
-    for item in experiments:
+    for item in (item for item in experiments if 'budget' not in item):
         m=safe_read(app.run_dir(item['key']), 'experiment.json')
         item['budget']=dict(review_seconds=m.get('case_timeout_seconds'),judge_seconds=m.get('judge_case_timeout_seconds'),protocol=m.get('protocol'))
     return experiments

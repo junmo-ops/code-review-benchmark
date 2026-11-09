@@ -14,25 +14,16 @@ from runner.paths import PROJECT_ROOT
 
 
 
-def _authenticate_identity(public, proxy, mode, basic_user, basic_password):
-    if mode == 'basic':
-        auth = request.authorization
-        valid = (auth and auth.type.lower() == 'basic'
-                 and secrets.compare_digest((auth.username or '').encode(), basic_user.encode())
-                 and secrets.compare_digest((auth.password or '').encode(), basic_password.encode()))
-        if not valid:
-            response = jsonify(error='请登录测评工作台')
-            response.status_code = 401
-            response.headers['WWW-Authenticate'] = 'Basic realm="Review Lab", charset="UTF-8"'
-            return response
-        g.bench_user, g.bench_role = basic_user, 'operator'
-    else:
-        if not secrets.compare_digest(request.headers.get('X-Bench-Proxy-Token',''), proxy):
-            return jsonify(error='请求未通过认证入口'), 403
-        user, role = request.headers.get('X-Bench-User'), request.headers.get('X-Bench-Role')
-        if not user or role not in {'viewer','operator'}:
-            return jsonify(error='需要有效用户与角色'), 403
-        g.bench_user, g.bench_role = user, role
+def _authenticate_identity(proxy, mode):
+    if mode == 'none':
+        g.bench_user, g.bench_role = 'anonymous', 'operator'
+        return None
+    if not secrets.compare_digest(request.headers.get('X-Bench-Proxy-Token', ''), proxy):
+        return jsonify(error='请求未通过认证入口'), 403
+    user, role = request.headers.get('X-Bench-User'), request.headers.get('X-Bench-Role')
+    if not user or role not in {'viewer', 'operator'}:
+        return jsonify(error='需要有效用户与角色'), 403
+    g.bench_user, g.bench_role = user, role
     return None
 
 
@@ -57,12 +48,12 @@ def _authorize_origin(public, csrf):
     return None
 
 
-def _authorize_request(public, parsed, proxy, csrf, mode, basic_user, basic_password):
+def _authorize_request(public, parsed, proxy, csrf, mode):
     if request.path in {'/healthz', '/readyz'} and request.method == 'GET':
         return None
     if request.host != parsed.netloc:
         return jsonify(error='请求域名与 BENCH_PUBLIC_URL 不一致'), 403
-    response = _authenticate_identity(public, proxy, mode, basic_user, basic_password)
+    response = _authenticate_identity(proxy, mode)
     if response:
         return response
     _set_upload_limit()
@@ -76,16 +67,15 @@ def _server_settings():
     csrf=os.environ.get('BENCH_CSRF_TOKEN','')
     if parsed.scheme!='https' or not parsed.netloc or parsed.path or parsed.query or parsed.fragment or parsed.username:
         raise RuntimeError('BENCH_PUBLIC_URL 必须为 HTTPS 站点根地址')
-    mode = os.environ.get('BENCH_AUTH_MODE', 'proxy')
-    basic_user = os.environ.get('BENCH_BASIC_USER', '')
-    basic_password = os.environ.get('BENCH_BASIC_PASSWORD', '')
-    if mode not in {'proxy', 'basic'}:
-        raise RuntimeError('BENCH_AUTH_MODE 须为 proxy 或 basic')
+    mode = os.environ.get('BENCH_AUTH_MODE', 'none')
+    # Older containers configured Basic auth; the workbench no longer requires login.
+    if mode == 'basic':
+        mode = 'none'
+    if mode not in {'proxy', 'none'}:
+        raise RuntimeError('BENCH_AUTH_MODE 须为 none 或 proxy')
     if len(csrf)<32 or (mode == 'proxy' and len(proxy)<32):
         raise RuntimeError('请设置至少 32 字符的 CSRF Token；代理模式还需代理校验密钥')
-    if mode == 'basic' and (not basic_user or not basic_password):
-        raise RuntimeError('试运行须设置 BENCH_BASIC_USER 和 BENCH_BASIC_PASSWORD')
-    return public, parsed, proxy, csrf, mode, basic_user, basic_password
+    return public, parsed, proxy, csrf, mode
 
 
 def _authorize_local(token):
@@ -321,6 +311,24 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
         except ValueError:
             raise ValueError('分页参数无效') from None
         return jsonify(dashboard.queries.page(page, size, request.args.get('suite', ''), request.args.get('search', '')))
+    @app.get('/api/experiment')
+    def experiment_detail():
+        from application.experiments import experiment
+        from .experiment_view import decorate
+        if getattr(dashboard, 'queue_mode', False):
+            dashboard.sync()
+        with dashboard.lock:
+            jobs = [dict(job) for job in dashboard.jobs.values()]
+        value = experiment(dashboard, request.args.get('key'), jobs=jobs)
+        return jsonify(experiment=decorate(dashboard, [value], [])[0])
+
+    @app.get('/api/run-comparison')
+    def run_comparison():
+        from application.run_comparison import build
+        if getattr(dashboard, 'queue_mode', False):
+            dashboard.sync()
+        return jsonify(build(dashboard, request.args.getlist('key')))
+
     @app.get('/api/run')
     def run_detail():
         if getattr(dashboard, 'queue_mode', False):

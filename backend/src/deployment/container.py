@@ -180,7 +180,7 @@ def _run_container():
     role = os.environ.get('BENCH_CONTAINER_ROLE', 'all')
     if role not in {'all', 'web', 'worker'}:
         raise ValueError('BENCH_CONTAINER_ROLE 须为 all、web 或 worker')
-    if os.environ.get('BENCH_AUTH_MODE', 'proxy') == 'basic':
+    if os.environ.get('BENCH_AUTH_MODE', 'none') in {'none', 'basic'}:
         # This token belongs to one Web lifetime; a restart requires a page refresh.
         os.environ.setdefault('BENCH_CSRF_TOKEN', secrets.token_urlsafe(48))
     port = int(os.environ.get('PORT', '8080'))

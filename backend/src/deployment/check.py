@@ -22,7 +22,10 @@ def main():
     checks['服务模式']=os.getenv('BENCH_SERVER_MODE')=='1'
     checks['持久化目录可写']=data_root(ROOT).is_dir() and os.access(data_root(ROOT),os.W_OK)
     checks['模型配置目录存在']=config_root(ROOT).is_dir()
-    for name in ('BENCH_PROXY_TOKEN','BENCH_CSRF_TOKEN'):
+    tokens = ['BENCH_CSRF_TOKEN']
+    if os.getenv('BENCH_AUTH_MODE', 'none') == 'proxy':
+        tokens.append('BENCH_PROXY_TOKEN')
+    for name in tokens:
         checks[name+' 已设置']=len(os.getenv(name,''))>=32
     checks['HTTPS 站点配置']=os.getenv('BENCH_PUBLIC_URL','').startswith('https://')
     lcr=ROOT/'bin/lcr'

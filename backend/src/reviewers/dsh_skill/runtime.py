@@ -27,10 +27,12 @@ def output_limit(value=8192):
     return value
 
 
-def policy(mode, max_output_tokens=8192):
+def policy(mode, max_output_tokens=8192, evaluation_mode=None):
     selected = runtime_mode()
     result = dict(POLICY, max_output_tokens=output_limit(max_output_tokens),
                   runtime_mode=selected, os_isolation=selected == 'sandbox')
+    if evaluation_mode == 'stability':
+        result.update(compaction_retries=0, overflow_retries=0)
     if selected == 'pod':
         result['isolation'] = 'pod_shared_process_software_guards_only'
     if mode == 'skill':

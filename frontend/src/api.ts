@@ -1,17 +1,10 @@
 let csrf = '';
-let authorization = '';
 let session: Promise<void> | undefined;
-export class AuthenticationRequired extends Error {}
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
-export function setAuthentication(username: string, password: string) {
-  const bytes = new TextEncoder().encode(username + ':' + password);
-  authorization = 'Basic ' + btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
-  csrf = '';
-}
 function requestHeaders(): Record<string, string> {
-  return { 'X-Dashboard-Token': csrf, ...(authorization ? { Authorization: authorization } : {}) };
+  return { 'X-Dashboard-Token': csrf };
 }
 export async function bootstrap() {
   if (csrf) return;
@@ -35,7 +28,7 @@ async function parse<T>(response: Response): Promise<T> {
   }
   if (response.status === 401) {
     csrf = '';
-    throw new AuthenticationRequired(body.error ?? '请登录测评工作台');
+    throw new ApiError(401, body.error ?? '请求被访问入口拒绝，请检查代理配置');
   }
   if (response.status === 403 && body.error === '页面会话失效，请刷新') csrf = '';
   if (!response.ok) throw new ApiError(response.status, body.error ?? `操作失败（HTTP ${response.status}）`);

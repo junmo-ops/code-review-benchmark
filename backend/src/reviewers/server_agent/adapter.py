@@ -231,7 +231,15 @@ def load_record(item,record_path,resume):
     return record
 
 
-def run_case(item,run,preview=False,resume=False):
+def run_case(item, run, preview=False, resume=False):
+    from runner.evaluation import observe
+    invoke = lambda: _execute_case(item, run, preview, resume)
+    if preview or (run / 'results' / (item.safe_id + '.json')).exists():
+        return invoke()
+    return observe(CFG, run, item.safe_id, invoke, kind='query_recovery' if resume else 'execute', redact=redact)
+
+
+def _execute_case(item,run,preview=False,resume=False):
     raw=run/'raw';record_path=raw/(item.safe_id+'.remote.json');execution=raw/(item.safe_id+'.execution.json')
     if preview:
         save(run/'preview'/(item.safe_id+'.json'),payload(item));print('仅生成服务端请求预览，不创建任务：',item.instance_id);return

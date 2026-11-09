@@ -247,7 +247,9 @@ class Dashboard:
         summary = self.summary(key)
         total, completed = len(cases), sum(c['status'] == 'complete' for c in cases)
         score_status, scored_cases = self._score_status(key, cases, summary)
-        return dict(key=key, compatibility_warning=self.compatibility(key), name=key.split('/')[-1], suite='mcr' if mcr else cfg.get('suite', {}).get('id', 'aacr'),
+        from runner.evaluation import summary as execution_summary
+        evaluation = execution_summary(self.run_dir(key), cfg, [c['id'].replace('/', '__') for c in cases])
+        return dict(key=key, evaluation=evaluation, compatibility_warning=self.compatibility(key), name=key.split('/')[-1], suite='mcr' if mcr else cfg.get('suite', {}).get('id', 'aacr'),
                     simulation=cfg.get('simulation',False), reviewer=cfg.get('reviewer', 'lcr'), model=cfg.get('review_model', '—'), judge_model=cfg.get('judge_model', '—'),
                     skill_mode=cfg.get('skill_mode'), skill_version=cfg.get('skill_version'),
                     skill_name=cfg.get('skill_identity', {}).get('name'),
@@ -432,29 +434,29 @@ class Dashboard:
         runs = [] if compact else self.queries.all(details=True)
         with self.lock:
             jobs = [dict(j) for j in sorted(self.jobs.values(), key=lambda j: j['created_at'], reverse=True)[:50]]
-            for job in jobs:
-                start=job.get('started_at')
-                if start:
-                    end=job.get('ended_at') or now()
-                    job['elapsed_seconds']=max(0,int((datetime.datetime.fromisoformat(end)-datetime.datetime.fromisoformat(start)).total_seconds()))
-                log=self.state/'jobs'/(job['id']+'.log')
-                if log.exists():job['last_output_at']=datetime.datetime.fromtimestamp(log.stat().st_mtime,datetime.timezone.utc).isoformat()
-            from comparison.service import list_experiments
-            from .experiment_view import decorate
-            experiments=decorate(self,list_experiments(self),runs)
-            run_storage, storage_mode = self._runtime_storage_state()
-            case_assets = None
-            if os.environ.get('BENCH_CASE_UPLOAD') == '1':
-                from .case_assets import status
-                case_assets = status(self.root, self.data)
-                if not os.environ.get('BENCH_SERVER_MODE'):
-                    case_assets['ready'] = True
-                    if not case_assets['datasets']:
-                        case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
-            return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
-                        dsh_runtime_mode=os.environ.get('BENCH_DSH_RUNTIME_MODE', 'sandbox'),
-                        active=self.active, case_assets=case_assets, run_storage=run_storage,
-                        storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
+        for job in jobs:
+            start=job.get('started_at')
+            if start:
+                end=job.get('ended_at') or now()
+                job['elapsed_seconds']=max(0,int((datetime.datetime.fromisoformat(end)-datetime.datetime.fromisoformat(start)).total_seconds()))
+            log=self.state/'jobs'/(job['id']+'.log')
+            if log.exists():job['last_output_at']=datetime.datetime.fromtimestamp(log.stat().st_mtime,datetime.timezone.utc).isoformat()
+        from application.experiments import list_experiments
+        from .experiment_view import decorate
+        experiments=decorate(self,list_experiments(self, compact=compact),runs)
+        run_storage, storage_mode = self._runtime_storage_state()
+        case_assets = None
+        if os.environ.get('BENCH_CASE_UPLOAD') == '1':
+            from .case_assets import status
+            case_assets = status(self.root, self.data)
+            if not os.environ.get('BENCH_SERVER_MODE'):
+                case_assets['ready'] = True
+                if not case_assets['datasets']:
+                    case_assets['message'] = '本地已有内置案例可直接使用；也可以上传其他案例集。'
+        return dict(comparisons=experiments, catalog=self.catalog(), profiles=self.profiles(), runs=sorted(runs, key=lambda r:r['created'], reverse=True), jobs=jobs,
+                    dsh_runtime_mode=os.environ.get('BENCH_DSH_RUNTIME_MODE', 'sandbox'),
+                    active=self.active, case_assets=case_assets, run_storage=run_storage,
+                    storage_mode=storage_mode, runtime_ready=any((self.root/name).is_file() for name in ('bin/lcr','bin/lcr.cmd')), platform=sys.platform)
 
     def command(self, key, stage, profile, task=None, retry=False, init=None):
         from application.planning import ExecutionPlanner

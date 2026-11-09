@@ -25,7 +25,7 @@ class LifecycleFixture:
         test.enterContext(patch.dict(os.environ, dict(BENCH_PROJECT_ROOT=str(ROOT),
             BENCH_DATA_ROOT=str(self.root), BENCH_CONFIG_ROOT=str(self.root), BENCH_CASE_UPLOAD='1',
             BENCH_CASE_STORAGE_MODE='local', BENCH_RUN_STORAGE_MODE='local', BENCH_MODEL_STORAGE_MODE='local',
-            BENCH_PUBLIC_URL='https://review.test', BENCH_PROXY_TOKEN='p' * 40, BENCH_CSRF_TOKEN='c' * 40,
+            BENCH_AUTH_MODE='proxy', BENCH_PUBLIC_URL='https://review.test', BENCH_PROXY_TOKEN='p' * 40, BENCH_CSRF_TOKEN='c' * 40,
             PYTHONPATH=os.pathsep.join([str(ROOT / 'backend/src'), str(ROOT / 'backend/tests'), str(ROOT)]))))
         save(self.root / 'model.local.json', dict(LCR_LLM_MODEL='dsh-review', LCR_LLM_TOKEN='local-only',
             LCR_LLM_BASE_URL=model.url, JUDGE_MODEL='dsh-judge', JUDGE_API_KEY='judge-only', JUDGE_BASE_URL=model.url))

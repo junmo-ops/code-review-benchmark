@@ -35,7 +35,7 @@ class SkillAssetApiTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.environment = patch.dict(os.environ, {
             'BENCH_DATA_ROOT': self.temp.name, 'BENCH_CONFIG_ROOT': self.temp.name,
-            'BENCH_PUBLIC_URL': 'https://review.test', 'BENCH_PROXY_TOKEN': 'p' * 40,
+            'BENCH_PUBLIC_URL': 'https://review.test', 'BENCH_AUTH_MODE': 'proxy', 'BENCH_PROXY_TOKEN': 'p' * 40,
             'BENCH_CSRF_TOKEN': 'c' * 40, 'BENCH_CASE_UPLOAD': '1',
             'BENCH_CASE_STORAGE_MODE': 'local',
         })

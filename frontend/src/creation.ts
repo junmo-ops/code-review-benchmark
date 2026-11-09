@@ -1,4 +1,4 @@
-import { api, ApiError, AuthenticationRequired } from './api';
+import { api, ApiError } from './api';
 import { parseSnapshot } from './snapshot';
 import type { JobReply } from './types';
 
@@ -12,7 +12,7 @@ export async function submitCreation(path: string, data: unknown, key: string, a
   try {
     return await api<JobReply>(path, data);
   } catch (error) {
-    if (error instanceof AuthenticationRequired || (error instanceof ApiError && error.status < 500)) throw error;
+    if (error instanceof ApiError && error.status < 500) throw error;
     const accepted = await findCreation(key, action);
     if (accepted) return accepted;
     if (error instanceof ApiError) throw error;

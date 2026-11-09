@@ -9,6 +9,7 @@ import { useRemote } from '../hooks/useRemote';
 import { DshRuntimeWarning, ErrorAlert } from './Common';
 import type { SkillListing, Snapshot } from '../types';
 interface Values {
+  evaluation_mode: 'quality' | 'stability';
   suite: string;
   dataset: string;
   name: string;
@@ -32,6 +33,7 @@ function defaults(state: Snapshot, suiteId?: string, datasetId?: string): Values
     state.catalog[0] ?? { id: '', datasets: [] };
   const profile = availableProfiles(state).find((p) => p.review_ready)?.id ?? '';
   return {
+    evaluation_mode: 'quality',
     suite: suite.id,
     dataset: datasetId ?? suite.datasets[0]?.id ?? '',
     name: identifier(suite.id || 'run'),
@@ -107,6 +109,21 @@ function executionDescription(values: Partial<Values>) {
   if (values.reviewer === 'lcr') return 'LCR 整例上限随变更文件数增加；与多模型实验的整例预算不同。';
   return undefined;
 }
+function EvaluationMode({ suite }: { suite: string }) {
+  const form = Form.useFormInstance<Values>();
+  const unsupported = ['mcr', 'ccrab'].includes(suite);
+  return <>
+    <Form.Item name="evaluation_mode" label="测评目的" rules={[{ required: true }]}>
+      <Select onChange={(value: string) => form.setFieldValue('max_case_retries', value === 'stability' ? 0 : 1)} options={[
+        { value: 'quality', label: '检视质量：允许配置平台补救' },
+        { value: 'stability', label: '运行稳定性：平台不自动补跑', disabled: unsupported },
+      ]} />
+    </Form.Item>
+    <Alert type="info" className="section-gap" message="测评目的随批次固定，补跑不改写首次执行结果。"
+      description={unsupported ? 'MCR 多轮和 c-CRAB 修复测试暂未接入运行稳定性口径。'
+        : '稳定性模式关闭平台自动重跑、LCR 会话续跑和 DSH 压缩失败/溢出补救；保留证据恢复和原任务查询。实际运行条件仍需与线上核对。'} />
+  </>;
+}
 function ready(state: Snapshot, values: Partial<Values>) {
   const model = state.profiles.find((p) => p.id === values.review_profile);
   const judgeId = values.judge_profile ?? '',
@@ -119,6 +136,8 @@ function ready(state: Snapshot, values: Partial<Values>) {
   );
 }
 function Advanced({ suite, reviewer }: { suite: string; reviewer: string }) {
+  const form = Form.useFormInstance<Values>();
+  const stability = Form.useWatch('evaluation_mode', form) === 'stability';
   const concurrent = !['mcr', 'ccrab'].includes(suite) && reviewer === 'lcr';
   return (
     <Collapse
@@ -156,7 +175,7 @@ function Advanced({ suite, reviewer }: { suite: string; reviewer: string }) {
                     label="失败案例自动重试次数"
                     extra="可能增加模型调用和耗时。"
                   >
-                    <InputNumber min={0} max={2} precision={0} className="full-width" />
+                    <InputNumber min={0} max={2} precision={0} className="full-width" disabled={stability} />
                   </Form.Item>
                 </>
               )}
@@ -214,7 +233,7 @@ export function CreateRun({
         action: 'create',
         start_after_create: start,
         case_jobs: data.reviewer === 'lcr' ? data.case_jobs : 1,
-        max_case_retries: data.reviewer === 'lcr' ? data.max_case_retries : 0,
+        max_case_retries: data.reviewer === 'lcr' && data.evaluation_mode !== 'stability' ? data.max_case_retries : 0,
         skill_mode: skillMode(data),
         skill_version: data.reviewer === 'dsh_skill' && data.skill_mode === 'skill' ? data.skill_version : undefined,
         dsh_max_output_tokens: data.reviewer === 'dsh_skill' ? data.dsh_max_output_tokens : undefined,
@@ -229,6 +248,7 @@ export function CreateRun({
     const initial = defaults(state, id);
     form.setFieldsValue({
       suite: id,
+      evaluation_mode: 'quality',
       dataset: initial.dataset,
       name: initial.name,
       reviewer: initial.reviewer,
@@ -300,6 +320,7 @@ export function CreateRun({
           <Select options={reviewers(values.suite ?? '')}
             onChange={(reviewer: string) => form.setFieldsValue({ skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_version: undefined })} />
         </Form.Item>
+        <EvaluationMode suite={values.suite ?? ''} />
         <SkillSelection reviewer={values.reviewer} />
         <DshRuntimeWarning reviewer={values.reviewer} mode={state.dsh_runtime_mode} />
         <Form.Item name="evaluator" label="评分方法">

@@ -19,7 +19,7 @@ from regression_fixtures import seed_datasets, frontend_environment
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name).resolve()
-        self.env=patch.dict(os.environ,{**frontend_environment(),'BENCH_DATA_ROOT':str(self.root/'persistent'),'BENCH_CONFIG_ROOT':str(self.root/'config'),'BENCH_SERVER_MODE':'1','BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
+        self.env=patch.dict(os.environ,{**frontend_environment(),'BENCH_DATA_ROOT':str(self.root/'persistent'),'BENCH_CONFIG_ROOT':str(self.root/'config'),'BENCH_SERVER_MODE':'1','BENCH_PUBLIC_URL':'https://review.test','BENCH_AUTH_MODE': 'proxy', 'BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40})
         self.env.start();self.app=DurableDashboard(self.root)
         seed_datasets(self.root)
         save(self.root/'config/model.local.json',dict(LCR_LLM_MODEL='test',LCR_LLM_TOKEN='secret-do-not-store',LCR_LLM_BASE_URL='https://model.test',JUDGE_MODEL='test',JUDGE_API_KEY='judge-secret'))

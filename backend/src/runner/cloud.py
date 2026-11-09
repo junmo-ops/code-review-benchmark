@@ -172,11 +172,15 @@ def init_run(args, run):
     ensure_compatible(suite, reviewer)
     items = checked_instances(dataset, suite.id)
     if reviewer_id=='cline_skill' and len(items)!=1:raise ValueError('Cline + Skill 当前仅支持单案例试跑，请选择单例清单')
+    from runner.evaluation import freeze
+    evaluation = freeze(getattr(args, 'evaluation_mode', None), suite.id)
     case_jobs, max_case_retries = _execution_limits(args, reviewer_id)
+    if evaluation['evaluation_mode'] == 'stability':
+        max_case_retries = 0
     from reviewers.lcr.options import freeze_options
     lcr_options = freeze_options() if reviewer_id == 'lcr' else {}
     repo_root = Path(args.repos_root or data_root(ROOT)/'repos').resolve()
-    cfg = {'schema_version':2, 'reviewer_id':reviewer_id,
+    cfg = {**evaluation, 'schema_version':2, 'reviewer_id':reviewer_id,
            'evaluator':evaluators.freeze(getattr(args,'evaluator','original'),suite),
            'suite':{'id':suite.id, 'identity':suite.identity(), 'parameters':dict(suite.parameters), 'provenance':suite.provenance(dataset)}, 'dataset_sha256':digest(dataset), 'selected_instances':[i.instance_id for i in items],
            'reviewer':reviewer_id, 'tool_hashes':reviewer.tool_identity(),
@@ -217,6 +221,7 @@ def _arguments():
     p.add_argument('--dataset')
     p.add_argument('--suite',help='仅 init 指定，默认 aacr；未知案例集会拒绝运行')
     p.add_argument('--evaluator',choices=['martian','original'],default=None,help='仅 init 指定，默认 martian；original 使用案例集原裁判')
+    p.add_argument('--evaluation-mode', choices=['quality', 'stability'], help='仅 init 指定测评目的')
     p.add_argument('--reviewer',help='仅 init 指定，默认 lcr')
     p.add_argument('--skill-mode', choices=['baseline', 'skill'], help='仅 DSH init 指定')
     p.add_argument('--dsh-runtime-mode', choices=['sandbox', 'pod'], help='队列冻结的部署运行模式，仅 DSH init 指定')
@@ -237,7 +242,7 @@ def _arguments():
 
 
 def _validate_arguments(p, args):
-    frozen = (args.suite, args.reviewer, args.evaluator, args.skill_mode, args.skill_version,
+    frozen = (args.evaluation_mode, args.suite, args.reviewer, args.evaluator, args.skill_mode, args.skill_version,
               args.skill_identity_sha256, args.dsh_runtime_mode, args.dsh_max_output_tokens)
     if args.stage != 'init' and any(value is not None for value in frozen):
         p.error('案例集和检视工具已冻结；调整时请新建批次')
@@ -333,6 +338,8 @@ def _non_review_stage(args, cfg, suite, items, snapshot, run):
         if cfg.get('reviewer_id') == 'dsh_skill':
             from reviewers.dsh_skill.reporting import annotate
             annotate(run, cfg, items)
+        from runner.evaluation import report
+        report(run, cfg, [item.safe_id for item in items])
     else:
         return False
     return True

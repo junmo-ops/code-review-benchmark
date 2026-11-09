@@ -46,7 +46,7 @@ class ExecutionPlanner:
         if stage == 'eval':
             limit = self._scoring_budget(cfg, self.context.data/'runs'/run_id)
         if init is not None:
-            args+=['--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.context.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
+            args+=['--evaluation-mode', init.get('evaluation_mode', 'quality'), '--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.context.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
             if init['reviewer'] == 'dsh_skill':
                 args += ['--skill-mode', init['skill_mode'],
                          '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox'),
@@ -98,7 +98,7 @@ class ExecutionPlanner:
         args = [stage, "--run-id", run_id]
         entry = 'backend/src/local.py'
         if init is not None:
-            args += ['--dataset', str(self.context.dataset_path(init['dataset'])), '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
+            args += ['--evaluation-mode', init.get('evaluation_mode', 'quality'), '--dataset', str(self.context.dataset_path(init['dataset'])), '--suite', init['suite'], '--evaluator', init['evaluator'], '--timeout-minutes', str(init['timeout_minutes']), '--case-jobs', str(init.get('case_jobs', 1))]
             if init['reviewer'] == 'lcr':
                 args += ['--max-case-retries', str(init.get('max_case_retries', 1))]
         if task:

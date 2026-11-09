@@ -82,7 +82,12 @@ def _stage_review(items,run,preview=False):
         if (run/'raw'/(item.safe_id+'.execution.json')).exists():raise ValueError('已有执行记录，请先恢复或检查；不自动重新调用模型')
         run_case(item,run)
 
-def run_case(item,run):
+def run_case(item, run):
+    from runner.evaluation import observe
+    return observe(CFG, run, item.safe_id, lambda: _execute_case(item, run), redact=redact)
+
+
+def _execute_case(item,run):
     work=Path(tempfile.mkdtemp(prefix='cline-review-')).resolve();w=work/'repo';cfg=work/'config';tmp=work/'temp';cfg.mkdir();tmp.mkdir()
     try:
         with tempfile.TemporaryFile() as archive:

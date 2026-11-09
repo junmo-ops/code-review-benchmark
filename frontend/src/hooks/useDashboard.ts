@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, AuthenticationRequired, bootstrap, setAuthentication } from '../api';
+import { api, bootstrap } from '../api';
 import type { ImportTask, Snapshot } from '../types';
 import { parseSnapshot } from '../snapshot';
 export function useDashboard() {
   const [state, setState] = useState<Snapshot>();
   const [task, setTask] = useState<ImportTask | null>(null);
   const [error, setError] = useState('');
-  const [loginRequired, setLoginRequired] = useState(false);
   const stateRequest = useRef(false);
   const importRequest = useRef(false);
   const alive = useRef(true);
@@ -19,15 +18,10 @@ export function useDashboard() {
       if (alive.current) {
         setState(incoming);
         setError('');
-        setLoginRequired(false);
       }
     } catch (error) {
       if (alive.current) {
         setError(String(error instanceof Error ? error.message : error));
-        if (error instanceof AuthenticationRequired) {
-          setLoginRequired(true);
-          setState(undefined);
-        }
       }
     } finally {
       stateRequest.current = false;
@@ -59,11 +53,6 @@ export function useDashboard() {
     };
   }, [refresh, pollImport]);
   return {
-    loginRequired,
-    login: async (username: string, password: string) => {
-      setAuthentication(username, password);
-      await refresh();
-    },
     state,
     task,
     setTask,

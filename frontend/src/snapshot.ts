@@ -15,7 +15,7 @@ export function parseSnapshot(value: unknown): Snapshot {
   const profiles = rows(value, 'profiles'), jobs = rows(value, 'jobs');
   if (!catalog.every((suite) => typeof suite.id === 'string' && Array.isArray(suite.datasets))) throw invalid();
   if (!runs.every((run) => typeof run.key === 'string' && Array.isArray(run.cases) && Array.isArray(run.artifacts))) throw invalid();
-  if (!comparisons.every((item) => record(item.report) && Array.isArray(item.report.groups))) throw invalid();
+  if (!comparisons.every((item) => typeof item.key === 'string' && (item.report === undefined || (record(item.report) && Array.isArray(item.report.groups))))) throw invalid();
   if (!profiles.every((profile) => typeof profile.id === 'string' && typeof profile.label === 'string')) throw invalid();
   if (!jobs.every((job) => typeof job.id === 'string' && typeof job.status === 'string')) throw invalid();
   return value as unknown as Snapshot;

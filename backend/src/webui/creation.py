@@ -97,8 +97,12 @@ def prepare(dashboard, request, profile):
     if 'review_profile' in request:
         from .profiles import compose_roles
         role_config = compose_roles(dashboard, profile, request.get('judge_profile'), suite != 'ccrab')
-    spec = dict(suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator,
+    from runner.evaluation import freeze
+    evaluation = freeze(request.get('evaluation_mode'), suite)
+    spec = dict(**evaluation, suite=suite, dataset=request['dataset'], reviewer=reviewer, evaluator=evaluator,
                 **_limits(request, suite, reviewer))
+    if evaluation['evaluation_mode'] == 'stability':
+        spec['max_case_retries'] = 0
     if reviewer == 'dsh_skill':
         from reviewers.dsh_skill.runtime import runtime_mode
         spec['dsh_runtime_mode'] = runtime_mode()

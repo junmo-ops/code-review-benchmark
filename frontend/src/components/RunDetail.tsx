@@ -1,4 +1,5 @@
 import { ReportView } from './ReportView';
+import { EvaluationSummary } from './EvaluationSummary';
 import {
   Alert,
   App,
@@ -254,6 +255,7 @@ function Overview({
         <Alert className="section-gap" type={run.status === 'partial_scored' ? 'warning' : 'info'} message={run.score_locked_reason} />
       )}
       <Metrics run={run} />
+      <EvaluationSummary run={run} />
       <ActionControls
         run={run}
         onAction={onAction}

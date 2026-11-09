@@ -1,7 +1,6 @@
 import { Alert, App as AntApp, Button, Layout, Menu, Space, Spin, Switch, Tag, Typography } from 'antd';
 import {
   DatabaseOutlined,
-  ExperimentOutlined,
   FileTextOutlined,
   FolderOutlined,
   QuestionCircleOutlined,
@@ -16,7 +15,6 @@ import { useAppearance } from './theme';
 import { useDashboard } from './hooks/useDashboard';
 import { useAction } from './hooks/useAction';
 import { api } from './api';
-import { Login } from './components/Login';
 import { ErrorAlert } from './components/Common';
 import type { Snapshot } from './types';
 const Assets = lazy(() => import('./pages/Assets').then((module) => ({ default: module.Assets })));
@@ -38,10 +36,8 @@ const RunDetail = lazy(() =>
   import('./components/RunDetail').then((module) => ({ default: module.RunDetail })),
 );
 const navigation = [
-  { key: '/', label: '单模型测评', icon: <FileTextOutlined /> },
+  { key: '/', label: '测评批次', icon: <FileTextOutlined /> },
   { key: '/jobs', label: '执行记录', icon: <UnorderedListOutlined /> },
-  { key: '/experiments', label: '多模型实验', icon: <ExperimentOutlined /> },
-  { key: '/comparisons', label: '结果对比', icon: <DatabaseOutlined /> },
   { key: '/cases', label: '案例集管理', icon: <FolderOutlined /> },
   { key: '/repositories', label: '仓库管理', icon: <DatabaseOutlined /> },
   { key: '/skills', label: 'Skill 资源管理', icon: <FolderOutlined /> },
@@ -114,7 +110,7 @@ export default function App() {
     [params, setParams] = useSearchParams();
   const [selection, setSelection] = useState<{ suite?: string; dataset?: string }>();
   const path = location.pathname.replace(/\/$/, '') || '/';
-  const title = navigation.find((n) => n.key === path)?.label ?? '测评工作台';
+  const title = [...navigation, { key: '/experiments', label: '历史实验与报告' }, { key: '/comparisons', label: '历史实验与报告' }].find((n) => n.key === path)?.label ?? '测评工作台';
   const openRun = (key: string, job?: string) =>
     setParams({ run: key, tab: job ? 'log' : 'overview', ...(job ? { job } : {}) });
   const openExperiment = (key: string, results = false) =>
@@ -131,7 +127,6 @@ export default function App() {
     if (job) next.set('job', job);
     setParams(next, { replace: true });
   };
-  if (dashboard.loginRequired) return <Login login={dashboard.login} error={error} />;
   return (
     <Layout className="app-layout">
       <Layout.Sider width={232} breakpoint="lg" collapsedWidth={0} theme={menuTheme} className="sidebar">
@@ -186,7 +181,7 @@ export default function App() {
                   <Route path="/repositories" element={<Assets key="repositories" repository />} />
                   <Route path="/skills" element={<Skills />} />
                   <Route path="/models" element={<Models />} />
-                  <Route path="/experiments" element={<Experiments />} />
+                  <Route path="/experiments" element={<Experiments results />} />
                   <Route path="/comparisons" element={<Experiments results />} />
                   <Route path="/guide" element={<Guide />} />
                   <Route

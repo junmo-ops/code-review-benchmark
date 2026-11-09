@@ -10,7 +10,7 @@ from webui.wsgi import create_app
 
 class ProfileApiTests(unittest.TestCase):
     def test_write_only_profiles_and_access(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'BENCH_CONFIG_ROOT':tmp,'BENCH_DATA_ROOT':tmp,'BENCH_PUBLIC_URL':'https://review.test','BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40}):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'BENCH_CONFIG_ROOT':tmp,'BENCH_DATA_ROOT':tmp,'BENCH_PUBLIC_URL':'https://review.test','BENCH_AUTH_MODE': 'proxy', 'BENCH_PROXY_TOKEN':'p'*40,'BENCH_CSRF_TOKEN':'c'*40}):
             dashboard=Dashboard(Path(tmp));client=create_app(dashboard).test_client()
             headers={'X-Bench-Proxy-Token':'p'*40,'X-Bench-User':'alice','X-Bench-Role':'viewer','X-Dashboard-Token':'c'*40,'Origin':'https://review.test'}
             data=dict(provider='qwen',name='内网 Qwen',model='qwen-test',base_url='http://model.test/v1',api_key='private-test-token',judge_source='custom',judge_model='judge',judge_base_url='https://judge.test/v1',judge_api_key='private-judge-token')

@@ -66,6 +66,13 @@ def convert(item, cfg, rows, lines, requests):
     return dict(instance_id=item.instance_id, repo=item.repo, base_commit=item.base_commit,
                 head_commit=item.head_commit, reviewer='dsh_skill',
                 review=dict(status='complete', comments=answer['comments'], summary=summary,
-                            usage_coverage=coverage, llm={'model': cfg['review_model']}),
+                            usage_coverage=coverage, raw_format_compliant=_raw_format_compliant(finals[0].get('text', '')), llm={'model': cfg['review_model']}),
                 skill=dict(mode='baseline', loaded=False), dsh=cfg['tool_hashes'],
                 session_id=sessions[0]['sessionId'])
+
+
+def _raw_format_compliant(text):
+    try:
+        return isinstance(json.loads(text), dict)
+    except (ValueError, TypeError):
+        return False
