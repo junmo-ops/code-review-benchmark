@@ -102,10 +102,11 @@ export function uploadChunk(
   index: number,
   chunk: Blob,
   progress: (sent: number) => void,
+  path = `/api/uploads/${id}/chunks/${index}`,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open('POST', `/api/uploads/${id}/chunks/${index}`);
+    request.open('POST', path);
     for (const [key, value] of Object.entries(requestHeaders())) request.setRequestHeader(key, value);
     request.setRequestHeader('Content-Type', 'application/octet-stream');
     request.upload.onprogress = (event) => progress(event.loaded);

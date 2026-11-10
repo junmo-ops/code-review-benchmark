@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, g
 from .queue import DurableDashboard
+from .download_tickets import valid as valid_download_ticket
 from runner.paths import PROJECT_ROOT
 
 
@@ -31,7 +32,7 @@ def _set_upload_limit():
     if request.path in {'/api/cases/upload', '/api/repositories/upload'}:
         from .case_upload import limits
         request.max_content_length = limits()['upload_max_bytes'] + 1024 * 1024
-    elif request.path.startswith('/api/uploads/') and '/chunks/' in request.path:
+    elif request.path.startswith(('/api/uploads/', '/api/zip-tool/')) and '/chunks/' in request.path:
         from .resumable_uploads import CHUNK_SIZE
         request.max_content_length = CHUNK_SIZE
 
@@ -43,7 +44,7 @@ def _authorize_origin(public, csrf):
     if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and (g.bench_role != 'operator' or origin != public):
         message = '只读用户不能修改工作台配置或任务' if g.bench_role != 'operator' else '缺少可信页面来源'
         return jsonify(error=message), 403
-    if request.path.startswith('/api/') and request.path != '/api/session' and not secrets.compare_digest(request.headers.get('X-Dashboard-Token',''), csrf):
+    if request.path.startswith('/api/') and request.path != '/api/session' and not secrets.compare_digest(request.headers.get('X-Dashboard-Token',''), csrf) and not valid_download_ticket(csrf):
         return jsonify(error='页面会话失效，请刷新'), 403
     return None
 
@@ -88,7 +89,7 @@ def _authorize_local(token):
         return jsonify(error='不接受跨站请求'), 403
     protected = request.method not in {'GET', 'HEAD'} or (
         request.path.startswith('/api/') and request.path != '/api/session')
-    if protected and not secrets.compare_digest(request.headers.get('X-Dashboard-Token', ''), token):
+    if protected and not secrets.compare_digest(request.headers.get('X-Dashboard-Token', ''), token) and not valid_download_ticket(token):
         return jsonify(error='页面会话失效，请刷新'), 403
     g.bench_user, g.bench_role = 'local', 'operator'
     _set_upload_limit()
@@ -101,7 +102,7 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     app=Flask(__name__,static_folder=None);app.config['MAX_CONTENT_LENGTH']=16384
     default_frontend = PROJECT_ROOT/'frontend'/'dist' if local_token is not None else PROJECT_ROOT/'frontend-dist'
     frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', default_frontend)).resolve()
-    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide'}
+    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide','/zip-tool','/tools','/tools/repository-zip'}
     dashboard=dashboard or DurableDashboard()
     @app.before_request
     def authorize():
@@ -388,4 +389,6 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     app.extensions['benchmark_dashboard'] = dashboard
     from runner.diagnostics import install_request_diagnostics
     install_request_diagnostics(app)
+    from .zip_tool import register as register_zip_tool
+    register_zip_tool(app, dashboard, csrf)
     return app

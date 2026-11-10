@@ -132,7 +132,7 @@ class JobExecutor:
             message = ('已停止，已写入的结果保留' if self.context.cancelled.is_set() else
                        '评分已完成；部分案例检视失败，请查看案例状态与日志' if partial_review else '执行完成')
             self.context.update(job_id, status='cancelled' if self.context.cancelled.is_set() else 'succeeded', message=message, ended_at=now())
-        except BaseException as exc:
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             detail = self.context.redact(str(exc)) if isinstance(exc, ValueError) else type(exc).__name__+'；请查看日志和批次原始证据'
             with log_path.open('a', encoding='utf-8') as log:
                 log.write('\n'+detail+'\n')

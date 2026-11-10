@@ -5,7 +5,7 @@
 新增 `company-repo-review-v1` 协议；原模拟协议继续保留，下面旧协议章节仅适用于 `review-service-v1-draft`。
 
 复制 `agent.company.example.json` 为配置根目录中的 `agent.local.json`，或设置 `BENCH_AGENT_CONFIG` 指向该文件。不要覆盖已有配置而不核对。
-示例已配置 AACR 50 例涉及的 19 个仓库，映射为 `LV01.30_项目名`。
+示例已配置 AACR 50 例涉及的 19 个仓库，映射为 `S990768/LV01.30_项目名`，由平台在 `repo_name` 中携带组织前缀。
 暂定地址 `https://codereview.paas.cmbchina.cn`，无需鉴权；即使设置了 `BENCH_AGENT_TOKEN`，公司协议也不发送该凭证。
 
 - POST `/repo-review/async-report`，发送 `repo_name`、`commit_ids: [start, end]`、`review_mode: from_to`。
@@ -34,7 +34,7 @@ npm run dev
 
 打开启动输出中的工作台地址（前端默认 5173；测评平台后端默认 8765；Agent 为 8000），新建测评时选择“服务端 Agent”，先跑 Checkmate 单例。平台会自动调用 `/repo-review/async-report`，再查询 `/review-report-scan/report/{report_id}`。不要在 `/docs` 中重复创建同一任务。
 
-本地地址只改变请求目的地；Agent 仍按自己的配置访问 Git、数据库和模型。平台仍需要案例仓库历史来计算提交范围，仓库映射沿用 `LV01.30_Checkmate` 等标识。裁判模型沿用工作台模型配置，不会被此次地址切换替换。
+本地地址只改变请求目的地；Agent 仍按自己的配置访问 Git、数据库和模型。平台仍需要案例仓库历史来计算提交范围，仓库映射使用 `S990768/LV01.30_Checkmate` 等标识。裁判模型沿用工作台模型配置，不会被此次地址切换替换。
 
 可在批次 `raw/<案例标识>.remote.json` 查看已发送请求和任务 ID，在 `.result.json` 查看脱敏原始响应，在 `.execution.json` 查看执行错误。网络连接失败时优先检查 Agent 是否启动及端口；创建请求响应不明时先查服务端，不能直接再次提交。
 
@@ -48,6 +48,12 @@ npm run dev
 ```
 
 切换地址后新建批次；不要将旧地址的 report_id 拿到另一服务查询。
+
+## 仓库路径前缀与克隆域名
+
+平台请求发送 `repo_name: S990768/LV01.30_Checkmate`，服务端源码支持带 `/` 的仓库标识，报告 `full_name` 也使用该值。两份公司配置示例均已加入 `S990768/` 前缀。更新配置后须新建批次；已创建批次保留原映射与请求，不会自动改写。
+
+前缀不会改变 Git 域名。服务端的 `GIT_REPO_URL` 模板仍需指向 `gitee-proxy.paasst.cmbchina.cn` 并保留 `{repo_name}` 占位符；不要再在模板中重复追加 `S990768/`。实际 Checkmate 克隆地址应为 `https://gitee-proxy.paasst.cmbchina.cn/S990768/LV01.30_Checkmate.git`。此域名模板属于服务端环境配置，平台不发送完整克隆 URL。
 
 ## 原模拟协议
 

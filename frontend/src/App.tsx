@@ -1,6 +1,7 @@
 import { Alert, App as AntApp, Button, Layout, Menu, Space, Spin, Switch, Tag, Typography } from 'antd';
 import {
   DatabaseOutlined,
+  ToolOutlined,
   FileTextOutlined,
   FolderOutlined,
   QuestionCircleOutlined,
@@ -9,7 +10,7 @@ import {
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import { lazy, Suspense, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { WorkbenchContext } from './context';
 import { useAppearance } from './theme';
 import { useDashboard } from './hooks/useDashboard';
@@ -17,6 +18,8 @@ import { useAction } from './hooks/useAction';
 import { api } from './api';
 import { ErrorAlert } from './components/Common';
 import type { Snapshot } from './types';
+const Tools = lazy(() => import('./pages/Tools').then((module) => ({ default: module.Tools })));
+const ZipTool = lazy(() => import('./pages/ZipTool').then((module) => ({ default: module.ZipTool })));
 const Assets = lazy(() => import('./pages/Assets').then((module) => ({ default: module.Assets })));
 const Skills = lazy(() => import('./pages/Skills').then((module) => ({ default: module.Skills })));
 const Models = lazy(() => import('./pages/Models').then((module) => ({ default: module.Models })));
@@ -40,6 +43,7 @@ const navigation = [
   { key: '/jobs', label: '执行记录', icon: <UnorderedListOutlined /> },
   { key: '/cases', label: '案例集管理', icon: <FolderOutlined /> },
   { key: '/repositories', label: '仓库管理', icon: <DatabaseOutlined /> },
+  { key: '/tools', label: '工具箱', icon: <ToolOutlined /> },
   { key: '/skills', label: 'Skill 资源管理', icon: <FolderOutlined /> },
   { key: '/models', label: '模型配置', icon: <SettingOutlined /> },
   { key: '/guide', label: '使用指南', icon: <QuestionCircleOutlined /> },
@@ -110,7 +114,7 @@ export default function App() {
     [params, setParams] = useSearchParams();
   const [selection, setSelection] = useState<{ suite?: string; dataset?: string }>();
   const path = location.pathname.replace(/\/$/, '') || '/';
-  const title = [...navigation, { key: '/experiments', label: '历史实验与报告' }, { key: '/comparisons', label: '历史实验与报告' }].find((n) => n.key === path)?.label ?? '测评工作台';
+  const title = [...navigation, { key: '/tools/repository-zip', label: '工具箱 / 仓库 ZIP 工具' }, { key: '/experiments', label: '历史实验与报告' }, { key: '/comparisons', label: '历史实验与报告' }].find((n) => n.key === path)?.label ?? '测评工作台';
   const openRun = (key: string, job?: string) =>
     setParams({ run: key, tab: job ? 'log' : 'overview', ...(job ? { job } : {}) });
   const openExperiment = (key: string, results = false) =>
@@ -140,7 +144,7 @@ export default function App() {
         <Menu
           mode="inline"
           theme={menuTheme}
-          selectedKeys={[path]}
+          selectedKeys={[path.startsWith('/tools/') ? '/tools' : path]}
           items={navigation}
           onClick={(item) => navigate(item.key)}
         />
@@ -179,6 +183,9 @@ export default function App() {
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/cases" element={<Assets key="cases" />} />
                   <Route path="/repositories" element={<Assets key="repositories" repository />} />
+                  <Route path="/tools" element={<Tools />} />
+                  <Route path="/tools/repository-zip" element={<ZipTool />} />
+                  <Route path="/zip-tool" element={<Navigate to="/tools/repository-zip" replace />} />
                   <Route path="/skills" element={<Skills />} />
                   <Route path="/models" element={<Models />} />
                   <Route path="/experiments" element={<Experiments results />} />

@@ -36,6 +36,7 @@ def handler_for(dashboard, token):
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
+            # Suppress the default per-request access log; WSGI errors still go to stderr.
             pass
 
         def dispatch(self):
