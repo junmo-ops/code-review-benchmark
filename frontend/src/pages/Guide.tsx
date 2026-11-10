@@ -6,7 +6,7 @@ import { useWorkbench } from '../context';
 const questions = [
   {
     key: 'upload', label: '上传时刷新了页面，怎么办？',
-    children: '回到仓库管理或案例集管理，重新选择原来的 ZIP，可从已保存的分块继续上传。文件全部上传后，后台才开始导入；等页面提示导入完成后再创建测评。',
+    children: '回到案例集管理，重新选择原来的 ZIP，可从已保存的分块继续上传。文件全部上传后，后台才开始导入；等页面提示导入完成后再创建测评。',
   },
   {
     key: 'close', label: '关闭页面会停止测评吗？',
@@ -26,7 +26,7 @@ const questions = [
   },
   {
     key: 'resources', label: '换案例集，需要重新上传所有仓库吗？',
-    children: '不需要。先确认仓库管理中已有案例所需的仓库和提交；有缺失时再更新对应仓库。仓库 ZIP 保存代码及 Git 历史，案例集 ZIP 保存案例配置，两者要上传到各自的管理页面。',
+    children: '不需要。案例集使用行内组织/项目名；开始测评时平台自动 clone，已有提交复用，缺少提交时 fetch。远端必须保留案例提交。',
   },
   {
     key: 'special', label: 'MCR 和 c-CRAB 与普通测评有什么不同？',
@@ -42,20 +42,20 @@ export function Guide() {
       <Heading title="使用指南" description="第一次使用按下面四步操作；已有的仓库、案例集和模型配置可以直接复用。" />
       <Typography.Paragraph type="secondary">点击步骤可进入对应页面。“新建测评”只打开配置表单，不会立即运行。</Typography.Paragraph>
       <Steps className="section-gap" current={-1} items={[
-        { title: <Link to="/repositories">准备仓库与案例</Link> },
+        { title: <Link to="/cases">导入案例集</Link> },
         { title: <Link to="/models">配置模型</Link> },
         { title: <Button type="link" onClick={create}>新建测评</Button> },
         { title: <Link to="/">查看进度与报告</Link> },
       ]} />
       <Row gutter={[16, 16]} className="section-gap">
         <Col xs={24} lg={12}>
-          <Card title="1. 准备仓库与案例">
+          <Card title="1. 导入案例集">
             <ol>
-              <li>在“仓库管理”上传包含 .git 历史的仓库 ZIP。</li>
+              <li>确认案例中的仓库名与行内 Git 组织/项目名一致，所需提交已推送。</li>
               <li>在“案例集管理”上传案例集 ZIP，不能把仓库包传到这里。</li>
               <li>看到导入成功、案例集可选后，继续配置模型。</li>
             </ol>
-            <Space wrap><Link to="/repositories">进入仓库管理</Link><Link to="/cases">进入案例集管理</Link></Space>
+            <Space wrap><Link to="/cases">进入案例集管理</Link></Space>
           </Card>
         </Col>
         <Col xs={24} lg={12}>

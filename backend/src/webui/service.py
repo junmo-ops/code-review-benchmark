@@ -369,6 +369,11 @@ class Dashboard:
         return path
 
     def prepare_case_repositories(self, spec, key, action, progress=None):
+        from .automatic_repositories import prepare_selected, remote_only
+        if remote_only(self, spec, key):
+            return
+        if prepare_selected(self, spec, key, action, progress):
+            return
         from .case_storage import mode
         if action in {'report', 'export', 'eval', 'recover'} or mode() != 'cos':
             return

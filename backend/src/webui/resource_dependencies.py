@@ -1,5 +1,6 @@
 """Protect resources referenced by unfinished benchmark jobs, not the entire pool."""
 import json
+import hashlib
 from pathlib import Path
 
 ACTIVE = {'queued', 'running', 'cancelling'}
@@ -34,7 +35,8 @@ def _dataset_dependencies(dashboard, identifier):
     base = (Path(dashboard.root) / 'data').resolve()
     if not path.is_relative_to(base):
         raise ValueError('未结束测评的案例集路径无效，本次未删除')
-    return None, _repositories(path)
+    repositories = _repositories(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest(), repositories
 
 
 def _repositories(path):

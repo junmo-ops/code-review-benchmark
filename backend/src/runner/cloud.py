@@ -138,7 +138,7 @@ def _model_endpoints():
 def _runtime_mode():
     if os.getenv('BENCH_SERVER_MODE'):
         return 'server'
-    if (ROOT/'local-runtime.json').exists():
+    if platform.system() in {'Windows', 'Darwin'}:
         return 'windows_local' if platform.system() == 'Windows' else 'mac_cloud_simulation'
     return 'linux_cloud'
 

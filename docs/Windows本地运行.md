@@ -38,3 +38,9 @@ py -3.12 tools/prepare_windows.py
 ## 调整案例并发
 
 新建测评时，展开“高级参数”，设置“案例并发”（1–16，默认 1）。例如设为 5，会同时运行最多 5 个案例；每个案例内的文件仍顺序检视。参数在创建时冻结，调整请新建测评。MCR、c-CRAB 和其他检视工具暂不开放此参数。
+
+## 无本机准备标记时运行 LCR
+
+新建 LCR 测评不再要求 local-runtime.json。平台检查项目 `.runtime/lcr/node_modules/@LV01.30/leancode-code-review-cli` 中的 Windows 运行包、启动器、规则文件、Git/Node.js，以及二进制能否执行 version。不会自动改用 PATH 上其他版本的 LCR。
+
+若提示项目 LCR 包缺失，在项目根目录执行 `npm install --prefix .runtime/lcr @LV01.30/leancode-code-review-cli@2.0.1`，使用已配置的行内 npm 源。仓库由测评流程自动准备，无需为此运行旧脚本恢复内置案例仓库。已有 local-runtime.json 的批次继续使用原有身份校验。

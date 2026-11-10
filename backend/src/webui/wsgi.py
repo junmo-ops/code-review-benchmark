@@ -237,6 +237,11 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
             return jsonify(error='当前部署未启用案例资源上传'),404
         from .resumable_uploads import abort
         return jsonify(abort(dashboard, upload_id))
+    @app.post('/api/repositories/git')
+    def import_git_repository():
+        from .git_import import submit
+        return jsonify(submit(dashboard, request.get_json())), 202
+
     @app.post('/api/repositories/upload')
     def upload_repositories():
         if os.environ.get('BENCH_CASE_UPLOAD') != '1':

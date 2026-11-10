@@ -55,12 +55,13 @@ def _registered_row_usable(row, data, base):
         return False
     if not all(isinstance(slug, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', slug) for slug in repositories):
         return False
+    from .automatic_repositories import registered_sources_ready
     repositories_ready = all((Path(data) / 'repos' / slug / '.git').is_dir() for slug in repositories)
     record_path = (Path(data) / 'case-assets' / 'records' / row.get('suite', '')
                    / (str(row.get('dataset_sha256', '')) + '.json'))
     from .case_storage import mode
     assets_ready = mode() == 'cos' and record_path.is_file()
-    return repositories_ready or assets_ready
+    return any((registered_sources_ready(row, repositories), repositories_ready, assets_ready))
 
 
 def _legacy_ready(root, data):
@@ -164,6 +165,9 @@ def _with_resource_lock(dashboard, operation):
 
 def _manage_case_dataset_locked(dashboard, request):
     action, identifier = request.get('action'), request.get('id')
+    if isinstance(identifier, str) and not identifier.startswith('uploads/'):
+        from .builtin_cases import delete
+        return delete(dashboard, identifier, action)
     registry = _registry(dashboard.data)
     row = next((item for item in registry['datasets'] if item.get('id') == identifier), None)
     if not row or not isinstance(identifier, str) or not identifier.startswith('uploads/'):
@@ -597,7 +601,8 @@ def _install_custom(dashboard, archive, progress=None):
         # restart the same dataset can already be registered while its Git
         # repository still needs to be restored from the archive.
         if manifest['format'] == CASE_CONFIG_FORMAT:
-            repository_versions = _case_only_repositories(dashboard, cases, folder, slugs, progress)
+            from .automatic_repositories import sources
+            repository_versions = sources(cases)
         else:
             _prepare_repositories(cases, folder / 'bundles', dashboard.data / 'repos', progress)
             _register_repository_versions(dashboard.data, manifest, folder / 'bundles', slugs)

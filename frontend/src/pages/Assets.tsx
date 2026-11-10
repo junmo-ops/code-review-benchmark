@@ -13,6 +13,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
+import { GitRepositoryImport } from './GitRepositoryImport';
 import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { useEffect, useRef, useState } from 'react';
@@ -225,6 +226,12 @@ function BatchFeedback({ items, busy, onClear }: { items: BatchItem[]; busy: boo
       columns={[{ title: '文件', dataIndex: 'name' }, { title: '状态', render: (_, item: BatchItem) => labels[item.status] }]} />
   </Space>;
 }
+function deletionDescription(repository: boolean, id: string) {
+  if (repository) return '将删除该仓库及已移除案例集引用的仓库资源。历史批次和已保存结果仍可查看，但依赖这些资源的批次不能续跑检视。';
+  if (!id.startsWith('uploads/')) return '将删除项目 data 目录中的这份内置案例文件，不删除历史批次、结果或仓库缓存。未结束的关联测评会阻止删除。旧准备脚本可能受影响，覆盖完整代码包或重建镜像可能恢复该文件。';
+  return '将清理案例清单。历史批次、日志和已保存结果仍可查看；依赖它的批次不能续跑检视或重新评分。已有仓库缓存会保留，供其他案例集复用。';
+}
+
 export function Assets({ repository = false }: { repository?: boolean }) {
   const { state, importBusy, refresh, newRun } = useWorkbench();
   const { message } = App.useApp();
@@ -240,9 +247,7 @@ export function Assets({ repository = false }: { repository?: boolean }) {
     message.success(reply.message);
   };
   const remove = (id: string, name: string) => {
-    const description = repository
-      ? '将删除该仓库及已移除案例集引用的仓库资源。历史批次和已保存结果仍可查看，但依赖这些资源的批次不能续跑检视。'
-      : '将清理案例清单。历史批次、日志和已保存结果仍可查看；依赖它的批次不能续跑检视或重新评分。仓库资源会保留在仓库管理中，供其他案例集复用。';
+    const description = deletionDescription(repository, id);
     confirm({
       title: `确认删除“${name}”？`, content: description,
       action: () => mutate(
@@ -279,28 +284,26 @@ export function Assets({ repository = false }: { repository?: boolean }) {
       render: (_: unknown, d: (typeof datasets)[number]) => (
         <Space>
           {uploaded.has(d.id) && (
-            <>
-              <Button
-                type="link"
-                disabled={disabled}
-                onClick={() => {
-                  clear();
-                  setEditing(d);
-                  form.setFieldsValue({ name: d.name ?? '' });
-                }}
-              >
-                编辑
-              </Button>
-              <Button
-                type="link"
-                danger
-                disabled={disabled}
-                onClick={() => remove(d.id, d.name ?? d.id)}
-              >
-                删除
-              </Button>
-            </>
+            <Button
+              type="link"
+              disabled={disabled}
+              onClick={() => {
+                clear();
+                setEditing(d);
+                form.setFieldsValue({ name: d.name ?? '' });
+              }}
+            >
+              编辑
+            </Button>
           )}
+          <Button
+            type="link"
+            danger
+            disabled={disabled}
+            onClick={() => remove(d.id, d.name ?? d.id)}
+          >
+            删除
+          </Button>
           <Button
             type="link"
             disabled={!canSubmit(state) || importBusy}
@@ -359,7 +362,7 @@ export function Assets({ repository = false }: { repository?: boolean }) {
         }
       />
       <div ref={uploadRef}>
-        <ResourceUpload key={String(repository)} kind={repository ? 'repository' : 'dataset'} />
+        {repository ? <GitRepositoryImport /> : <ResourceUpload kind="dataset" />}
       </div>
       <Card title={repository ? '已登记仓库' : '已登记案例集'}>
         {repository ? (

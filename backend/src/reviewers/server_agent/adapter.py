@@ -1,4 +1,5 @@
 """Draft HTTP review-service contract. Only review inputs cross the boundary."""
+from . import repositories
 import hashlib
 import json
 import os
@@ -53,8 +54,7 @@ def validate_connection(c):
 
 
 def validate_repositories(c):
-    if not isinstance(c.get('repositories'),dict) or not c['repositories']:raise ValueError('需配置案例仓库到服务端仓库标识的映射')
-    if any(not isinstance(k,str) or not isinstance(v,str) or not k or not v for k,v in c['repositories'].items()):raise ValueError('仓库映射必须为非空字符串')
+    repositories.validate(c)
     if c.get('diff_mode') not in ('merge_base','direct'):raise ValueError('明确配置 diff_mode')
     if type(c.get('simulation')) is not bool:raise ValueError('必须明确 simulation 开关')
     company.validate_limits(c)
@@ -84,6 +84,8 @@ def tool_identity():
 def configure(cfg,run):
     global CONFIG,RUN,CFG
     CONFIG=load_config();RUN=run;CFG=cfg
+    if CONFIG['contract'] == company.CONTRACT:
+        CONFIG['diff_mode'] = cfg.get('diff_mode', 'merge_base')
 
 
 def require_model(cfg):
@@ -94,10 +96,10 @@ def require_model(cfg):
 
 def check_repos(items):
     for item in items:
-        if not CONFIG['repositories'].get(item.repo):raise ValueError('缺少服务端仓库映射：'+item.repo)
+        repositories.resolve(CONFIG, item.repo)
         if CONFIG['contract'] == company.CONTRACT:
             payload(item)
-    print('仓库映射已配置；本地检查不证明服务端存在这些提交。结果必须回传实际范围。')
+    print('仓库标识已确定（优先映射，否则使用案例仓库名）；本地检查不证明服务端存在这些提交。结果必须回传实际范围。')
 
 
 def process_timeout(item):return CFG['timeout_minutes']*60
@@ -113,7 +115,7 @@ def field(data,path):
 def payload(item):
     if CONFIG['contract'] == company.CONTRACT:
         return company.payload(item, REPO, CONFIG, RUN)
-    values=dict(repository=CONFIG['repositories'][item.repo],base_commit=item.base_commit,head_commit=item.head_commit,
+    values=dict(repository=repositories.resolve(CONFIG, item.repo),base_commit=item.base_commit,head_commit=item.head_commit,
                 diff_mode=CONFIG['diff_mode'],model=CFG['review_model'])
     names=CONFIG.get('request_fields',{})
     result={names.get(k,k):v for k,v in values.items()}
@@ -151,7 +153,7 @@ def convert_draft(item,data,task_id):
     if get('task_id')!=task_id or CONFIG.get('status_values',{}).get(get('status'),get('status'))!='succeeded' or get('complete') is not True:raise ValueError('结果不完整或任务不匹配')
     if get('simulation') is not CONFIG['simulation']:raise ValueError('模拟/真实模式与服务结果不一致')
     actual=get('scope')
-    expected=dict(repository=CONFIG['repositories'][item.repo],base_commit=item.base_commit,head_commit=item.head_commit,diff_mode=CONFIG['diff_mode'])
+    expected=dict(repository=repositories.resolve(CONFIG, item.repo),base_commit=item.base_commit,head_commit=item.head_commit,diff_mode=CONFIG['diff_mode'])
     if actual!=expected:raise ValueError('服务实际检视范围与案例不一致，不评分')
     if get('model')!=CFG['review_model']:raise ValueError('服务实际模型与请求不一致，不评分')
     version=get('engine_version')

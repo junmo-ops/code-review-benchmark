@@ -1,4 +1,5 @@
 """Company report API; fixed service model, direct ranges and persisted report IDs."""
+from . import repositories
 from pathlib import PurePosixPath
 import json
 import subprocess
@@ -16,13 +17,9 @@ def validate(config):
     url = urlsplit(config.get('base_url', ''))
     if url.scheme not in {'http', 'https'} or not url.netloc or url.username or url.password or url.query or url.fragment:
         raise ValueError('Agent base_url 无效')
-    repos = config.get('repositories')
-    if not isinstance(repos, dict) or not repos:
-        raise ValueError('需要仓库标识映射')
-    if any(not isinstance(k, str) or not isinstance(v, str) or not k or not v for k, v in repos.items()):
-        raise ValueError('仓库映射必须为非空字符串')
+    repositories.validate(config)
     validate_limits(config)
-    return dict(config, simulation=False, diff_mode='merge_base', paths={
+    return dict(config, simulation=False, diff_mode='direct', paths={
         'create': '/repo-review/async-report',
         'status': '/review-report-scan/report/{task_id}',
         'result': '/review-report-scan/report/{task_id}'})
@@ -39,6 +36,9 @@ def payload(item, repo, config, run):
     record_path = run / 'raw' / (item.safe_id + '.remote.json')
     if record_path.exists():
         return saved_request(record_path, item, config)
+    if config.get('diff_mode', 'merge_base') == 'direct':
+        return {'repo_name': repositories.resolve(config, item.repo),
+                'commit_ids': [item.base_commit, item.head_commit], 'review_mode': 'from_to'}
     if repo is None:
         raise ValueError('公司 Agent 需要本地仓库计算共同祖先')
     result = subprocess.run(['git', '-C', str(repo), 'merge-base', '--all', item.base_commit, item.head_commit],
@@ -46,7 +46,7 @@ def payload(item, repo, config, run):
     bases = result.stdout.decode().split()
     if result.returncode or len(bases) != 1:
         raise ValueError('无法确定唯一共同祖先；请准备包含案例提交的本地仓库')
-    return {'repo_name': config['repositories'][item.repo], 'commit_ids': [bases[0], item.head_commit],
+    return {'repo_name': repositories.resolve(config, item.repo), 'commit_ids': [bases[0], item.head_commit],
             'review_mode': 'from_to'}
 
 
@@ -55,7 +55,7 @@ def saved_request(path, item, config):
     commits = value.get('commit_ids')
     if not isinstance(commits, list) or len(commits) != 2 or commits[1] != item.head_commit:
         raise ValueError('保存的请求提交范围无效')
-    if value.get('repo_name') != config['repositories'][item.repo] or value.get('review_mode') != 'from_to':
+    if value.get('repo_name') != repositories.resolve(config, item.repo) or value.get('review_mode') != 'from_to':
         raise ValueError('保存的请求仓库或方式不一致')
     return value
 

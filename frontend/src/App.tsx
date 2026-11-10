@@ -1,6 +1,5 @@
 import { Alert, App as AntApp, Button, Layout, Menu, Space, Spin, Switch, Tag, Typography } from 'antd';
 import {
-  DatabaseOutlined,
   ToolOutlined,
   FileTextOutlined,
   FolderOutlined,
@@ -42,7 +41,6 @@ const navigation = [
   { key: '/', label: '测评批次', icon: <FileTextOutlined /> },
   { key: '/jobs', label: '执行记录', icon: <UnorderedListOutlined /> },
   { key: '/cases', label: '案例集管理', icon: <FolderOutlined /> },
-  { key: '/repositories', label: '仓库管理', icon: <DatabaseOutlined /> },
   { key: '/tools', label: '工具箱', icon: <ToolOutlined /> },
   { key: '/skills', label: 'Skill 资源管理', icon: <FolderOutlined /> },
   { key: '/models', label: '模型配置', icon: <SettingOutlined /> },

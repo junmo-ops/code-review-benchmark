@@ -10,7 +10,7 @@
 
 - POST `/repo-review/async-report`，发送 `repo_name`、`commit_ids: [start, end]`、`review_mode: from_to`。
 - GET `/review-report-scan/report/{report_id}`，从 `body.report` 读取报告，业务成功码必须为 `SUC0000`。
-- 本地先计算案例 base/head 的唯一共同祖先，作为 start，head 作为 end。内置案例也需要准备本地 Git 历史；恢复已提交任务使用保存的请求和 ID，无需重新计算。
+- 新批次直接将案例 base_commit/head_commit 作为 start/end，平台不克隆仓库，由服务端准备代码。批次冻结 diff_mode=direct；历史 merge_base 批次保持原有共同祖先口径，已提交任务复用保存的请求和 ID。升级适配器后仍执行工具身份校验，旧批次可能需要使用原版本，禁止改写冻结配置绕过。
 - `PROCESSING` 继续轮询；`SUCCESS` 转换意见；`FAIL` 不生成正式答卷、不按零问题评分。模型异常退出由服务端标 FAIL，完整性采用已确认的状态约定。
 - 行号按服务端已确认的 end 版本解释。优先使用 start_line/end_line；缺失时可用 line_number，无法确定行号或描述时保存原始结果并报错，不静默丢弃意见。
 - 核对报告 ID、full_name、起止 SHA 和 scan_type。示例预期 full_name 与 repo_name 一致；若实际响应格式不同，先核对真实样例再适配，不自动忽略范围不符。
@@ -138,7 +138,7 @@ npm run dev
 复制项目的 `agent.example.json` 为 `agent.local.json`，也可通过 `BENCH_AGENT_CONFIG` 指定文件路径；内网服务器使用配置根目录中的同名文件。配置独立于模型连接，默认示例是本机模拟服务。
 
 - `base_url`：服务地址。支持 HTTP/HTTPS；不跟随重定向，不自动重试网络请求。
-- `repositories`：案例原仓库名 → 行内已导入仓库标识。导入仓库和保留完整提交历史需另行完成，适配器不自动上传或改造提交。
+- `repositories`：可选，案例原仓库名 → 行内已导入仓库标识；省略、留空或未命中时直接使用案例的 `repo`。案例已填写 `S990768/LV01.30_Checkmate` 时无需增加映射。导入仓库和保留完整提交历史需另行完成，适配器不自动上传或改造提交。
 - `token_env`：保存服务凭证的环境变量名，默认 `BENCH_AGENT_TOKEN`。配置文件中不写凭证。
 - `simulation`：真实联调时改为 false，并新建批次。
 - `paths`：创建、状态、结果接口路径，查询路径包含 `{task_id}`。

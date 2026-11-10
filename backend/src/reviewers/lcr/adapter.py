@@ -177,6 +177,8 @@ def cancellation_requested():
 
 
 def _lcr_executable():
+    if not (ROOT/'local-runtime.json').exists() and platform.system() in {'Windows', 'Darwin'}:
+        return str(ROOT/'bin'/('lcr.cmd' if os.name == 'nt' else 'lcr'))
     executable = shutil.which("lcr.cmd") if os.name == "nt" else shutil.which("lcr")
     if not executable:
         raise ValueError("找不到 LCR 启动器；请在同一 PowerShell 窗口运行 Get-Command lcr 检查 PATH")
@@ -577,6 +579,14 @@ def _stage_review(instances, run, preview):
 CAPABILITIES = frozenset({"git_range", "findings"})
 
 def tool_identity():
+    runtime_path = ROOT/'local-runtime.json'
+    if not runtime_path.exists() and platform.system() in {'Windows', 'Darwin'}:
+        from .runtime import local_identity
+        return local_identity(ROOT)
+    return _legacy_tool_identity()
+
+
+def _legacy_tool_identity():
     runtime_path = ROOT/'local-runtime.json'
     if runtime_path.exists():
         runtime = json.loads(runtime_path.read_text(encoding='utf-8'))

@@ -671,6 +671,11 @@ class CaseAssetStorage(CaseArchiveStorage):
         if not isinstance(repositories, dict) or not repositories:
             return False
         for slug, item in repositories.items():
+            if isinstance(item, dict) and item.get('source') == 'git':
+                from .automatic_repositories import valid
+                if not valid(slug, item):
+                    return False
+                continue
             if (not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slug)
                     or not isinstance(item, dict) or not isinstance(item.get('sha256'), str)
                     or not ARCHIVE_ID.fullmatch(item['sha256']) or type(item.get('size')) is not int

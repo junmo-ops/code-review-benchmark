@@ -187,7 +187,10 @@ def _execute(dashboard, task):
         _update(dashboard, phase=phase, message=message, completed=completed, total=total, **details)
     try:
         proxy = _import_dashboard(dashboard)
-        if task.get("kind") == "repository":
+        if task.get("kind") == "repository_git":
+            from .git_import import install as install_git
+            result = install_git(proxy, archive, progress)
+        elif task.get("kind") == "repository":
             result = install_repositories(proxy, archive, background=True, progress=progress)
         elif task.get('kind') == 'skill':
             from .skill_assets import install as install_skill

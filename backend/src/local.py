@@ -100,7 +100,6 @@ def main():
     p.add_argument('stage',choices=['init','check','status','next','preview','review','recover','eval','report','export'])
     args,rest=p.parse_known_args()
     if args.timeout_seconds<1:p.error('超时必须大于0')
-    if not os.getenv('BENCH_SERVER_MODE') and not (ROOT/'local-runtime.json').exists():p.error('请先完成本机 runtime 准备')
     env = model_environment(args, p)
     configure_stage(args, rest, env, p)
     stamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
