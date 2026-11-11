@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { api, select, upload, waitState, job, state } from './helpers.mjs';
+import { assertPayload, chooseSkill, memberCount } from './dsh-skill.mjs';
 
 export async function dshBaseline({ page, fixtures }) {
   await finishPreviousBatch(page, '/repositories');
@@ -19,13 +20,17 @@ export async function dshBaseline({ page, fixtures }) {
     await select(page, '被测模型', 'DSH 本地review');
     await select(page, '裁判模型', 'DSH 本地judge');
     await select(page, '被测工具', 'DSH + Skill');
-    await select(page, 'Skill 模式', '不加载 Skill（基线）');
+    // 基线 = 多选控件只选「不加载 Skill（基线）」一项，成员数为 0。
+    await chooseSkill(page, '不加载 Skill（基线）');
+    assert.equal(await memberCount(page), 0);
     await select(page, '评分方法', scoring);
     const response = page.waitForResponse((reply) => reply.url().endsWith('/api/jobs') && reply.request().method() === 'POST');
     await page.getByRole('button', { name: '仅保存配置', exact: true }).click();
     const reply = await response;
     const created = await reply.json();
     assert.equal(reply.status(), 202, JSON.stringify(created));
+    // 基线 wire：只发 skill_mode，不携带 skill_versions 数组（后端对空数组 fail-closed）。
+    assertPayload(reply, 'baseline', []);
     let snapshot = await waitState(page, (s) => job(s, created.job_id)?.status === 'succeeded', 'DSH 保存配置', 120);
     assert.equal(snapshot.runs.find((r) => r.key === created.key).completed, 0);
     const root = resolve(fixtures, '..', 'runs', created.key);

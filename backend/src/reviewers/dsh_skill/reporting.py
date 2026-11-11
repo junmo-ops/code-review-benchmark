@@ -2,6 +2,8 @@
 import json
 from .gateway import summarize
 from runner import case_attempts
+from . import loading
+from .selection import combination_digest, members
 
 MARKER = '\n## DSH 检视执行条件\n'
 
@@ -22,7 +24,13 @@ def completion(run, items):
 def subject(cfg):
     if cfg['skill_mode'] == 'baseline':
         return '无待测 Skill 基线'
-    return 'Skill ' + cfg['skill_identity']['name'] + '；内容版本 ' + cfg['skill_version']
+    pairs = members(cfg)
+    if len(pairs) > 1:
+        names = '、'.join(record['name'] for _, record in pairs)
+        digest = cfg.get('skill_combination_digest') or combination_digest([record for _, record in pairs])
+        return f'Skill 组合（{len(pairs)} 个成员：{names}）；组合摘要 {digest}'
+    version, record = pairs[0]
+    return 'Skill ' + record['name'] + '；内容版本 ' + version
 
 
 def execution_conditions(cfg):
@@ -53,16 +61,20 @@ def annotate(run, cfg, items):
     if not path.exists():
         return
     text, statuses, scored = completion(run, items)
+    retried = _retried_requests(run, items) or 0
     lines = [MARKER, '', subject(cfg) + '；DSH ' + cfg['tool_hashes']['version'] + '。',
              text,
              execution_conditions(cfg),
              '每案例全新会话，head 快照与 merge-base diff；工具：' + ' / '.join(cfg['dsh_policy']['tools']) + '。',
-             retry_conditions(cfg),
+             f"整例预算 {cfg['timeout_minutes']} 分钟；压缩失败与上下文溢出额外重试关闭；"
+             f"模型通道瞬态失败（限速/5xx/截断流/首字节停顿）由检视中继有界重试（每请求最多 "
+             f"{cfg.get('dsh_relay_max_attempts', 3)} 次，计入整例预算），本批被重试的案例 {retried} 个，"
+             '每次尝试均记录在 raw/ 请求证据中。',
              f"单次模型输出上限 {cfg['dsh_policy']['max_output_tokens']} tokens；上下文窗口 {cfg['dsh_policy']['context_window']} tokens。", '',
              '| 案例 | 检视状态 / 评分范围 | 已知检视用量 | 请求覆盖 | 检视秒数 | 清理秒数 | Skill 加载 / 能力 |',
              '|---|---|---|---|---:|---:|---|']
     for item in items:
-        lines.append(_case_line(run, item, statuses[item.instance_id], scored))
+        lines.append(_case_line(cfg, run, item, statuses[item.instance_id], scored))
     judge = _judge_records(run)
     usage, coverage = summarize(judge)
     lines += ['', '裁判已知用量（与检视分开）：' + json.dumps(usage, ensure_ascii=False),
@@ -74,7 +86,7 @@ def annotate(run, cfg, items):
     path.write_text(original + '\n'.join(lines), encoding='utf-8')
 
 
-def _case_line(run, item, status, scored):
+def _case_line(cfg, run, item, status, scored):
     execution = run / 'raw' / (item.safe_id + '.execution.json')
     record = json.loads(execution.read_text()) if execution.exists() else {}
     accounting = case_attempts.totals(run, item.safe_id)
@@ -92,15 +104,32 @@ def _case_line(run, item, status, scored):
     answer = json.loads(path.read_text())
     review = answer['review']
     return (prefix + f"{json.dumps(review['summary'])} | {review['usage_coverage']} | {elapsed} | {cleanup} | "
-            f"{_loading(answer)} |")
+            f"{_loading(cfg, run, item, answer)} |")
 
 
-def _loading(answer):
+def _loading(cfg, run, item, answer):
+    """Loading column. Single-valued answers keep the historical wording;
+    member-list answers list every member with its evidence forms and an
+    archive-derived ''actually called'' count, distinguishing loaded (proof)
+    from used (call records; a call never proves the text was read)."""
     skill = answer['skill']
     if skill['mode'] == 'baseline':
         return '基线，不加载'
-    forms = ', '.join(sorted({entry['form'] for entry in skill['evidence']}))
-    return '完整加载已核验：' + forms
+    members = skill.get('members')
+    if not isinstance(members, list):
+        forms = ', '.join(sorted({entry['form'] for entry in skill['evidence']}))
+        return '完整加载已核验：' + forms
+    calls = loading.member_call_counts(cfg, run, item) if run is not None and item is not None else {}
+    cells = []
+    for member in members:
+        name = member.get('name') or '？'
+        forms = ', '.join(sorted({entry['form'] for entry in member.get('evidence') or []
+                                  if isinstance(entry, dict) and entry.get('form')}))
+        called = calls.get(name, 0)
+        suffix = f'；实际调用 {called} 次' if called else ''
+        cells.append(f'{name}［{forms}］{suffix}')
+    loaded = sum(1 for member in members if member.get('loaded'))
+    return f'完整加载已核验（{loaded}/{len(members)}）：' + '；'.join(cells)
 
 
 def _support(run, item):
@@ -115,3 +144,20 @@ def _judge_records(run):
     if path.exists():
         return json.loads(path.read_text())
     return [json.loads(p.read_text()) for p in sorted((run / 'judge').glob('*.response.json'))]
+
+
+def _retried_requests(run, items):
+    if not items:
+        return 0
+    return sum(1 for item in items if _case_retried(run, item))
+
+
+def _case_retried(run, item):
+    path = run / 'raw' / (item.safe_id + '.requests.json')
+    if not path.exists():
+        return False
+    try:
+        records = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    return any(record.get('retries') for record in records)

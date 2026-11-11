@@ -83,6 +83,15 @@ def read_entries(storage):
 
 
 def restore_all(storage, dashboard):
+    """Restore every published version and return the count of restored versions.
+
+    A Skill 组合 only references already-published immutable versions, so its
+    members are covered by this per-version restore: each member is one
+    ``run/skills/<content_sha256>`` version restored and digest-checked here,
+    with its own per-version receipt.  No combination-level asset field,
+    receipt or COS key is ever created (GLOSSARY: combinations produce no
+    savable assets).
+    """
     keys, entries = read_entries(storage)
     groups = _groups(entries)
     for receipt in (storage.data / 'skill-assets/confirmed').glob('*.json'):

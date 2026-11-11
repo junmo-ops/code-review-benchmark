@@ -35,7 +35,8 @@ import {
   suiteName,
 } from '../presentation';
 import { DshRuntimeWarning, ErrorAlert, Status } from './Common';
-import type { Case, Job, JobReply, Run, TextReply } from '../types';
+import { skillMemberViews } from '../reportPresentation';
+import type { Case, Job, JobReply, Run, SkillListing, TextReply } from '../types';
 function TextFile({ kind, run }: { kind: string; run: Run }) {
   const artifacts = kind === 'report' ? run.artifacts.filter((a) => a.report).sort((a, b) => Number(b.path === 'report.zh-CN.md') - Number(a.path === 'report.zh-CN.md')) : run.artifacts;
   const [chosen, setChosen] = useState('');
@@ -458,14 +459,18 @@ function RunHeader({
   onStop: () => void;
 }) {
   const { state } = useWorkbench();
+  const isSkill = record.reviewer === 'dsh_skill' && record.skill_mode === 'skill';
+  const listing = useRemote<SkillListing>(isSkill ? '/api/skills' : undefined);
+  const names = new Map((listing.data?.versions ?? []).map((version) => [version.id, version.name]));
+  const views = skillMemberViews(record, names);
   return (
     <>
       <Typography.Paragraph type="secondary" style={{ overflowWrap: 'anywhere' }}>
         {suiteName(state, record.suite)} · {record.model} · 裁判 {record.judge_model} /{' '}
         {record.evaluator}
-        {record.skill_mode === 'baseline' && ` · DSH ${record.dsh_runtime_version ?? ''} · 无待测 Skill 基线`}
-        {record.skill_mode === 'skill' && ` · DSH ${record.dsh_runtime_version ?? ''} · Skill ${record.skill_name ?? ''} · ${record.skill_version ?? ''}`}
+        {skillContext(record, views)}
       </Typography.Paragraph>
+      <SkillMembers record={record} views={views} />
       {record.compatibility_warning && (
         <Alert type="warning" message={record.compatibility_warning} />
       )}
@@ -489,6 +494,25 @@ function RunHeader({
         )}
       </Space>
     </>
+  );
+}
+
+function skillHeader(record: Run, views: ReturnType<typeof skillMemberViews>): string {
+  return views.length > 1
+    ? `Skill 组合（${views.length} 个成员：${views.map((view) => view.name ?? `版本 ${view.version.slice(0, 12)}`).join('、')}）`
+    : `Skill ${record.skill_name ?? ''} · ${record.skill_version ?? ''}`;
+}
+function skillContext(record: Run, views: ReturnType<typeof skillMemberViews>): string {
+  if (record.skill_mode === 'baseline') return ` · DSH ${record.dsh_runtime_version ?? ''} · 无待测 Skill 基线`;
+  if (record.skill_mode === 'skill') return ` · DSH ${record.dsh_runtime_version ?? ''} · ${skillHeader(record, views)}`;
+  return '';
+}
+function SkillMembers({ record, views }: { record: Run; views: ReturnType<typeof skillMemberViews> }) {
+  if (record.skill_mode !== 'skill' || views.length < 2) return null;
+  return (
+    <Typography.Paragraph type="secondary" style={{ overflowWrap: 'anywhere' }}>
+      成员版本：{views.map((view) => `${view.name ?? '未命名版本'} · ${view.version}`).join('；')}；组合摘要：{record.skill_combination_digest ?? '未提供'}。
+    </Typography.Paragraph>
   );
 }
 

@@ -253,6 +253,8 @@ class Dashboard:
                     simulation=cfg.get('simulation',False), reviewer=cfg.get('reviewer', 'lcr'), model=cfg.get('review_model', '—'), judge_model=cfg.get('judge_model', '—'),
                     skill_mode=cfg.get('skill_mode'), skill_version=cfg.get('skill_version'),
                     skill_name=cfg.get('skill_identity', {}).get('name'),
+                    skill_versions=cfg.get('skill_versions'),
+                    skill_combination_digest=cfg.get('skill_combination_digest'),
                     dsh_runtime_version=cfg.get('tool_hashes', {}).get('version') if cfg.get('reviewer') == 'dsh_skill' else None,
                     dsh_runtime_mode=cfg.get('dsh_policy', {}).get('runtime_mode'),
                     evaluator='Martian 一对一（内部）' if (self.run_dir(key)/'comparison-protocol.json').exists() else 'MCR 一对一' if mcr else cfg.get('evaluator', {}).get('id', 'original'),

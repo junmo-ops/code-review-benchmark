@@ -25,6 +25,38 @@ function numeric(value: string) {
 const number = (value: number | undefined) => value === undefined ? '未提供' : value.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
 const cell = (value: string) => value.replaceAll('|', '\\|').replaceAll('\n', ' ');
 
+export interface SkillMemberView {
+  version: string;
+  name?: string;
+}
+// Normalize the two backend shapes: legacy single value or the member list (new N>=1 batches).
+export function skillMemberViews(run: Run, names?: Map<string, string>): SkillMemberView[] {
+  const versions = run.skill_versions ?? (run.skill_version ? [run.skill_version] : []);
+  return versions.map((version) => ({ version, name: names?.get(version) }));
+}
+function comboSkill(run: Run) {
+  return run.skill_mode === 'skill' && Array.isArray(run.skill_versions) && run.skill_versions.length > 1;
+}
+function comboSubject(run: Run, report: string): string {
+  // Prefer the backend wording (member author names + combination digest) when the report has it.
+  const section = reportSections(report).find((part) => part.title === 'DSH 检视执行条件');
+  const marker = section?.text
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('Skill 组合（'));
+  if (marker) return marker;
+  const versions = run.skill_versions ?? [];
+  return `Skill 组合（${versions.length} 个成员版本：${versions.map((version) => version.slice(0, 12)).join('、')}）；组合摘要 ${cell(run.skill_combination_digest ?? '未提供')}；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`;
+}
+function skillSubjectLines(run: Run, report: string): string[] {
+  if (run.skill_mode === 'baseline')
+    return [`无待测 Skill 基线；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''];
+  if (comboSkill(run)) return [comboSubject(run, report), ''];
+  if (run.skill_mode === 'skill')
+    return [`Skill：${cell(run.skill_name ?? '未提供')}；版本：${cell(run.skill_version ?? '未提供')}；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''];
+  return [];
+}
+
 function usageSummary(text: string) {
   const rows = text.split('\n').filter((line) => /^\| 检视：/.test(line))
     .map((line) => line.split('|').slice(1, -1).map((part) => part.trim()));
@@ -86,8 +118,7 @@ export function reportSummary(text: string, run: Run) {
   const scores = sections.filter((section) => ['评分结果', '评分汇总', '测评结果'].includes(section.title));
   return [intro, '## 测评对象', '',
     `模型：${cell(run.model)}；Agent：${cell(run.reviewer)}；案例集：${cell(run.suite)}；评分器：${cell(run.evaluator)}；裁判：${cell(run.judge_model ?? '未提供')}。`, '',
-    ...(run.skill_mode === 'baseline' ? [`无待测 Skill 基线；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''] : []),
-    ...(run.skill_mode === 'skill' ? [`Skill：${cell(run.skill_name ?? '未提供')}；版本：${cell(run.skill_version ?? '未提供')}；DSH ${cell(run.dsh_runtime_version ?? '未提供')}。`, ''] : []),
+    ...skillSubjectLines(run, text),
     ...(run.dsh_runtime_mode === 'pod' ? ['运行条件：POD 内运行，无操作系统级沙盒；仅软件工具和路径限制。', ''] : []),
     '## 完成情况', '',
     `计划 ${run.total} 例；当前完整答卷 ${run.completed} 例；本报告评分范围 ${number(scoredIds?.size)} 例。`, '',

@@ -1,0 +1,317 @@
+{
+  "case_count": 50,
+  "repositories": [
+    {
+      "repo": "CherryHQ/cherry-studio",
+      "path": "D:\\code\\benchmark\\CherryHQ\\cherry-studio",
+      "required_commits": [
+        "5644b00b87e07fa1acd84d4ec93f9f2fb1205090",
+        "636c788e2ba413d21a5fd385c3ea4cc7e134e1be",
+        "83a25941859179b635105c9b4fd79d5542e3701e",
+        "f258f5b2cb4a4cf9012e106837aba409b383e367"
+      ],
+      "unreferenced": [
+        "5644b00b87e07fa1acd84d4ec93f9f2fb1205090",
+        "83a25941859179b635105c9b4fd79d5542e3701e"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "alibaba/spring-ai-alibaba",
+      "path": "D:\\code\\benchmark\\alibaba\\spring-ai-alibaba",
+      "required_commits": [
+        "3555a95e7b888335d9f72e432eb4f9fb9640e8cd",
+        "4bc73055c7b33f53433d9725eab5010b85a59632",
+        "71e7eeb27dfe42c5a805da413ef6e9faf84fe9d0",
+        "76c06b58a4d9e8ee3fe3c0269a046987ad0502e5"
+      ],
+      "unreferenced": [
+        "4bc73055c7b33f53433d9725eab5010b85a59632"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "bluewave-labs/Checkmate",
+      "path": "D:\\code\\benchmark\\bluewave-labs\\Checkmate",
+      "required_commits": [
+        "05dd5f7de27ae7f2139714f0bc577484642e2c77",
+        "29e03a6294edfe43b49eba20fe49099cef601d34",
+        "32b54ddf11ea27b8ed85d2139fe38e0dcb7f3d43",
+        "7c369e84052aaee15a6dedf8928b5af4c869037b"
+      ],
+      "unreferenced": [],
+      "missing": []
+    },
+    {
+      "repo": "browser-use/browser-use",
+      "path": "D:\\code\\benchmark\\browser-use",
+      "required_commits": [
+        "0b21e50ca640581ecd46990475c8b223eaa05045",
+        "515b94225aa86c40dc2c20034055ab8bcc88c6ae",
+        "72f1585f9add5b72e829eaee3b5bff684e0b08d3",
+        "aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52",
+        "e85a547378b236c9788802d28e816f10940a7e53",
+        "fa461585f1fc2d4a430e68e6c115a12f4936fe73"
+      ],
+      "unreferenced": [],
+      "missing": []
+    },
+    {
+      "repo": "comfyanonymous/ComfyUI",
+      "path": "D:\\code\\benchmark\\comfyanonymous\\ComfyUI",
+      "required_commits": [
+        "0bb60235132cc72daea81427107a40ba1ccb5ddf",
+        "4dcd698e489da69294ee01de0350a9a02e3e4b41",
+        "6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0",
+        "832e3f5ca3c357e527fdf811502357bd2798425e",
+        "b55c2247654476fbc744e572ba7a834fd9378745",
+        "c7b25784b141a298d8ee5f0d830a29da6e8a3d54"
+      ],
+      "unreferenced": [
+        "0bb60235132cc72daea81427107a40ba1ccb5ddf",
+        "4dcd698e489da69294ee01de0350a9a02e3e4b41",
+        "b55c2247654476fbc744e572ba7a834fd9378745"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "dbeaver/dbeaver",
+      "path": "D:\\code\\benchmark\\dbeaver",
+      "required_commits": [
+        "24ad3c4030412df3d9c843c405e90a0b1e2ad5dd",
+        "469e4265a58af95a6d5f4069515e029fc2891374",
+        "8224826969254a49e68e025cae82d3cf1574de38",
+        "8793ec7a6c71aa503b1dc492ddb4e982a8f3e9d9",
+        "bc3ac7bb47092a934b344791d8aa3a1c41e6c8f7",
+        "dc67ca7cf486ceaf45559318cdcbca193847188d"
+      ],
+      "unreferenced": [
+        "8224826969254a49e68e025cae82d3cf1574de38",
+        "bc3ac7bb47092a934b344791d8aa3a1c41e6c8f7",
+        "dc67ca7cf486ceaf45559318cdcbca193847188d"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "gofr-dev/gofr",
+      "path": "D:\\code\\benchmark\\gofr-dev\\gofr",
+      "required_commits": [
+        "2c0c0997cad66a1ee1e47f95db6a830394157c00",
+        "49ab39432cf4892ee84569099b8065dfe45fae92",
+        "5e284aec0447be34c96a252e959067c8bcd9cd4c",
+        "ba0316277a22f508ed645951705f53d151552916",
+        "c2ab1eb3308afa4f29842f0a982751bf65c059d0",
+        "de79ab765d0d34d78a42ebdd50a21a6f26841b7f"
+      ],
+      "unreferenced": [
+        "2c0c0997cad66a1ee1e47f95db6a830394157c00",
+        "5e284aec0447be34c96a252e959067c8bcd9cd4c"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "google-gemini/gemini-cli",
+      "path": "D:\\code\\benchmark\\google-gemini\\gemini-cli",
+      "required_commits": [
+        "0fa1bd7ac417366f321ed2554caeaef550321959",
+        "4c150ab4befb2a727b493d732d8d3d01f388e492",
+        "4e49ee4c734f53a705df72efda2d076cb0acf44e",
+        "53f8617b249c9f0443f5082a293a30504a118030",
+        "5a05fb0dd002481343aaab7736a871904bb07c6f",
+        "6fd82699700fc19ea30a7b29a059f392ccfbb2cc"
+      ],
+      "unreferenced": [
+        "0fa1bd7ac417366f321ed2554caeaef550321959",
+        "4c150ab4befb2a727b493d732d8d3d01f388e492",
+        "6fd82699700fc19ea30a7b29a059f392ccfbb2cc"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "immich-app/immich",
+      "path": "D:\\code\\benchmark\\immich-app\\immich",
+      "required_commits": [
+        "4d6d5537b713ca80bb2a670fdc7be66882b12d5c",
+        "55f4e93456ab7415082e342af9ad5cabd52562a6",
+        "584e5894bfd4fe356e790fa9781ccee4e5224874",
+        "5f4759196534661bd332085514878d0efbb7ce84",
+        "7e2009f038cbf3f26403af6582af3cf8ba91672f",
+        "9032c7e021872a913e28de2e79bd9ab9806e7413"
+      ],
+      "unreferenced": [
+        "5f4759196534661bd332085514878d0efbb7ce84",
+        "7e2009f038cbf3f26403af6582af3cf8ba91672f",
+        "9032c7e021872a913e28de2e79bd9ab9806e7413"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "infiniflow/ragflow",
+      "path": "D:\\code\\benchmark\\infiniflow\\ragflow",
+      "required_commits": [
+        "0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a",
+        "2d06022b78536bd22a0fd83f38804f39aa34cce8",
+        "469460483665000f522b6c9a6583bb34f17a954b",
+        "705123406ec7cd5eb1f9be26f6c5c31357aeffc9",
+        "a63caa1087852ada98964678be26b7c4d8363af6",
+        "b1c874698469ac999d210cd8cde59425781e4da2"
+      ],
+      "unreferenced": [
+        "2d06022b78536bd22a0fd83f38804f39aa34cce8",
+        "705123406ec7cd5eb1f9be26f6c5c31357aeffc9",
+        "a63caa1087852ada98964678be26b7c4d8363af6"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "kestra-io/kestra",
+      "path": "D:\\code\\benchmark\\kestra-io\\kestra",
+      "required_commits": [
+        "01a77aff0422884ed7b18ba8d00a0495d0bab88e",
+        "06e7c6e48e22420da5bb0bf3188bc00f73974c9a",
+        "0ec45f028467c99d8d1efeee6c201210d9433e6d",
+        "3c2a2765fcd06d7fe127e362ddc9a706d4073047",
+        "a716094a9d3c3522fb40ea988b3dab2763d7519c",
+        "bfcfb2ac16dd8f198a99fef43072cb178f9a1d8e"
+      ],
+      "unreferenced": [
+        "06e7c6e48e22420da5bb0bf3188bc00f73974c9a",
+        "0ec45f028467c99d8d1efeee6c201210d9433e6d",
+        "3c2a2765fcd06d7fe127e362ddc9a706d4073047"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "keycloak/keycloak",
+      "path": "D:\\code\\benchmark\\keycloak",
+      "required_commits": [
+        "04ad5d530007517b60e2bf8706542556078d17f7",
+        "805c204a9dbfb5b8128de8f70c9f3fbd6d6583f9",
+        "8521b9952a989d0dac17697278610b053c613528",
+        "ad511cbc538f1d9727d17cc423420abc50367af4"
+      ],
+      "unreferenced": [
+        "04ad5d530007517b60e2bf8706542556078d17f7",
+        "805c204a9dbfb5b8128de8f70c9f3fbd6d6583f9"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "microsoft/typescript-go",
+      "path": "D:\\code\\benchmark\\microsoft\\typescript-go",
+      "required_commits": [
+        "100dbc5127e723c4108efc02a179d9aec5fce32a",
+        "1a84d8d5705df98fd1e1f81d9d3115a7a203509d",
+        "3a3ff237cf7ad91bcdb604271f6135762aed9365",
+        "45c0de96a08812aff07974b859bc2327e7fe25ed",
+        "af2ba7365ad3e2f572ddb95a439b0220eccc06b1",
+        "da4e121142cd3f891785b573a194b9caaaa01d55"
+      ],
+      "unreferenced": [
+        "100dbc5127e723c4108efc02a179d9aec5fce32a",
+        "1a84d8d5705df98fd1e1f81d9d3115a7a203509d",
+        "45c0de96a08812aff07974b859bc2327e7fe25ed"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "mudler/LocalAI",
+      "path": "D:\\code\\benchmark\\mudler\\LocalAI",
+      "required_commits": [
+        "78533d7230bdb5e352e325c15d0d53f38428b08e",
+        "e466450c007539a2b1e4d2951c6756ff004a2b52"
+      ],
+      "unreferenced": [
+        "e466450c007539a2b1e4d2951c6756ff004a2b52"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "n8n-io/n8n",
+      "path": "D:\\code\\benchmark\\n8n-io\\n8n",
+      "required_commits": [
+        "14f59373d2264e97d73474bed5964a6a405d8082",
+        "3eb1c1c783a45a150fa7229d8f2590d3786f58ad",
+        "61fc500fee842539e2a5011303147fdf5df0cd96",
+        "77ece2e572096e6ad267e7f9363ebbf9f8ba46e8",
+        "93216919462181f52d6994f8f20a9a478716545f",
+        "aae55fe7ac77594444c3405161555a517902c68b"
+      ],
+      "unreferenced": [
+        "61fc500fee842539e2a5011303147fdf5df0cd96",
+        "77ece2e572096e6ad267e7f9363ebbf9f8ba46e8",
+        "93216919462181f52d6994f8f20a9a478716545f"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "ollama/ollama",
+      "path": "D:\\code\\benchmark\\ollama",
+      "required_commits": [
+        "0b52f186fb4af8fa7d4f6a71967f922eb6b69cdc",
+        "2ed14f2a28867c017426b41a9ff6bfc52c981a43",
+        "498792c9be023ebfdaa1e0dbc6ac85c0ff8c75b1",
+        "4ea4d2b18952a104a47079df00ac0bfe4706f3aa",
+        "56dc316a57f07fbed80723d1ecd589da0906018e",
+        "c2f5d6662ba696b94455eaaa298a797d56fdca5c"
+      ],
+      "unreferenced": [
+        "0b52f186fb4af8fa7d4f6a71967f922eb6b69cdc",
+        "2ed14f2a28867c017426b41a9ff6bfc52c981a43",
+        "498792c9be023ebfdaa1e0dbc6ac85c0ff8c75b1"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "sveltejs/svelte",
+      "path": "D:\\code\\benchmark\\sveltejs\\svelte",
+      "required_commits": [
+        "2af7ba21563f1b7f011ffa9f0c08e4acb473eef3",
+        "44bec4c8b172a47ff300f754463555bbb694bb05",
+        "4bf1f915d3374721f8a1655b1a151c1c423b1a3c",
+        "e4987d2a9f36b33f3934725723f9c4cc998ef278"
+      ],
+      "unreferenced": [
+        "44bec4c8b172a47ff300f754463555bbb694bb05",
+        "4bf1f915d3374721f8a1655b1a151c1c423b1a3c"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "vllm-project/vllm",
+      "path": "D:\\code\\benchmark\\vllm-project\\vllm",
+      "required_commits": [
+        "075f1b5b8015e343f25b45d36ccff571cb39739b",
+        "134705b1474ddcfac234a0a01313874f7c8b59bc",
+        "3fe18934d7f33b98812d7402463fe171c24efc77",
+        "7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a",
+        "c3bf9bad11193ee684ed6083b6692d0b5bf2bac7",
+        "d8037867313eef09779b265ea4bace76d2d118ba"
+      ],
+      "unreferenced": [
+        "075f1b5b8015e343f25b45d36ccff571cb39739b",
+        "134705b1474ddcfac234a0a01313874f7c8b59bc",
+        "3fe18934d7f33b98812d7402463fe171c24efc77"
+      ],
+      "missing": []
+    },
+    {
+      "repo": "wavetermdev/waveterm",
+      "path": "D:\\code\\benchmark\\wavetermdev\\waveterm",
+      "required_commits": [
+        "286783fb8e71cec6d2294bd871e5ccf8c798c646",
+        "3beb14aa6bdd9118c43cdd75adca32616619451b",
+        "4b7637fb17fb0f937d67f12a63f3f370a3343117",
+        "61b0fb4baec87c6fa91bdeadc43fab75fd29eb61",
+        "90a57d552d15f1b2a4d92cdfc3a4308efcf5c57b",
+        "ce9775c00c36ba290c7a6f5134c0ff7759def6eb"
+      ],
+      "unreferenced": [
+        "4b7637fb17fb0f937d67f12a63f3f370a3343117",
+        "61b0fb4baec87c6fa91bdeadc43fab75fd29eb61",
+        "90a57d552d15f1b2a4d92cdfc3a4308efcf5c57b"
+      ],
+      "missing": []
+    }
+  ]
+}

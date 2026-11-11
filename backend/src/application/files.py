@@ -27,13 +27,20 @@ def save(path, value):
 
 
 def _replace(source, destination):
-    # Windows readers can briefly hold a handle that prevents atomic replacement.
+    # Windows readers or real-time scanners can briefly hold the freshly
+    # written temp file (PermissionError 5/32/33) or move it out of the name
+    # space right before the swap (FileNotFoundError 2); both are transient and
+    # retried before giving up.
     for attempt in range(6):
         try:
             source.replace(destination)
             return
         except PermissionError as error:
             if getattr(error, 'winerror', None) not in {5, 32, 33} or attempt == 5:
+                raise
+            time.sleep(.02 * (2 ** attempt))
+        except FileNotFoundError as error:
+            if getattr(error, 'winerror', None) != 2 or attempt == 5:
                 raise
             time.sleep(.02 * (2 ** attempt))
 

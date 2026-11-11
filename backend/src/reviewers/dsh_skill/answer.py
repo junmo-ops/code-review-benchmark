@@ -39,7 +39,7 @@ def _parse_final(text):
         raise FinalAnswerFormatError('DSH 最终答卷为空白；completed 仅表示执行结束，不表示检视答卷有效。'
                          '原始事件和会话已保留，不按零意见评分，是否重试由冻结执行策略决定')
     try:
-        return json.loads(text)
+        return _loads_detect_duplicates(text)
     except json.JSONDecodeError as error:
         line, column = error.lineno, error.colno
     # The review model occasionally wraps the required object in prose (e.g.
@@ -48,11 +48,54 @@ def _parse_final(text):
     wrapped = extract_json_object(text)
     if wrapped is not None:
         try:
-            return json.loads(wrapped)
+            return _loads_detect_duplicates(wrapped)
         except json.JSONDecodeError:
             pass
     raise FinalAnswerFormatError(f'DSH 最终答卷不是有效 JSON（第 {line} 行，第 {column} 列）；'
                      f'提取末段 JSON 对象也未成功；原始输出已保留，是否重试由冻结执行策略决定') from None
+
+
+def _loads_detect_duplicates(text):
+    """Parse JSON with ``json.loads`` semantics but reject repeated keys.
+
+    The archived gofr case delivered a complete-looking object whose final
+    comment repeated ``start_line``/``end_line``/``content`` after the real
+    values (a stray second-comment fragment was merged into the first object).
+    Plain ``json.loads`` keeps the last occurrence, silently turning the
+    finding into an empty out-of-range comment.  Duplicate keys are therefore
+    a malformed-reply error -- the retryable ''DSH 最终答卷…'' class -- never a
+    silently "repaired" answer.
+    """
+    duplicates = []
+
+    def record(pairs):
+        mapping = {}
+        seen = set()
+        for key, value in pairs:
+            if key in seen:
+                duplicates.append(key)
+            seen.add(key)
+            mapping[key] = value
+        return mapping
+
+    parsed = json.loads(text, object_pairs_hook=record)
+    if duplicates:
+        keys = ', '.join(sorted(set(duplicates)))
+        raise ValueError(f'DSH 最终答卷包含重复 JSON 键：{keys}；原始输出已保留，不自动修补或重试')
+    return parsed
+
+
+def verdict(rows):
+    """Gate the reply shape before capability vetoes.
+
+    A malformed final reply is an answer-format failure -- the retryable
+    ``DSH 最终答卷…`` class used to re-run a case once -- not evidence that
+    the Skill depended on a disabled capability. Reading the verdict here
+    first keeps ''Skill 依赖禁用能力'' for finals that actually declare or
+    demonstrate a missing capability (see loading.require_supported).
+    """
+    finals, _ = _completed(rows)
+    return _parse_final(finals[0].get('text', ''))
 
 
 def convert(item, cfg, rows, lines, requests):
@@ -63,6 +106,13 @@ def convert(item, cfg, rows, lines, requests):
     for comment in answer['comments']:
         _finding(comment, lines)
     summary, coverage = summarize(requests)
+    # ``skill`` is the baseline placeholder; adapter.recover_answer replaces it
+    # with loading.verify_loading's result: single-valued {mode:'skill',
+    # version, name, loaded, evidence} for one-member batches, {mode:'skill',
+    # members:[{version, name, loaded, evidence}]} for N>=2 combinations, and
+    # {mode:'baseline', loaded:False} for baseline (identical to this
+    # placeholder). Members' evidence entries carry form/session_seq/request/
+    # text_sha256. Discriminate: mode first, then presence of a members list.
     return dict(instance_id=item.instance_id, repo=item.repo, base_commit=item.base_commit,
                 head_commit=item.head_commit, reviewer='dsh_skill',
                 review=dict(status='complete', comments=answer['comments'], summary=summary,

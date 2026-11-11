@@ -48,12 +48,38 @@ def runtime_mode():
     return value
 
 
-def locations(work):
+def _member_records(cfg):
+    """[(version, record)] in frozen member order for a member-list (new
+    layout) cfg; empty otherwise."""
+    if cfg is None:
+        return []
+    from . import selection
+    if not selection.uses_new_layout(cfg):
+        return []
+    return selection.members(cfg)
+
+
+def locations(work, cfg=None):
+    """Per-case paths. ``skill`` is the legacy single content root (kept so
+    historical configs and bare callers keep working); ``skills`` carries one
+    content root per frozen member, in member order, for member-list configs.
+    POD locations are host paths; sandbox locations are container paths that
+    ``command`` mounts from the staged case snapshot."""
     if runtime_mode() == 'pod':
         work = work.resolve()
-        return dict(repo=str(work / 'repo'), input=str(work / 'input'), home=str(work / 'home'),
-                    skill=str(work / 'skill-version/content'), socket=str(work / 'model.sock'))
-    return dict(repo='/work', input='/input', home='/home/dsh', skill='/skill', socket='/model.sock')
+        result = dict(repo=str(work / 'repo'), input=str(work / 'input'), home=str(work / 'home'),
+                      skill=str(work / 'skill-version/content'), socket=str(work / 'model.sock'),
+                      workspace=str(work / 'skill-workspace'))
+        members = _member_records(cfg)
+        if members:
+            result['skills'] = [str(work / 'skills' / record['content_sha256'] / 'content')
+                                for _, record in members]
+        return result
+    result = dict(repo='/work', input='/input', home='/home/dsh', skill='/skill', socket='/model.sock')
+    members = _member_records(cfg)
+    if members:
+        result['skills'] = ['/skills/' + record['content_sha256'] for _, record in members]
+    return result
 
 
 def script(name):
@@ -182,16 +208,29 @@ setTimeout(() => process.exit(72), 3000);
         raise IsolationError('Linux 命名空间隔离不可用，拒绝运行 DSH: ' + details)
 
 
-def command(work, prompt):
+def command(work, prompt, cfg=None):
     if runtime_mode() == 'pod':
         from .pod import command as pod_command
         return pod_command(work, prompt)
-    skill = ['--ro-bind', str(work / 'skill-version/content'), '/skill'] if (work / 'skill-version').exists() else []
+    # Sandbox mounts the staged Skill snapshot(s) read-only. The legacy single
+    # layout binds work/skill-version/content onto the original /skill;
+    # member-list batches bind one /skills/<content_sha256> per frozen member
+    # (locations(work, cfg)['skills'] mirrors the same container paths).
+    binds = []
+    legacy = work / 'skill-version'
+    members = _member_records(cfg)
+    if legacy.exists():
+        binds.append(['--ro-bind', str(legacy / 'content'), '/skill'])
+    elif members and (work / 'skills').exists():
+        for _, record in members:
+            source = work / 'skills' / record['content_sha256'] / 'content'
+            if source.exists():
+                binds.append(['--ro-bind', str(source), '/skills/' + record['content_sha256']])
     # Skill mode may write inside the case workspace (issues.json, reports);
     # baseline keeps the head snapshot read-only.
-    repo_bind = ['--bind', str(work / 'repo'), '/work'] if (work / 'skill-version').exists() \
-        else ['--ro-bind', str(work / 'repo'), '/work']
-    return namespace() + skill + [
+    repo_bind = (['--bind', str(work / 'repo'), '/work'] if binds
+                 else ['--ro-bind', str(work / 'repo'), '/work'])
+    return namespace() + binds + [
         '--ro-bind', str(node()), '/node', '--ro-bind', str(MODULES), '/runtime/node_modules',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/bridge.mjs'), '/bridge.mjs',
         '--ro-bind', str(PROJECT_ROOT / 'scripts/dsh/compaction.mjs'), '/compaction.mjs',

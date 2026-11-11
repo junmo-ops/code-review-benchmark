@@ -40,12 +40,19 @@ async function inspectRestored(page, data, entry) {
   const root = join(data, 'runs', entry.key);
   const artifact = await api(page, `/api/artifact?key=${entry.key}&path=results/demo-ok.json`, undefined, 'GET');
   assert.deepEqual(JSON.parse(artifact.text), entry.answer);
+  // 报告可见标记按形态判别：N=1（新旧格式）用单值版本 id；N≥2 组合用
+  // 「Skill 组合（N 个成员」+ 组合摘要（report.zh-CN.md 的 DSH 检视执行条件节）。
+  const memberCount = (entry.cfg.skill_versions ?? []).length;
+  const visible = memberCount > 1
+    ? `Skill 组合（${memberCount} 个成员`
+    : (entry.cfg.skill_versions?.[0] ?? entry.cfg.skill_version);
+  assert.ok(visible, '恢复条目缺少报告可见标记');
   await page.goto(`/?run=${entry.key}&tab=report`);
-  await page.getByText(entry.cfg.skill_version, { exact: false }).first().waitFor();
+  await page.getByText(visible, { exact: false }).first().waitFor();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载完整报告', exact: true }).click();
   const raw = await readFile(await (await download).path(), 'utf8');
-  assert.ok(raw.includes(entry.cfg.skill_version));
+  assert.ok(raw.includes(visible));
   const files = await readdir(join(root, 'raw'));
   const sessions = files.filter((name) => name.includes('.session-'));
   assert.ok(sessions.length > 0);

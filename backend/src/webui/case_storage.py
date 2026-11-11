@@ -837,7 +837,7 @@ def restore_case_archives(root=ROOT):
     skill_count = SkillAssetStorage(dashboard.data).restore(dashboard)
     count = asset_count + archive_count + skill_count
     print(f'COS 案例资源恢复完成：{asset_count} 份拆分案例集和 {archive_count} 份旧 ZIP；未调用模型。', flush=True)
-    print(f'COS Skill 资源恢复并校验完成：{skill_count} 个版本；未调用模型。', flush=True)
+    print(f'COS Skill 资源恢复并校验完成：{skill_count} 个不可变版本（组合成员按版本计数，组合本身不新增资产条目）；未调用模型。', flush=True)
     return count
 
 

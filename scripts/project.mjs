@@ -127,6 +127,7 @@ function verify() {
   check();
   invoke(process.execPath, [
     "--test", "scripts/check-dependencies.test.mjs", "scripts/npm-registry.test.mjs",
+    "scripts/dsh/scope.test.mjs",
   ]);
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
   invoke(python, [join(root, "tools/check_regressions.py")]);

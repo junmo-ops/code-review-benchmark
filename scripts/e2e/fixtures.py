@@ -78,6 +78,12 @@ def skill_archives(root):
             output.writestr('SKILL.md', main)
             output.writestr('references/rules.txt', rules)
             output.writestr('scripts/never-run.sh', 'exit 99\n')
+    # 组合正路径专用：与 browser-review 不同名的第二个成员（同名成员会被组合级校验拒绝）。
+    other = '---\nname: browser-other\ndescription: Second combination member fixture\n---\nRead [rules](references/rules.txt).\n'
+    with zipfile.ZipFile(root / 'skill-other.zip', 'w') as output:
+        output.writestr('SKILL.md', other)
+        output.writestr('references/rules.txt', 'other\r\n')
+        output.writestr('scripts/never-run.sh', 'exit 98\n')
     with zipfile.ZipFile(root / 'skill-unsafe.zip', 'w') as output:
         output.writestr('SKILL.md', main)
         output.writestr('../escape', 'unsafe')

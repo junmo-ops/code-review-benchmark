@@ -1,4 +1,4 @@
-import { Alert, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
+import { Alert, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import { useEffect, useRef } from 'react';
 import { creationName, submitCreation } from '../creation';
 import { useWorkbench } from '../context';
@@ -8,6 +8,8 @@ import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
 import { DshRuntimeWarning, ErrorAlert } from './Common';
 import type { SkillListing, Snapshot } from '../types';
+// Internal marker for the explicit baseline option inside the member multi-select.
+const BASELINE_OPTION = '__baseline__';
 interface Values {
   evaluation_mode: 'quality' | 'stability';
   suite: string;
@@ -18,7 +20,7 @@ interface Values {
   judge_profile?: string;
   reviewer: string;
   skill_mode?: 'baseline' | 'skill';
-  skill_version?: string;
+  skill_versions?: string[];
   evaluator: string;
   timeout_minutes: number;
   case_jobs: number;
@@ -81,24 +83,73 @@ function judgeChoices(state: Snapshot) {
       choices.push({ value: 'legacy-judge:' + p.id, label: p.judge_model + ' · 旧裁判配置' });
   return choices;
 }
+function SkillStateHint({ mode, selected, labelOf }: {
+  mode?: 'baseline' | 'skill';
+  selected: string[];
+  labelOf: (id: string) => string;
+}) {
+  if (mode !== 'skill') return null;
+  if (selected.length !== 1) {
+    if (selected.length > 1) {
+      return (
+        <Alert type="info" message={`Skill 组合（${selected.length} 个成员）：${selected.map(labelOf).join('、')}。每个案例的新会话将逐一加载并留证。`} />
+      );
+    }
+    return null;
+  }
+  return <Typography.Paragraph type="secondary" className="section-gap">单 Skill：{labelOf(selected[0])}。</Typography.Paragraph>;
+}
+
 function SkillSelection({ reviewer }: { reviewer?: string }) {
   const form = Form.useFormInstance<Values>();
   const mode = Form.useWatch('skill_mode', form);
+  const raw = Form.useWatch('skill_versions', form);
   const { data, error } = useRemote<SkillListing>(reviewer === 'dsh_skill' ? '/api/skills' : undefined);
   if (reviewer !== 'dsh_skill') return null;
+  const selected = Array.isArray(raw) ? raw : [];
+  const supported = !!data?.supported;
+  const names = new Map((data?.versions ?? []).map((version) => [version.id, version.name]));
+  const labelOf = (id: string) => names.get(id) ?? `${id.slice(0, 12)}…`;
+  // 三态都由这一个多选控件表达：未选任何版本（基线选项）→ 基线；1 个 → 单 Skill；≥2 个 → Skill 组合。
+  const shown = mode === 'skill' ? selected : [BASELINE_OPTION];
+  const options = [
+    { value: BASELINE_OPTION, label: '不加载 Skill（基线）' },
+    ...(data?.versions ?? []).map((version) => ({
+      value: version.id,
+      label: `${version.name} · ${version.id.slice(0, 12)}`,
+      disabled: !supported,
+    })),
+  ];
+  // 基线与成员集合互斥：点基线清空成员，点成员清掉基线（沿用「切换即清空」行为）。
+  const choose = (next: string[]) => {
+    const wasBaseline = form.getFieldValue('skill_mode') !== 'skill';
+    if (!wasBaseline && next.includes(BASELINE_OPTION)) {
+      form.setFieldsValue({ skill_mode: 'baseline', skill_versions: [] });
+      return;
+    }
+    const versions = next.filter((value) => value !== BASELINE_OPTION);
+    form.setFieldsValue({ skill_mode: versions.length ? 'skill' : 'baseline', skill_versions: versions });
+  };
   return (
     <>
-      <Form.Item name="skill_mode" label="Skill 模式" rules={[{ required: true }]} preserve={false}>
-        <Select onChange={() => form.setFieldValue('skill_version', undefined)} options={[
-          { value: 'baseline', label: '不加载 Skill（基线）' },
-          { value: 'skill', label: '加载指定 Skill 版本', disabled: !data?.supported },
-        ]} />
+      <Form.Item name="skill_mode" hidden preserve={false} initialValue="baseline" rules={[{ required: true }]} />
+      <Form.Item name="skill_versions" hidden preserve={false} initialValue={[]} />
+      <Form.Item
+        label="Skill 选择"
+        required
+        extra="选 0 个（基线）= 无待测 Skill 基线；选 1 个 = 单 Skill；选 ≥2 个 = Skill 组合。基线与成员集合互斥，切换时清空对端。"
+      >
+        <Select
+          mode="multiple"
+          value={shown}
+          onChange={choose}
+          loading={!data && !error}
+          options={options}
+          optionFilterProp="label"
+          placeholder="选择 Skill 版本（留空则为本批次基线）"
+        />
       </Form.Item>
-      {mode === 'skill' && <Form.Item name="skill_version" label="Skill 版本" preserve={false} rules={[{ required: true }]}>
-        <Select loading={!data && !error} options={data?.versions.map((version) => ({
-          value: version.id, label: `${version.name} · ${version.id.slice(0, 12)}`,
-        }))} />
-      </Form.Item>}
+      <SkillStateHint mode={mode} selected={selected} labelOf={labelOf} />
       {data && !data.supported && <Alert type="warning" message={data.message} />}
       <ErrorAlert error={error} />
     </>
@@ -236,7 +287,9 @@ export function CreateRun({
         case_jobs: data.reviewer === 'lcr' ? data.case_jobs : 1,
         max_case_retries: data.reviewer === 'lcr' && data.evaluation_mode !== 'stability' ? data.max_case_retries : 0,
         skill_mode: skillMode(data),
-        skill_version: data.reviewer === 'dsh_skill' && data.skill_mode === 'skill' ? data.skill_version : undefined,
+        // 统一发成员列表（新契约）；基线不发空数组（后端 creation 拒绝空列表，仅按 skill_mode 判别）。
+        skill_versions: data.reviewer === 'dsh_skill' && (data.skill_versions?.length ?? 0)
+          ? data.skill_versions : undefined,
         dsh_max_output_tokens: data.reviewer === 'dsh_skill' ? data.dsh_max_output_tokens : undefined,
         ...(data.suite === 'ccrab' ? { judge_profile: undefined } : {}),
       }, key, 'create');
@@ -255,8 +308,8 @@ export function CreateRun({
       reviewer: initial.reviewer,
       timeout_minutes: initial.timeout_minutes,
       evaluator: initial.evaluator,
-      skill_mode: undefined,
-      skill_version: undefined,
+      skill_mode: initial.reviewer === 'dsh_skill' ? 'baseline' : undefined,
+      skill_versions: initial.reviewer === 'dsh_skill' ? [] : undefined,
     });
   };
   const enabled = ready(state, values) && !importBusy;
@@ -320,7 +373,7 @@ export function CreateRun({
         )}
         <Form.Item name="reviewer" label="被测工具">
           <Select options={reviewers(values.suite ?? '')}
-            onChange={(reviewer: string) => form.setFieldsValue({ timeout_minutes: reviewer === 'server_agent' ? 60 : 10, skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_version: undefined })} />
+            onChange={(reviewer: string) => form.setFieldsValue({ timeout_minutes: reviewer === 'server_agent' ? 60 : 10, skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_versions: reviewer === 'dsh_skill' ? [] : undefined })} />
         </Form.Item>
         <EvaluationMode suite={values.suite ?? ''} />
         <SkillSelection reviewer={values.reviewer} />

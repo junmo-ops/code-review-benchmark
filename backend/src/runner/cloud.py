@@ -226,8 +226,9 @@ def _arguments():
     p.add_argument('--skill-mode', choices=['baseline', 'skill'], help='仅 DSH init 指定')
     p.add_argument('--dsh-runtime-mode', choices=['sandbox', 'pod'], help='队列冻结的部署运行模式，仅 DSH init 指定')
     p.add_argument('--dsh-max-output-tokens', type=int, help='仅 DSH init 指定，单次输出上限 1–65536，默认8192')
-    p.add_argument('--skill-version', help='不可变 Skill 内容版本，仅 DSH init 指定')
-    p.add_argument('--skill-identity-sha256', help='队列冻结的完整 Skill 身份摘要，仅 DSH init 指定')
+    p.add_argument('--skill-version', action='append', help='不可变 Skill 内容版本；可重复指定以组成 Skill 组合，仅 DSH init 指定')
+    p.add_argument('--skill-identity-sha256', help='队列冻结的单一成员完整 Skill 身份摘要，仅 DSH init 指定（兼容旧形态）')
+    p.add_argument('--skill-combination-sha256', help='队列冻结的 Skill 组合摘要（成员身份摘要的无序集合摘要），仅 DSH init 指定')
     p.add_argument('--repos-root')
     p.add_argument('--model')
     p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效；服务端 Agent 默认60分钟，DSH 默认10分钟，其他默认30分钟')
@@ -243,7 +244,8 @@ def _arguments():
 
 def _validate_arguments(p, args):
     frozen = (args.evaluation_mode, args.suite, args.reviewer, args.evaluator, args.skill_mode, args.skill_version,
-              args.skill_identity_sha256, args.dsh_runtime_mode, args.dsh_max_output_tokens)
+              args.skill_identity_sha256, args.skill_combination_sha256,
+              args.dsh_runtime_mode, args.dsh_max_output_tokens)
     if args.stage != 'init' and any(value is not None for value in frozen):
         p.error('案例集和检视工具已冻结；调整时请新建批次')
     if args.stage!='init' and args.timeout_minutes is not None:
@@ -254,7 +256,8 @@ def _validate_arguments(p, args):
     if not re.fullmatch(r'[A-Za-z0-9_-]+',args.run_id) or args.timeout_minutes<1:
         p.error('批次名或时限无效')
     if any(v is not None for v in (args.skill_mode, args.skill_version, args.skill_identity_sha256,
-                                 args.dsh_runtime_mode, args.dsh_max_output_tokens)) and args.reviewer != 'dsh_skill':
+                                 args.skill_combination_sha256, args.dsh_runtime_mode,
+                                 args.dsh_max_output_tokens)) and args.reviewer != 'dsh_skill':
         p.error('Skill 模式仅适用于 DSH + Skill')
 
 

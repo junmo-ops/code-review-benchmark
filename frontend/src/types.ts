@@ -61,6 +61,8 @@ export interface Run {
   skill_mode?: 'baseline' | 'skill';
   skill_version?: string;
   skill_name?: string;
+  skill_versions?: string[];
+  skill_combination_digest?: string;
   dsh_runtime_version?: string;
   dsh_runtime_mode?: 'sandbox' | 'pod';
   evaluator: string;

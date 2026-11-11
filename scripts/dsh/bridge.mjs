@@ -31,12 +31,13 @@ if (process.env.BENCH_DSH_SOCKET) {
 }
 // Model requests ride Node's global fetch, whose undici defaults (300 s
 // headers/body timeouts) sit below the SDK-side stream allowance
-// (llm-pi-ai streamIdleTimeoutMs, configured to 10 minutes). A case whose
-// upstream takes longer than 300 s to send its first response byte is aborted
+// (llm-pi-ai streamIdleTimeoutMs, configured to 20 minutes). A case whose
+// upstream takes longer than that to send its first response byte is aborted
 // with "Node.js fetch timed out waiting for response headers" (observed for
-// browser-use and ComfyUI archived runs). Install a dispatcher whose bounds
-// match the SDK allowance for every request this process makes; setGlobalDispatcher
-// publishes to the same symbol Node's built-in fetch reads on this process.
+// browser-use, ComfyUI and n8n archived runs). Install a dispatcher whose
+// bounds match the SDK allowance for every request this process makes;
+// setGlobalDispatcher publishes to the same symbol Node's built-in fetch
+// reads on this process.
 // BENCH_DSH_HEADERS_TIMEOUT_MS lowers the bound for mechanism tests.
 // This script lives outside the DSH runtime tree on the deployment host, so a
 // bare import('undici') resolves only when a sibling node_modules provides the
@@ -48,13 +49,13 @@ const undiciUri = pathToFileURL(
 try {
   const loaded = await import(undiciUri);
   const undici = loaded.default ?? loaded;
-  const bound = Number(process.env.BENCH_DSH_HEADERS_TIMEOUT_MS ?? 600_000) || 600_000;
+  const bound = Number(process.env.BENCH_DSH_HEADERS_TIMEOUT_MS ?? 1_200_000) || 1_200_000;
   const dispatcher = new undici.Agent({ headersTimeout: bound, bodyTimeout: bound });
   undici.setGlobalDispatcher(dispatcher);
 } catch (error) {
   try {
     const { Agent, setGlobalDispatcher } = await import('undici');
-    const bound = Number(process.env.BENCH_DSH_HEADERS_TIMEOUT_MS ?? 600_000) || 600_000;
+    const bound = Number(process.env.BENCH_DSH_HEADERS_TIMEOUT_MS ?? 1_200_000) || 1_200_000;
     const dispatcher = new Agent({ headersTimeout: bound, bodyTimeout: bound });
     setGlobalDispatcher(dispatcher);
   } catch (fallbackError) {

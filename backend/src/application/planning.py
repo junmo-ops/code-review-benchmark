@@ -51,13 +51,37 @@ class ExecutionPlanner:
                 args += ['--skill-mode', init['skill_mode'],
                          '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox'),
                          '--dsh-max-output-tokens', str(init.get('dsh_max_output_tokens', 8192))]
-                if init.get('skill_version'):
-                    from reviewers.dsh_skill.selection import identity_digest
-                    args += ['--skill-version', init['skill_version'],
-                             '--skill-identity-sha256', identity_digest(init['skill_identity'])]
+                args = self._skill_init_arguments(init, args)
         if task:args+=['--instance',task]
         if stage=='review':args+=['--external-timeout-seconds',str(limit)]
         return [sys.executable,str(self.context.root/'backend/src/cloud.py')]+args,env,limit
+
+    def _skill_init_arguments(self, init, args):
+        """Append the frozen Skill member CLI arguments for a dsh_skill init.
+
+        New-format batches (``skill_versions``, including N=1) emit one
+        ``--skill-version`` per member plus the combination digest; pure legacy
+        batches keep the single ``--skill-version`` and freeze the member
+        identity digest as the combination digest (N=1 collapses to the
+        identity digest by definition) so the wire matches the new parameter.
+        """
+        versions = init.get('skill_versions') or (
+            [init['skill_version']] if init.get('skill_version') else [])
+        records = init.get('skill_identities') or (
+            [init['skill_identity']] if init.get('skill_identity') else [])
+        if not versions:
+            return args
+        if init.get('skill_versions'):
+            from reviewers.dsh_skill.selection import combination_digest
+            digest = init.get('skill_combination_digest') or combination_digest(records)
+            for version in versions:
+                args += ['--skill-version', version]
+            args += ['--skill-combination-sha256', digest]
+        else:
+            from reviewers.dsh_skill.selection import identity_digest
+            args += ['--skill-version', versions[0],
+                     '--skill-combination-sha256', identity_digest(records[0])]
+        return args
 
 
     def _ccrab_command(self, stage, run_id, env, cfg):

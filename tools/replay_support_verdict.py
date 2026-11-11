@@ -12,6 +12,7 @@ Usage:
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,9 +39,15 @@ def main():
     counts = dict(supported=0, unsupported=0, no_final=0)
     details = []
     for support in sorted(root.glob('*.skill-support.json')):
+        # Defend against debris left in the archive by an earlier interrupted
+        # run of this replay (<case>.evidence.skill-support.json).
+        if '.evidence' in support.name:
+            continue
         case = support.name.removesuffix('.skill-support.json')
-        evidence = root / (case + '.evidence')
-        evidence.mkdir(exist_ok=True)
+        # Evidence is written through monkeypatched storage.save (a no-op), so
+        # a scratch path outside the archive keeps the run-tree unmodified.
+        evidence = Path(tempfile.mkdtemp(prefix='dsh-support-replay-')) / 'case'
+        evidence.mkdir(parents=True, exist_ok=True)
         sessions = sessions_rows(root, case)
         events = []
         stdout_path = root / (case + '.stdout.jsonl')
@@ -64,10 +71,6 @@ def main():
             else:
                 verdict = 'unsupported [' + (basis or '?') + ']'
                 counts['unsupported'] += 1
-        finally:
-            for leftover in evidence.iterdir():
-                leftover.unlink()
-            evidence.rmdir()
         details.append(f"{case:48s} {verdict}")
     for line in details:
         print(line)

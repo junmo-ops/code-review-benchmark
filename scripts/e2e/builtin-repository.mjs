@@ -42,7 +42,8 @@ export async function builtinRepository({ page, fixtures }, injectFailure = fals
   assert.equal(status, 'succeeded', JSON.stringify(job(snapshot, created.job_id)));
   await stat(join(data, 'repos/e2e__demo/.git'));
   const cfg = JSON.parse(await readFile(join(data, 'runs', created.key, 'run-config.json'), 'utf8'));
-  assert.equal(cfg.skill_version, version.id);
+  assert.deepEqual(cfg.skill_versions, [version.id]); // N=1：成员列表为冻结载体
+  assert.equal(cfg.skill_version, version.id); // 旧单值字段仅为兼容投影
   assert.equal(snapshot.runs.find((r) => r.key === created.key).completed, 0);
   const checked = await api(page, '/api/jobs', { action: 'check', key: created.key,
     profile: snapshot.runs.find((r) => r.key === created.key).profile });

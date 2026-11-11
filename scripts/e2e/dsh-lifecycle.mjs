@@ -4,6 +4,7 @@ import { readFile, readdir, writeFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { api, job, select, upload, waitState, state } from './helpers.mjs';
+import { chooseSkill, memberCount } from './dsh-skill.mjs';
 
 async function importFile(page, fixtures, url, name, button) {
   await page.goto(url);
@@ -36,8 +37,14 @@ export async function createFullBatch(page, mode, version) {
     ['被测模型', 'DSH 本地review'], ['裁判模型', 'DSH 本地judge'], ['被测工具', 'DSH + Skill']]) {
     await select(page, label, value);
   }
-  await select(page, 'Skill 模式', mode === 'skill' ? '加载指定 Skill 版本' : '不加载 Skill（基线）');
-  if (mode === 'skill') await select(page, 'Skill 版本', version.id.slice(0, 12));
+  // 三态选择：skill = 选 1 个成员（单 Skill）；baseline = 只留基线选项（0 个成员）。
+  if (mode === 'skill') {
+    await chooseSkill(page, version.id.slice(0, 12));
+    assert.equal(await memberCount(page), 1);
+  } else {
+    await chooseSkill(page, '不加载 Skill（基线）');
+    assert.equal(await memberCount(page), 0);
+  }
   await select(page, '评分方法', '案例集原始评分');
   const response = page.waitForResponse((reply) => reply.url().endsWith('/api/jobs') && reply.request().method() === 'POST');
   await page.getByRole('button', { name: '创建并开始', exact: true }).click();
@@ -90,7 +97,10 @@ async function inspectRun(fixtures, run, mode) {
     assert.equal(answer.base_commit, row.base_commit);
     assert.equal(answer.head_commit, row.head_commit);
     assert.equal(answer.skill.mode, mode);
-    if (mode === 'skill') assert.equal(answer.skill.loaded, true);
+    if (mode === 'skill') {
+      assert.equal(answer.skill.loaded, true);
+      assert.ok(!('members' in answer.skill)); // N=1 保持旧单对象形态（判别：mode 优先）
+    }
     sessions.add(answer.session_id);
     const execution = JSON.parse(await readFile(join(root, 'raw', `${row.instance_id}.execution.json`), 'utf8'));
     assert.equal(execution.cleanup_status, 'complete');

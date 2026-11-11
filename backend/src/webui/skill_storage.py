@@ -91,6 +91,7 @@ class SkillAssetStorage(CaseAssetStorage):
     def _verify_references(self, dashboard):
         from .skill_assets import identity
         from .queue import Queue
+        from reviewers.dsh_skill.selection import members
         references = [json.loads(path.read_text()) for path in
                       (self.data / 'runs').glob('*/dsh-frozen-config.json')]
         queue = self.data / 'ui-state/queue.sqlite3'
@@ -99,8 +100,17 @@ class SkillAssetStorage(CaseAssetStorage):
         for reference in references:
             if reference.get('skill_mode') != 'skill':
                 continue
-            if identity(dashboard, reference['skill_version']) != reference['skill_identity']:
-                raise RuntimeError('Skill 恢复内容与历史批次或排队身份冲突')
+            # A Skill 组合 freezes the member lists; legacy batches freeze the
+            # single-valued fields. selection.members normalizes both shapes to
+            # [(version, record)] and every member is verified one by one, so a
+            # missing or identity-conflicted member stops recovery as before.
+            try:
+                pairs = members(reference)
+            except ValueError as error:
+                raise RuntimeError('Skill 恢复内容与历史批次或排队身份冲突') from error
+            for version, record in pairs:
+                if identity(dashboard, version) != record:
+                    raise RuntimeError('Skill 恢复内容与历史批次或排队身份冲突')
 
     def _download_archive(self, identifier, record, target, key=None):
         from .skill_package import limits

@@ -21,6 +21,25 @@ def _selection(dashboard, request):
     return suite
 
 
+def _skill_versions(request):
+    """Selected immutable versions: legacy single value or the member list.
+
+    The two request shapes are mutually exclusive on the wire; the frozen
+    spec always stores the member list (plus, for one member, the legacy
+    single-valued fields for compatibility).
+    """
+    single = request.get('skill_version')
+    listing = request.get('skill_versions')
+    if single is not None and listing is not None:
+        raise ValueError('Skill 版本只能以单值或成员列表之一提供')
+    if listing is None:
+        return None if single is None else [single]
+    if (not isinstance(listing, list) or not listing
+            or any(not isinstance(version, str) or not version for version in listing)):
+        raise ValueError('Skill 成员列表无效')
+    return listing
+
+
 def _reviewer(request, suite):
     reviewer = request.get('reviewer', 'lcr')
     choices = {'mcr': {'lcr', 'llm_direct'}, 'ccrab': {'lcr'},
@@ -37,8 +56,10 @@ def _reviewer(request, suite):
             raise ValueError('请先配置 agent.local.json；参见 docs/服务端Agent接入.md') from None
     if reviewer == 'dsh_skill':
         from reviewers.dsh_skill.selection import validate_mode
-        validate_mode(request.get('skill_mode'), request.get('skill_version'))
-    elif request.get('skill_mode') is not None or request.get('skill_version') is not None:
+        versions = _skill_versions(request)
+        validate_mode(request.get('skill_mode'), versions[0] if versions else None, versions)
+    elif (request.get('skill_mode') is not None or request.get('skill_version') is not None
+            or request.get('skill_versions') is not None):
         raise ValueError('Skill 模式仅适用于 DSH + Skill')
     return reviewer
 
@@ -109,8 +130,17 @@ def prepare(dashboard, request, profile):
         spec['skill_mode'] = request['skill_mode']
         if request['skill_mode'] == 'skill':
             from .skill_assets import identity
-            spec.update(skill_version=request['skill_version'],
-                        skill_identity=identity(dashboard, request['skill_version']))
+        if request['skill_mode'] == 'skill':
+            from reviewers.dsh_skill.selection import combination_digest, validate_members
+            versions = _skill_versions(request)
+            records = [identity(dashboard, version) for version in versions]
+            validate_members(versions, records)
+            digest = combination_digest(records)
+            spec.update(skill_versions=versions, skill_identities=records,
+                        skill_combination_digest=digest)
+            if len(records) == 1:
+                spec.update(skill_version=versions[0], skill_identity=records[0])
     from .repository_sources import pin_creation
     pin_creation(dashboard, spec)
+    return key, spec, role_config
     return key, spec, role_config
