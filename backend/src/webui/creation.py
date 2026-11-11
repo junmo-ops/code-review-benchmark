@@ -130,7 +130,6 @@ def prepare(dashboard, request, profile):
         spec['skill_mode'] = request['skill_mode']
         if request['skill_mode'] == 'skill':
             from .skill_assets import identity
-        if request['skill_mode'] == 'skill':
             from reviewers.dsh_skill.selection import combination_digest, validate_members
             versions = _skill_versions(request)
             records = [identity(dashboard, version) for version in versions]
@@ -142,5 +141,4 @@ def prepare(dashboard, request, profile):
                 spec.update(skill_version=versions[0], skill_identity=records[0])
     from .repository_sources import pin_creation
     pin_creation(dashboard, spec)
-    return key, spec, role_config
     return key, spec, role_config

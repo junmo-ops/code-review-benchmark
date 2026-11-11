@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import { dirname, isAbsolute, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, resolve, sep } from 'node:path';
 
 export const name = 'benchmark-tool-scope';
 export const inject = ['tools'];
@@ -9,12 +9,12 @@ export const inject = ['tools'];
 function realOf(path) {
   try {
     return realpathSync.native(path);
-  } catch {
-    try {
-      return realpathSync.native(dirname(path));
-    } catch {
-      return null;
-    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') return null;
+    const parent = dirname(path);
+    if (parent === path) return null;
+    const physical = realOf(parent);
+    return physical === null ? null : resolve(physical, basename(path));
   }
 }
 
@@ -28,7 +28,8 @@ function containedTarget(roots, target) {
   const absolute = isAbsolute(target) ? target : roots[0] + sep + target;
   const physical = realOf(absolute);
   if (physical === null) return false;
-  return insideCase(roots, resolve(absolute)) && insideCase(roots, physical);
+  const physicalRoots = roots.map((root) => realOf(root)).filter(Boolean);
+  return insideCase(roots, resolve(absolute)) && insideCase(physicalRoots, physical);
 }
 
 /** Roots for the given execution: inspection reaches case+input+every bound

@@ -220,12 +220,12 @@ def command(work, prompt, cfg=None):
     legacy = work / 'skill-version'
     members = _member_records(cfg)
     if legacy.exists():
-        binds.append(['--ro-bind', str(legacy / 'content'), '/skill'])
+        binds.extend(['--ro-bind', str(legacy / 'content'), '/skill'])
     elif members and (work / 'skills').exists():
         for _, record in members:
             source = work / 'skills' / record['content_sha256'] / 'content'
             if source.exists():
-                binds.append(['--ro-bind', str(source), '/skills/' + record['content_sha256']])
+                binds.extend(['--ro-bind', str(source), '/skills/' + record['content_sha256']])
     # Skill mode may write inside the case workspace (issues.json, reports);
     # baseline keeps the head snapshot read-only.
     repo_bind = (['--bind', str(work / 'repo'), '/work'] if binds

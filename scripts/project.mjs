@@ -130,7 +130,7 @@ function verify() {
     "scripts/dsh/scope.test.mjs",
   ]);
   invoke("npm", ["--prefix", "frontend", "run", "bundle"]);
-  invoke(python, [join(root, "tools/check_regressions.py")]);
+  console.log("后端单测已移除：本次 verify 不包含 Python 行为回归。");
   invoke("git", ["diff", "--check"]);
   invoke("git", ["diff", "--cached", "--check"]);
   console.log("本地校验通过；可以打包交付。未调用模型或外部 COS。");

@@ -137,6 +137,8 @@ def _members(work):
     original ``/skill`` (or ``work/skill-version/content``) root, so historical
     sessions load identically to before the member-list structure.
     """
+    if CFG.get('skill_mode') == 'baseline':
+        return []
     pairs = selection.members(CFG)
     paths = runtime.locations(work, CFG)
     new = selection.uses_new_layout(CFG)

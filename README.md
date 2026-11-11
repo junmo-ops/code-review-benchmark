@@ -106,7 +106,7 @@ npm start
 | `npm run frontend` | 单独启动开发前端，后端需另行启动 |
 | `npm run build` | 前端类型检查和生产构建 |
 | `npm run check` | Python 语法、目录和函数复杂度，前端与脚本 lint，TypeScript 类型检查 |
-| `npm run verify` | check、前端生产构建、离线回归和 Git 差异检查 |
+| `npm run verify` | check、前端生产构建、现有 Node 离线回归和 Git 差异检查（不含已删除的后端单测） |
 | `npm run e2e` | 本地浏览器业务回归，使用模拟执行器，不调用真实模型或 COS |
 | `npm run e2e:explore` | 上传、队列、异常恢复与持续交互的故障探索 |
 | `npm run cli -- --timeout-seconds 900 status --run-id 批次编号` | 调用原测评命令行 |

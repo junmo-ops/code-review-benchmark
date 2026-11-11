@@ -8,7 +8,7 @@ the whole case. The relay now retries only failures that produced no usable
 completion, inside the whole-case deadline, and records every attempt in the
 request evidence for audit. Client errors (4xx), bounded-response violations
 and deadline expiry are never retried. DSH-side request retries stay disabled;
-usage is counted only from the successful response.
+known usage is counted from every transmission, including failed attempts.
 """
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -60,7 +60,13 @@ def response_usage(body):
     return response_observations(body, 'text/event-stream')['usage']
 
 
+def _transmissions(records):
+    return [attempt for record in records
+            for attempt in record.get('transmissions', [record])]
+
+
 def summarize(records):
+    records = _transmissions(records)
     known = [r['usage'] for r in records if isinstance(r.get('usage'), dict)]
     summary = {}
     for source, target in [('prompt_tokens', 'input_tokens'), ('completion_tokens', 'output_tokens'),
@@ -178,31 +184,34 @@ class Handler(BaseHTTPRequestHandler):
         self.server.inputs.append(json.loads(self.server.redact(json.dumps(payload, ensure_ascii=False))))
         save(self.server.input_evidence, self.server.inputs)
         plan = self.server.retry
-        attempts = []
+        record['transmissions'] = []
         for number in range(1, plan.max_attempts + 1):
             remaining = self.server.deadline - time.monotonic()
             record['budget_remaining_seconds'] = round(max(0, remaining), 3)
             if remaining <= 0:
                 raise CaseDeadlineError('DSH 整例检视时限已到')
+            transmission = dict(attempt=number, status='started')
+            record['transmissions'].append(transmission)
+            record['retries'] = number - 1
+            save(self.server.evidence, self.server.records)
             try:
-                status, content_type, body, retry_after = self._transmit(payload, remaining, record)
-            except (httpx.TransportError, OSError) as error:
-                attempts.append(dict(attempt=number, kind='transport',
-                                     error_kind=_error_kind(error, self.server.deadline)))
-                if number < plan.max_attempts:
+                status, content_type, body, retry_after = self._transmit(payload, remaining, transmission)
+            except (httpx.TransportError, OSError, ValueError) as error:
+                transmission.update(status='failed', error_kind=_error_kind(error, self.server.deadline))
+                save(self.server.evidence, self.server.records)
+                if isinstance(error, (httpx.TransportError, OSError)) and number < plan.max_attempts:
                     self._pause(plan, number, 'transport', None, record)
                     continue
-                record.update(retries=len(attempts), attempts=attempts)
                 raise
             reason, observed = _transient_observed(status, content_type, body)
+            transmission.update(status='failed' if reason else 'responded', kind=reason,
+                                http_status=status, usage=observed.pop('usage'), wire_response=observed)
+            save(self.server.evidence, self.server.records)
             if reason is None or number == plan.max_attempts:
                 record.update(status='responded', http_status=status,
-                              usage=observed.pop('usage'), wire_response=observed)
-                if attempts:
-                    record.update(retries=len(attempts), attempts=attempts)
+                              usage=transmission['usage'], wire_response=observed)
                 self._relay(status, content_type, body)
                 return
-            attempts.append(dict(attempt=number, kind=reason, http_status=status))
             self._pause(plan, number, reason, retry_after, record)
 
     def _transmit(self, payload, remaining, record):
@@ -249,15 +258,19 @@ class Handler(BaseHTTPRequestHandler):
 
 def _bounded_response(reply, deadline, record, started):
     parts, size = [], 0
-    for chunk in reply.iter_bytes():
-        size += len(chunk)
-        record['response_bytes'] = size
-        record.setdefault('first_body_seconds', round(time.monotonic() - started, 3))
-        if size > 16 * 1024 * 1024:
-            raise ResponseLimitError('模型响应超过 16MiB 大小上限')
-        if time.monotonic() >= deadline:
-            raise CaseDeadlineError('读取模型响应时 DSH 整例检视时限已到')
-        parts.append(chunk)
+    try:
+        for chunk in reply.iter_bytes():
+            size += len(chunk)
+            record['response_bytes'] = size
+            record.setdefault('first_body_seconds', round(time.monotonic() - started, 3))
+            if size > 16 * 1024 * 1024:
+                raise ResponseLimitError('模型响应超过 16MiB 大小上限')
+            parts.append(chunk)
+            if time.monotonic() >= deadline:
+                raise CaseDeadlineError('读取模型响应时 DSH 整例检视时限已到')
+    finally:
+        observed = response_observations(b''.join(parts), reply.headers.get('Content-Type', 'application/json'))
+        record.update(usage=observed.pop('usage'), wire_response=observed)
     return b''.join(parts)
 
 
