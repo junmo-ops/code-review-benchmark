@@ -1,0 +1,6 @@
+{
+  "contract": "company-repo-review-v1",
+  "base_url": "https://llm-agent.paas.cmbchina.cn",
+  "poll_seconds": 3,
+  "request_timeout_seconds": 20
+}

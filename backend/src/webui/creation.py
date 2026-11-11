@@ -53,7 +53,7 @@ def _reviewer(request, suite):
         try:
             load_config()
         except OSError:
-            raise ValueError('请先配置 agent.local.json；参见 docs/服务端Agent接入.md') from None
+            raise ValueError('无法读取项目根目录的 agent.json；参见 docs/服务端Agent接入.md') from None
     if reviewer == 'dsh_skill':
         from reviewers.dsh_skill.selection import validate_mode
         versions = _skill_versions(request)

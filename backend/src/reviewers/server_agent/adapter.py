@@ -9,7 +9,6 @@ import uuid
 from urllib.parse import urlsplit, quote
 import httpx
 from runner.storage import ROOT, save, validate_answer
-from runner.runtime import config_root
 from . import company
 
 CAPABILITIES=frozenset({'git_range','findings'})
@@ -20,8 +19,10 @@ REPO=None
 
 
 def load_config():
-    path=Path(os.getenv('BENCH_AGENT_CONFIG',str(config_root(ROOT)/'agent.local.json')))
-    c=json.loads(path.read_text(encoding='utf-8'))
+    path = ROOT / 'agent.json'
+    c = json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(c, dict):
+        raise ValueError('agent.json 必须是 JSON 对象')
     if c.get('contract') == company.CONTRACT:
         return company.validate(c)
     return validate_draft(c)
@@ -99,7 +100,7 @@ def check_repos(items):
         repositories.resolve(CONFIG, item.repo)
         if CONFIG['contract'] == company.CONTRACT:
             payload(item)
-    print('仓库标识已确定（优先映射，否则使用案例仓库名）；本地检查不证明服务端存在这些提交。结果必须回传实际范围。')
+    print('直接使用案例集中的仓库标识；本地检查不证明服务端存在这些提交。结果必须回传实际范围。')
 
 
 def process_timeout(item):return CFG['timeout_minutes']*60
