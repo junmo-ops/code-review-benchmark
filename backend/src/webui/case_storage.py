@@ -30,7 +30,19 @@ def _settings():
     s3 = value.get('s3')
     if not isinstance(s3, dict):
         raise RuntimeError('案例包 COS 配置无效')
-    return mode, s3
+    return mode, _prefix_overrides(s3)
+
+
+def _prefix_overrides(options):
+    result = dict(options)
+    for variable, key in (('BENCH_COS_PREFIX', 'prefix'), ('BENCH_COS_RUN_PREFIX', 'run_prefix')):
+        if variable not in os.environ:
+            continue
+        value = os.environ[variable].strip().strip('/')
+        if not value or any(part in {'', '.', '..'} for part in value.split('/')):
+            raise RuntimeError(variable + ' 须为非空 COS 前缀，不能包含空路径段、. 或 ..')
+        result[key] = value
+    return result
 
 
 def mode():
@@ -670,19 +682,8 @@ class CaseAssetStorage(CaseArchiveStorage):
     def _valid_repository_records(repositories, maximum):
         if not isinstance(repositories, dict) or not repositories:
             return False
-        for slug, item in repositories.items():
-            if isinstance(item, dict) and item.get('source') == 'git':
-                from .automatic_repositories import valid
-                if not valid(slug, item):
-                    return False
-                continue
-            if (not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slug)
-                    or not isinstance(item, dict) or not isinstance(item.get('sha256'), str)
-                    or not ARCHIVE_ID.fullmatch(item['sha256']) or type(item.get('size')) is not int
-                    or not 0 < item['size'] <= maximum
-                    or item.get('source', 'case-archive') not in {'case-archive', 'repository-pool'}):
-                return False
-        return True
+        from .repository_sources import valid_record
+        return all(valid_record(slug, item, maximum) for slug, item in repositories.items())
 
     def _restore_record_files(self, dashboard, record):
         from .case_assets import _registry
@@ -786,13 +787,15 @@ class CaseAssetStorage(CaseArchiveStorage):
             return
         report('download', '校验 bundle 缓存，缺失或失效时从 COS 下载')
         cached = self.asset_cache / (item['sha256'] + '.bundle')
-        object_key = (self._repository_pool_key(slug, item['sha256'])
+        source_slug = item.get('repository', slug)
+        object_key = (self._repository_pool_key(source_slug, item['sha256'])
                       if item.get('source') == 'repository-pool'
-                      else self._repository_key(slug, item['sha256']))
+                      else self._repository_key(source_slug, item['sha256']))
         with phase('repository.bundle', key=slug):
             self._download_object(object_key, cached, item['size'], item['sha256'])
         bundle = staging / (slug + '.bundle')
-        bundle.symlink_to(cached)
+        import shutil
+        shutil.copyfile(cached, bundle)
         report('prepare', '恢复 Git 历史并校验案例提交')
         destination.parent.mkdir(parents=True, exist_ok=True)
         with phase('repository.restore', key=slug):

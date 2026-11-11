@@ -12,7 +12,8 @@ CACHE = LAB / "translations.zh-CN.json"
 
 
 def read(path):
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    from runner.review_timing import with_review_duration
+    return with_review_duration(json.loads(path.read_text(encoding="utf-8-sig")))
 
 
 def digest(text):

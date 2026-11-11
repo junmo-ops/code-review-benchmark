@@ -601,8 +601,8 @@ def _install_custom(dashboard, archive, progress=None):
         # restart the same dataset can already be registered while its Git
         # repository still needs to be restored from the archive.
         if manifest['format'] == CASE_CONFIG_FORMAT:
-            from .automatic_repositories import sources
-            repository_versions = sources(cases)
+            from .repository_sources import declarations
+            repository_versions = declarations(cases, manifest, dashboard.data)
         else:
             _prepare_repositories(cases, folder / 'bundles', dashboard.data / 'repos', progress)
             _register_repository_versions(dashboard.data, manifest, folder / 'bundles', slugs)
@@ -611,6 +611,8 @@ def _install_custom(dashboard, archive, progress=None):
                                            'source': 'case-archive'} for slug in slugs}
         existing = next((row for row in registry['datasets']
                          if row.get('suite') == suite_id and row.get('dataset_sha256') == digest), None)
+        from .repository_sources import update_binding
+        update_binding(dashboard, existing, repository_versions)
         if existing:
             if existing.get('purged'):
                 upload_rel = f'case-datasets/{suite_id}/{digest}/dataset.jsonl'

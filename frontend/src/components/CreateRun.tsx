@@ -106,6 +106,7 @@ function SkillSelection({ reviewer }: { reviewer?: string }) {
 }
 function executionDescription(values: Partial<Values>) {
   if (values.suite === 'ccrab') return '固定单例检视、DeepSeek 修复与容器测试，不使用语义裁判。';
+  if (values.reviewer === 'server_agent') return '默认等待服务端结果 60 分钟，可在高级参数调整。超时只停止本地等待，不会取消服务端任务。';
   if (values.reviewer === 'lcr') return 'LCR 整例上限随变更文件数增加；与多模型实验的整例预算不同。';
   return undefined;
 }
@@ -252,6 +253,7 @@ export function CreateRun({
       dataset: initial.dataset,
       name: initial.name,
       reviewer: initial.reviewer,
+      timeout_minutes: initial.timeout_minutes,
       evaluator: initial.evaluator,
       skill_mode: undefined,
       skill_version: undefined,
@@ -318,7 +320,7 @@ export function CreateRun({
         )}
         <Form.Item name="reviewer" label="被测工具">
           <Select options={reviewers(values.suite ?? '')}
-            onChange={(reviewer: string) => form.setFieldsValue({ skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_version: undefined })} />
+            onChange={(reviewer: string) => form.setFieldsValue({ timeout_minutes: reviewer === 'server_agent' ? 60 : 10, skill_mode: reviewer === 'dsh_skill' ? 'baseline' : undefined, skill_version: undefined })} />
         </Form.Item>
         <EvaluationMode suite={values.suite ?? ''} />
         <SkillSelection reviewer={values.reviewer} />

@@ -15,13 +15,10 @@ from runner.paths import PROJECT_ROOT as ROOT
 
 
 def check_build():
-    import json
-    from runner.cloud import checked_instances
+    from suites.registry import get_suite
     from reviewers.lcr.adapter import tool_identity
-    manifest = json.loads((ROOT / 'deployment/aacr-cases-manifest.json').read_text(encoding='utf-8'))
-    cases = checked_instances(ROOT / 'data/pilot5.jsonl', 'aacr')
-    if not manifest['files'] or not cases:
-        raise RuntimeError('AACR 案例清单或资源校验清单为空')
+    # Bundled samples are optional; validate datasets when imported or executed.
+    get_suite('aacr')
     frontend=Path(os.environ.get('BENCH_FRONTEND_DIST',ROOT/'frontend-dist'))
     if not (frontend/'index.html').is_file() or not any((frontend/'assets').glob('*')):
         raise RuntimeError('React 前端构建产物缺失')

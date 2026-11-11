@@ -2,6 +2,8 @@
 
 安装、目录和日常启动请先看 [项目 README](../README.md)。
 
+- [dev / st COS 环境隔离](COS环境隔离.md)：同一代码、同一桶按环境变量区分数据路径。
+
 - [DSH 部署操作单](../deployment/DSH部署操作单.md)：先发布独立 headless 内部 npm，再更新测评镜像和 POD；无需 RPM 或归档入 Git。
 - [DSH 源码发布核查](../deployment/DSH源码发布核查.md)：源码发行范围、固定平台输入和依赖核查报告的解释。
 - [DSH + Skill 测评规格](DSH-Skill测评方案.md)：用户故事、实现决策、测试边界与排除范围。

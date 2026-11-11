@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 from .files import read
+from runner.review_timing import with_review_duration
 
 
 def _number(value):
@@ -15,7 +16,7 @@ def _usage(folder, cases):
         path = folder / 'results' / (case['id'].replace('/', '__') + '.json')
         if not path.is_file():
             continue
-        answer = read(path)
+        answer = with_review_duration(read(path))
         summary = answer.get('review', {}).get('summary', {})
         rows.append(dict(seconds=answer.get('duration_seconds'), tokens=summary.get('total_tokens')))
     result = {}

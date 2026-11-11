@@ -1,9 +1,26 @@
 """Execute planned jobs and persist their lifecycle independently of HTTP."""
 import os
+import json
 import subprocess
 import threading
 import time
 from .files import now
+
+
+def remote_wait_message(run, task, started):
+    if not task:
+        return None
+    path = run / 'raw' / (task.replace('/', '__') + '.execution.json')
+    try:
+        if path.stat().st_mtime < started:
+            return None
+        record = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict) or record.get('status') != 'remote_wait_timeout':
+        return None
+    return (f"等待服务端任务 {record.get('task_id', '')} 超时，任务可能仍在运行；"
+            '本次不继续评分。请选择该案例，点击“从已有输出恢复结果”，成功后再评分；不要重复检视。')
 
 
 class JobExecutor:
@@ -78,6 +95,7 @@ class JobExecutor:
         label = stage + (' · ' + task if task else '')
         self.context.update(job_id, step=label, step_started_at=now(), completed_steps=index, message="正在执行")
         from runner.diagnostics import phase, event
+        stage_started = time.time()
         with phase('benchmark.stage', job_id=job_id, key=job['key'], stage=stage):
             code, timed_out = self._execute_stage(job_id, job, request, stage, task, init, log)
         event('benchmark.stage.result', job_id=job_id, stage=stage, exit_code=code,
@@ -86,6 +104,9 @@ class JobExecutor:
         if self.context.cancelled.is_set():
             return 'cancelled'
         if code != 0 or timed_out:
+            message = remote_wait_message(self.context.run_dir(job['key']), task, stage_started)
+            if stage in {'review', 'recover'} and message:
+                raise ValueError(message)
             if stage == 'comparison':
                 raise ValueError('对比实验存在失败或未完成案例，请查看对比报告与日志；不自动重试。')
             if self._continue_partial_review(job, steps, index, stage, code, timed_out):

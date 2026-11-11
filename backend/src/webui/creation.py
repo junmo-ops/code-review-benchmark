@@ -69,7 +69,7 @@ def _limits(request, suite, reviewer):
         raise ValueError('案例并发仅适用于单轮 LCR 测评')
     if reviewer != 'lcr' and retries:
         raise ValueError('失败案例自动重试当前仅支持 LCR')
-    return dict(timeout_minutes=_integer(request, 'timeout_minutes', 10, 1, 120),
+    return dict(timeout_minutes=_integer(request, 'timeout_minutes', 60 if reviewer == 'server_agent' else 10, 1, 120),
                 max_tokens=_integer(request, 'max_tokens', 32768, 1, 131072),
                 case_jobs=jobs, max_case_retries=retries, **_dsh_limits(request, reviewer))
 
@@ -111,4 +111,6 @@ def prepare(dashboard, request, profile):
             from .skill_assets import identity
             spec.update(skill_version=request['skill_version'],
                         skill_identity=identity(dashboard, request['skill_version']))
+    from .repository_sources import pin_creation
+    pin_creation(dashboard, spec)
     return key, spec, role_config

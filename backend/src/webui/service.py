@@ -342,10 +342,11 @@ class Dashboard:
                         rows = [json.loads(line) for line in f if line.strip()]
                     item['datasets'].append(dict(id=filename, count=len(rows), rounds=sum(len(r.get('rounds', [])) for r in rows)))
             from .case_assets import registered_datasets
+            from .repository_sources import summary
             for upload in registered_datasets(self.data):
                 if upload.get('suite') == entry['id']:
                     item['datasets'].append(dict(id=upload['id'], name=upload['name'],
-                                                 count=upload['count'], rounds=0))
+                                                 count=upload['count'], rounds=0, repository_sources=summary(upload)))
             result.append(item)
         return result
 

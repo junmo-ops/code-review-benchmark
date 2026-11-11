@@ -3,6 +3,7 @@ export interface Dataset {
   name?: string;
   count: number;
   rounds?: number;
+  repository_sources?: string;
 }
 export interface Suite {
   id: string;

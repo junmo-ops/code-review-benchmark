@@ -16,6 +16,7 @@ export const labels: Record<string, string> = {
   succeeded: '已完成',
   interrupted: '曾中断',
   timed_out: '检视超时',
+  remote_wait_timeout: '等待超时 · 可恢复查询',
   unreadable: '需检查',
   simulation_complete: '模拟完成·不计分',
   complete_no_findings: '未检出 · 未修复',

@@ -230,7 +230,7 @@ def _arguments():
     p.add_argument('--skill-identity-sha256', help='队列冻结的完整 Skill 身份摘要，仅 DSH init 指定')
     p.add_argument('--repos-root')
     p.add_argument('--model')
-    p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效，默认30分钟')
+    p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效；服务端 Agent 默认60分钟，DSH 默认10分钟，其他默认30分钟')
     p.add_argument('--case-jobs',type=int,default=None,help='仅 init 指定，LCR 案例并发 1–16，默认1')
     p.add_argument('--max-case-retries',type=int,default=None,help='仅 init 指定，失败案例自动重试 0–2 次，默认1')
     p.add_argument('--instance',help='preview/recover 必填；review 不指定时调度所有未完成案例')
@@ -260,7 +260,7 @@ def _validate_arguments(p, args):
 
 def _argument_defaults(args):
     if args.evaluator is None: args.evaluator='martian'
-    if args.timeout_minutes is None: args.timeout_minutes=10 if args.reviewer == 'dsh_skill' else 30
+    if args.timeout_minutes is None: args.timeout_minutes={'server_agent': 60, 'dsh_skill': 10}.get(args.reviewer, 30)
 
 
 def main():

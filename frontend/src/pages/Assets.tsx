@@ -274,6 +274,11 @@ export function Assets({ repository = false }: { repository?: boolean }) {
     { title: '测评类型', dataIndex: 'suite' },
     { title: '数量', dataIndex: 'count' },
     {
+      title: '仓库来源',
+      dataIndex: 'repository_sources',
+      render: (value?: string) => value ?? '内置配置',
+    },
+    {
       title: '来源',
       key: 'source',
       render: (_: unknown, d: Dataset) => (uploaded.has(d.id) ? '网页导入' : '内置'),

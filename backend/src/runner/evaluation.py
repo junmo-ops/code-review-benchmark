@@ -145,7 +145,7 @@ def report(run, cfg, case_ids):
              f"首次结果覆盖：{data['first_observed']}/{data['total']}；最终答卷：{data['final_complete']}/{data['total']}。",
              f"后续执行或恢复查询：{data['platform_followups']} 次；详细记录见 evaluation-summary.json。",
              f"首次已记录耗时：{data['first_elapsed_seconds']} 秒；首次已知 Token：{data['first_known_tokens']}。",
-             f"累计已记录执行耗时：{data['elapsed_seconds']} 秒；已知 Token：{data['known_tokens']}（有记录尝试 {data['token_attempts']}/{data['attempts']}）。",
+             f"平台累计执行/查询耗时（不等于服务端检视耗时）：{data['elapsed_seconds']} 秒；已知 Token：{data['known_tokens']}（有记录尝试 {data['token_attempts']}/{data['attempts']}）。",
              f"已识别平台故障：{data['platform_failures']} 次；未确认归因失败：{data['unclassified_failures']} 次。",
              '恢复查询不再次累计远端任务 Token；LCR 续跑用量可能包含前次会话，未确认增量时不累加。',
              '冻结执行条件：`' + json.dumps({key: cfg.get(key) for key in (

@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--name', required=True)
     parser.add_argument('--dataset', required=True, type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--repository-sources', type=Path, help='逐仓库 Git/COS 来源 JSON 文件')
     args = parser.parse_args()
     if not args.name.strip() or len(args.name) > 100:
         parser.error('--name 必须为 1–100 个字符')
@@ -28,6 +29,10 @@ def main():
     records = {'dataset.jsonl': {'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}}
     manifest = {'format': 'code-review-benchmark-case-config-v1', 'name': args.name,
                 'suite': args.suite, 'repositories': slugs, 'files': records}
+    if args.repository_sources:
+        manifest['repository_sources'] = json.loads(args.repository_sources.read_text(encoding='utf-8-sig'))
+        from webui.repository_sources import declarations
+        declarations(cases, manifest)
     temporary = args.output.with_name(args.output.name + '.part')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     try:

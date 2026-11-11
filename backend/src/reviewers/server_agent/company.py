@@ -1,5 +1,6 @@
 """Company report API; fixed service model, direct ranges and persisted report IDs."""
 from . import repositories
+from runner.review_timing import with_review_duration
 from pathlib import PurePosixPath
 import json
 import subprocess
@@ -138,13 +139,13 @@ def convert(item, data, task_id, run):
     if not isinstance(issues, list):
         raise ValueError('报告缺少完整 issues 数组')
     comments = [comment(issue) for issue in issues]
-    return dict(instance_id=item.instance_id, repo=item.repo, base_commit=item.base_commit,
+    return with_review_duration(dict(instance_id=item.instance_id, repo=item.repo, base_commit=item.base_commit,
                 head_commit=item.head_commit, reviewer='server_agent',
                 review=dict(status='complete', comments=comments, summary=token_usage(report), llm={'model': MODEL}),
                 service=dict(task_id=task_id, scope=request, simulation=False, engine_version=None,
                              model_source='operator_confirmed_family_only', usage=extra_info(report).get('token_usage'),
                              completeness_source='service_SUCCESS_contract',
-                             timing={'trigger_at': report.get('trigger_at'), 'completed_at': report.get('completed_at')}))
+                             timing={'trigger_at': report.get('trigger_at'), 'completed_at': report.get('completed_at')})))
 
 
 def freeze(config, cfg):
