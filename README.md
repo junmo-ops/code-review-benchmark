@@ -28,7 +28,6 @@ code-review-benchmark/
 │   │   ├── framework/         案例导入与协议
 │   │   ├── benchmark/         测评记录与分析
 │   │   └── deployment/        服务启动和 COS 恢复/备份
-│   ├── tests/                 已有后端测试
 │   ├── pyproject.toml         Python 包、版本及命令入口
 │   ├── requirements.txt       统一后端依赖
 │   └── Dockerfile             后端镜像（构建 React 并由 Python 提供页面）
@@ -38,11 +37,24 @@ code-review-benchmark/
 ├── vendor/                    固定版本的第三方基准源码
 ├── deployment/                行内部署配置与说明
 ├── docs/                      操作指南与技术文档
-├── examples/                  示例输入和配置
+├── examples/                  示例输入和报告样例
+├── runtime/                   本地运行数据（自动创建，排除出 Git）
 └── package.json               项目级命令
 ```
 
-`frontend/dist/`、`.venv/`、LCR 安装、仓库历史、上传包、模型密钥和运行记录都是本地产物，不进入源码仓库。服务端可写数据放在 `BENCH_DATA_ROOT` 指定的目录；现有本地数据路径保持兼容。目录调整不删除运行结果或私有模型配置。
+没有旧运行数据的工作区，批次、案例资源、日志和缓存默认写入 `runtime/`，模型配置写入 `runtime/models/`。仓库根目录的 `agent.json` 是随代码发布的服务配置。容器仍按部署配置中的 `BENCH_DATA_ROOT` 和 `BENCH_CONFIG_ROOT` 读取数据。安装环境（如 `.venv/`、`lcr/` 和 `runtimes/`）各自保留独立目录。
+
+含旧运行目录或案例登记表的工作区在迁移前仍使用原数据目录。迁移时先停止工作台、Worker 和 CLI 测评，执行以下命令。Windows 使用 `.venv\Scripts\python.exe` 替换 Python 路径。
+
+```bash
+.venv/bin/python tools/migrate_local_runtime.py
+.venv/bin/python tools/migrate_local_runtime.py --apply
+```
+
+第一条命令预览移动清单，第二条在本地重命名目录。遇到同名目标或关联 Git 工作树时停止，先处理冲突再执行。批次文件内容和模型配置原样保留。历史批次保留已冻结的设置，原来指向项目根目录 `repos/` 的引用会定位到迁移后的目录。
+
+安装资源校验清单集中在 `deployment/assets/`，旧 DSH 传输包说明及恢复入口在 `deployment/legacy-transfer/`，已提交的报告样例在 `examples/reports/`。增量包的删除清单随 ZIP 交付。
+
 
 ## 首次准备
 

@@ -73,7 +73,9 @@ def main():
     launcher = [os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/c', r'call bin\lcr.cmd version']
     subprocess.run(launcher, cwd=ROOT, check=True)
     restore_repositories(parser)
-    (ROOT/'local-runtime.json').write_text(json.dumps({
+    runtime = data_root(ROOT)
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime/'local-runtime.json').write_text(json.dumps({
         'platform': 'Windows', 'architecture': platform.machine(),
         'python': '.'.join(map(str, sys.version_info[:3])),
         'binary': binary.name, 'suite': 'aacr', 'assets': 'company_package_sources',

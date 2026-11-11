@@ -34,7 +34,7 @@ python3 tools/prepare_assets.py --archive /实际上传路径/lcr-cloud-assets.t
 python3 tools/setup.py
 ```
 
-首次安装工具 timeout 可设360000ms；Linux x86_64、Python3.11、Node20、Git及venv/ensurepip为环境要求。此过程不联网、不调用模型。资源包的SHA256必须与源码中的assets-archive.sha256一致；已有资源不同会停止覆盖。资源变化须同时更新校验清单并新建测评批次。
+首次安装工具 timeout 可设360000ms；Linux x86_64、Python3.11、Node20、Git及venv/ensurepip为环境要求。此过程不联网、不调用模型。资源包的SHA256必须与源码中的deployment/assets/assets-archive.sha256一致；已有资源不同会停止覆盖。资源变化须同时更新校验清单并新建测评批次。
 
 本工程不需要 npm install 或 Go。tools/setup.py 验证资源、离线安装依赖、恢复案例 Git 历史，并执行 LCR version。lcr 为此前增加诊断日志的测试版，CLI检视策略没有新增修改；Linux实际可用性仍须由平台安装验证，不能用本机交叉编译代替。
 

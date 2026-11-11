@@ -9,9 +9,9 @@
 1. 将 source.7z 和 deps-1/2/3.7z 四个包全部传入行内。
 2. 新建一个空目录，分别对四个包选择“解压到指定目录”，目标都选这个相同目录。
    不要分别解压到四个以包名命名的目录。最终只有一个 code-review-benchmark 项目目录。
-3. Windows：进入项目目录，双击 restore-dsh.cmd；成功应显示 SHA256 verified。
+3. Windows：进入项目目录，双击 deployment/legacy-transfer/restore-dsh.cmd；成功应显示 SHA256 verified。
    使用系统自带 Windows PowerShell 计算摘要，不需要设置 ExecutionPolicy 或安装 Python。
-   Linux/macOS：在项目目录执行 python3 restore-dsh.py；只用 Python 标准库，不联网。
+   Linux/macOS：在项目目录执行 python3 deployment/legacy-transfer/restore-dsh.py；只用 Python 标准库，不联网。
    若缺少或损坏某一包，脚本会拒绝还原。分片保留，不自动删除；重复还原会核验已有文件。
 4. 完整依赖会还原为 deployment/offline/dsh-npm.tar.gz（130902940 字节）。
    SHA256：6d24a25a186101accaa0ec9993fcab7b45f3c79990506bcba2e13aba45756939

@@ -36,7 +36,7 @@ def delivery_sources():
     source=[]
     for pattern in ['*.py','*.md','*.example.json']:
         source.extend(ROOT.glob(pattern))
-    source.extend(ROOT/name for name in ['.gitignore','package.json','.dockerignore','assets-manifest.json','assets-archive.sha256','打开测评工作台.command','打开测评工作台.bat','bin/lcr.cmd'])
+    source.extend(ROOT/name for name in ['.gitignore','package.json','.dockerignore','agent.json','打开测评工作台.command','打开测评工作台.bat','bin/lcr.cmd'])
     for name in ['backend','scripts','data','tests','tools','docs','examples','vendor','deployment']:
         source.extend(p for p in (ROOT/name).rglob('*') if source_file(p))
     aacr_repos={json.loads(line)['repo'].replace('/','__') for line in (ROOT/'data/pilot5.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()}
@@ -54,12 +54,12 @@ def main():
     subprocess.run(['node', str(ROOT / 'scripts/project.mjs'), 'verify'], cwd=ROOT, check=True)
     assets = delivery_assets()
     manifest={name:hashlib.sha256(data).hexdigest() for name,(data,mode) in sorted(assets.items())}
-    (ROOT/'assets-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+    (ROOT/'deployment/assets/assets-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
     archive=ROOT.parent/'lcr-cloud-assets.tar.gz'
     with tarfile.open(archive,'w:gz') as t:
         for name,(data,mode) in sorted(assets.items()):
             item=tarfile.TarInfo(name);item.size=len(data);item.mode=mode;t.addfile(item,io.BytesIO(data))
-    (ROOT/'assets-archive.sha256').write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'\n')
+    (ROOT/'deployment/assets/assets-archive.sha256').write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'\n')
     source, aacr_bundles = delivery_sources()
     zipped=ROOT.parent/'code-review-benchmark-source.zip'
     with zipfile.ZipFile(zipped,'w',zipfile.ZIP_DEFLATED) as z:

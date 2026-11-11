@@ -177,7 +177,7 @@ def cancellation_requested():
 
 
 def _lcr_executable():
-    if not (ROOT/'local-runtime.json').exists() and platform.system() in {'Windows', 'Darwin'}:
+    if not local_runtime_path().exists() and platform.system() in {'Windows', 'Darwin'}:
         return str(ROOT/'bin'/('lcr.cmd' if os.name == 'nt' else 'lcr'))
     executable = shutil.which("lcr.cmd") if os.name == "nt" else shutil.which("lcr")
     if not executable:
@@ -578,8 +578,13 @@ def _stage_review(instances, run, preview):
 
 CAPABILITIES = frozenset({"git_range", "findings"})
 
+def local_runtime_path():
+    from runner.runtime import data_root
+    return data_root(ROOT) / 'local-runtime.json'
+
+
 def tool_identity():
-    runtime_path = ROOT/'local-runtime.json'
+    runtime_path = local_runtime_path()
     if not runtime_path.exists() and platform.system() in {'Windows', 'Darwin'}:
         from .runtime import local_identity
         return local_identity(ROOT)
@@ -587,7 +592,7 @@ def tool_identity():
 
 
 def _legacy_tool_identity():
-    runtime_path = ROOT/'local-runtime.json'
+    runtime_path = local_runtime_path()
     if runtime_path.exists():
         runtime = json.loads(runtime_path.read_text(encoding='utf-8'))
         if runtime.get('platform') != platform.system() or runtime.get('architecture') != platform.machine():
@@ -615,7 +620,12 @@ def _legacy_tool_identity():
         paths += sorted(p for p in rules_root.rglob('*') if p.is_file())
     else:
         paths += sorted(p for p in (ROOT/'lcr/rules').rglob('*') if p.is_file())
-    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+    return _runtime_digests(paths, runtime_path)
+
+
+def _runtime_digests(paths, runtime_path):
+    return {('local-runtime.json' if path == runtime_path else str(path.relative_to(ROOT))):
+            hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
 
@@ -726,7 +736,8 @@ def configure(cfg, run):
         raise ValueError('失败案例自动重试次数必须为 0–2')
     MAX_CASE_RETRIES = 0 if cfg.get('evaluation_mode') == 'stability' else retries
     FILE_CONCURRENCY = 1
-    REPOS_ROOT = Path(cfg.get('repos_root', ROOT/'repos'))
+    from runner.runtime import data_root, repository_root
+    REPOS_ROOT = repository_root(ROOT, cfg.get('repos_root', data_root(ROOT) / 'repos'))
     LCR_TIMEOUT_MINUTES = cfg['timeout_minutes']
     os.environ['PATH'] = str(ROOT/'bin') + os.pathsep + os.environ.get('PATH','')
     os.environ['LCR_DIAGNOSTICS_DIR'] = str(run/'diagnostics')

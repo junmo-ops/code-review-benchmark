@@ -146,7 +146,7 @@ class ExecutionPlanner:
 
     def _review_budget(self, key, cfg, task):
         # Bound one batch review command by the slowest case, since cases run concurrently.
-        from runner.cloud import checked_instances
+        from runner.cloud import checked_instances, repo_path
         items = checked_instances(self.context.run_dir(key)/'dataset.jsonl', cfg['suite']['id'])
         if task:
             items = [i for i in items if i.instance_id == task]
@@ -154,7 +154,7 @@ class ExecutionPlanner:
         attempts = cfg.get('max_case_retries', 1) + 1
         backoff = sum(min(5 * retry, 15) for retry in range(1, attempts))
         for item in items:
-            repo = Path(cfg['repos_root']) / item.repo.replace('/', '__')
+            repo = repo_path(cfg['repos_root'], item)
             base = subprocess.check_output(['git', '-C', str(repo), 'merge-base', item.base_commit, item.head_commit], text=True, timeout=20).strip()
             files = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only', '-z', base, item.head_commit, '--'], timeout=20)
             from reviewers.lcr.options import case_timeout

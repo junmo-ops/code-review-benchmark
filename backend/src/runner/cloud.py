@@ -52,7 +52,8 @@ def checked_instances(dataset, suite_id="aacr"):
 
 
 def repo_path(root, item):
-    return Path(root) / item.repo.replace('/', '__')
+    from runner.runtime import repository_root
+    return repository_root(ROOT, root) / item.repo.replace('/', '__')
 
 
 @contextmanager

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 where powershell.exe >nul 2>nul
 if errorlevel 1 goto failed
 if exist "deployment\offline\dsh-npm.tar.gz" (
@@ -21,7 +21,7 @@ move "deployment\offline\dsh-npm.tar.gz.pending" "deployment\offline\dsh-npm.tar
 if errorlevel 1 goto failed
 :done
 echo DSH dependency file restored and SHA256 verified.
-echo Next: read IMPORT.txt. DSH is still disabled until you enable the Docker build.
+echo Next: read deployment\legacy-transfer\IMPORT.txt. DSH is still disabled until you enable the Docker build.
 pause
 exit /b 0
 :verify

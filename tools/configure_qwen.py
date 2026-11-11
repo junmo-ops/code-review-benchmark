@@ -9,7 +9,41 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "backend/src"))
+from runner.runtime import config_root
+
 JUDGE_KEYS = ('JUDGE_BASE_URL', 'JUDGE_API_KEY', 'JUDGE_MODEL')
+
+
+def valid_url_text(base):
+    return not any(ch.isspace() or ch in '{}<>' for ch in base)
+
+
+def validate_endpoint(parser, model, base):
+    if not model or any(ch.isspace() for ch in model):
+        parser.error('模型 ID 不能为空或含空白字符')
+    try:
+        url = urlsplit(base)
+        valid = (url.scheme in ('http', 'https') and url.hostname and not
+                 (url.username or url.password or url.query or url.fragment)
+                 and valid_url_text(base))
+        url.port
+    except ValueError:
+        valid = False
+    if not valid or url.path.endswith('/chat/completions'):
+        parser.error('请填写真实接口根地址；不能含密码、查询参数、占位符或 /chat/completions')
+
+
+def judge_settings(parser, source):
+    if source.exists():
+        try:
+            original = json.loads(source.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            parser.error('原配置无法读取或 JSON 格式无效')
+        if not isinstance(original, dict):
+            parser.error('原配置必须是 JSON 对象')
+    else:
+        original = os.environ
+    return {key: original.get(key, '') for key in JUDGE_KEYS}
 
 
 def main():
@@ -20,7 +54,7 @@ def main():
     parser.add_argument('--source', default='model.local.json', help='用于复制裁判配置')
     parser.add_argument('--output', help='默认 model.qwen.<environment>.local.json')
     args = parser.parse_args()
-    root = Path(os.environ.get('BENCH_CONFIG_ROOT', str(ROOT))).expanduser().resolve()
+    root = config_root(ROOT)
     source = Path(args.source).expanduser()
     output = Path(args.output or f'model.qwen.{args.environment}.local.json').expanduser()
     source = source if source.is_absolute() else root / source
@@ -31,28 +65,8 @@ def main():
         parser.error('文件名须为 model*.local.json，才能被工作台发现并排除出 Git')
     model = (args.model or input('Qwen 模型 ID（按服务端实际名称填写）：')).strip()
     base = (args.base_url or input('OpenAI 兼容 Base URL（不含 /chat/completions）：')).strip().rstrip('/')
-    if not model or any(ch.isspace() for ch in model):
-        parser.error('模型 ID 不能为空或含空白字符')
-    try:
-        url = urlsplit(base)
-        valid = (url.scheme in ('http', 'https') and url.hostname and not
-                 (url.username or url.password or url.query or url.fragment)
-                 and not any(ch.isspace() for ch in base) and not any(ch in base for ch in '{}<>'))
-        url.port
-    except ValueError:
-        valid = False
-    if not valid or url.path.endswith('/chat/completions'):
-        parser.error('请填写真实接口根地址；不能含密码、查询参数、占位符或 /chat/completions')
-    if source.exists():
-        try:
-            original = json.loads(source.read_text(encoding='utf-8'))
-        except (OSError, ValueError):
-            parser.error('原配置无法读取或 JSON 格式无效')
-        if not isinstance(original, dict):
-            parser.error('原配置必须是 JSON 对象')
-    else:
-        original = os.environ
-    judge = {key: original.get(key, '') for key in JUDGE_KEYS}
+    validate_endpoint(parser, model, base)
+    judge = judge_settings(parser, source)
     token = getpass.getpass('Qwen API Key（隐藏输入，仅保存到本机）：').strip()
     if not token:
         parser.error('API Key 不能为空')

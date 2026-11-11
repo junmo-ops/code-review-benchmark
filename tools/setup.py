@@ -41,7 +41,7 @@ def main():
     dataset=Path(args.dataset)
     if not dataset.is_absolute():dataset=ROOT/dataset
     cases=checked_instances(dataset,args.suite)
-    manifest=ROOT/'assets-manifest.json'
+    manifest=ROOT/'deployment/assets/assets-manifest.json'
     if manifest.exists():
         for name,expected in json.loads(manifest.read_text(encoding='utf-8')).items():
             if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=expected:

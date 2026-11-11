@@ -5,6 +5,11 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'backend/src'))
+from runner.runtime import data_root
 
 PARAMS = ('model', 'stream', 'max_tokens', 'max_completion_tokens', 'temperature',
           'top_p', 'reasoning_effort', 'enable_thinking', 'thinking', 'tool_choice')
@@ -143,10 +148,9 @@ def main():
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"backend/src"))
-    from runner.storage import ROOT
     from suites.registry import resolve_run_suite
     from reviewers.lcr.logs import inspect_case
-    root=ROOT/'runs'/args.run_id
+    root=data_root(ROOT)/'runs'/args.run_id
     config=json.loads((root/'run-config.json').read_text(encoding='utf-8-sig'))
     dataset=root/'dataset.jsonl'
     if config.get('dataset_sha256') != hashlib.sha256(dataset.read_bytes()).hexdigest():parser.error('案例集与本轮不一致')
