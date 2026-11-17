@@ -1,5 +1,4 @@
 {
   "mode": "single",
-  "scope": "dev",
-  "database_config": "database.local.json"
+  "scope": "dev"
 }

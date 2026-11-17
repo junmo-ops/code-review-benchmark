@@ -1,0 +1,5 @@
+{
+  "host": "codereviewst.tdsql.dbdns.cmbchina.cn",
+  "port": 6666,
+  "database": "codebench"
+}

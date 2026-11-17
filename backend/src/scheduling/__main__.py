@@ -7,7 +7,7 @@ from .queue import CaseQueue
 
 def main():
     parser = argparse.ArgumentParser(description='多实例调度管理（建表与故障排查；日常配置由 Web 启动自动同步）')
-    parser.add_argument('--config', required=True, help='数据库本地 JSON 配置文件')
+    parser.add_argument('--config', default='database.local.json', help='未设置 BENCH_DB_USER/PASSWORD 时使用的本地数据库 JSON 文件')
     parser.add_argument('--scope', required=True, help='环境标识，例如 st 或 dev')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('initialize', help='显式创建调度表，需要建表权限')
@@ -21,7 +21,7 @@ def main():
     status = commands.add_parser('status')
     status.add_argument('run_id')
     args = parser.parse_args()
-    database = Database.from_file(args.config)
+    database = Database.from_config(args.config)
     queue = CaseQueue(database, args.scope)
     if args.command == 'initialize':
         database.initialize()

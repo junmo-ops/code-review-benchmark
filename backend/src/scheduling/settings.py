@@ -34,7 +34,7 @@ def services(root=PROJECT_ROOT):
     from webui.case_storage import mode
     if mode() != 'cos':
         raise ValueError('多实例模式必须配置 COS，不能使用本地资源存储')
-    database = Database.from_file(Path(root) / value['database_config'])
+    database = Database.from_config(Path(root) / value.get('database_config', 'database.local.json'), root=root)
     return Workflow(database, value['scope']), Artifacts(value['scope']), value
 
 
