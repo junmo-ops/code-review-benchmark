@@ -24,6 +24,7 @@ import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
 import {
   actionBlocked,
+  actionLabel,
   actions,
   active,
   caseStatus,
@@ -216,10 +217,10 @@ function ActionControls({
                 {runStages(run).map((action) => (
                   <Button
                     key={action}
-                    disabled={pending || actionBlocked(state, run, action)}
-                    onClick={() => onAction(action, profile, task, retry)}
+                    disabled={pending || actionBlocked(state, run, action) || (run.distributed && action === 'recover' && !task)}
+                    onClick={() => onAction(action, profile, run.distributed && action !== 'recover' ? '' : task, retry)}
                   >
-                    {actions[action]}
+                    {actionLabel(action, run)}
                   </Button>
                 ))}
               </Space>
@@ -248,14 +249,14 @@ function Overview({
   return (
     <>
       <Alert
-        type="info"
+        type={run.cluster_status === 'partial' ? 'warning' : 'info'}
         message={`${run.completed}/${run.total} 份完整答卷已保存`}
         description={`评分覆盖 ${run.scored_cases ?? '以评分文件为准'}；未完成案例不视为零分。${latest?.message ?? ''}`}
       />
       {run.score_locked_reason && (
         <Alert className="section-gap" type={run.status === 'partial_scored' ? 'warning' : 'info'} message={run.score_locked_reason} />
       )}
-      {run.distributed && <Alert className="section-gap" type="info" message="集群批次由共享队列执行。支持整批检视、评分、报告和归档；单例补跑请用所选案例新建批次。" />}
+      {run.distributed && <Alert className="section-gap" type="info" message="集群批次由共享队列执行。服务端 Agent 可在案例行继续查询原任务，不重复提交检视；已发布评分保持原覆盖范围，新恢复答卷不会覆盖原评分。" />}
       <Metrics run={run} />
       <EvaluationSummary run={run} />
       <ActionControls
@@ -271,6 +272,11 @@ function Overview({
         columns={[
           { title: '案例 / 轮次', dataIndex: 'id' },
           { title: '仓库', dataIndex: 'repo' },
+          ...(run.distributed && run.reviewer === 'server_agent' ? [{
+            title: '恢复查询', key: 'recover', render: (_: unknown, item: Case) =>
+              <RemoteQuery run={run} item={item} pending={pending}
+                onQuery={() => onAction('recover', profile, item.id, false)} />,
+          }] : []),
           ...(run.distributed ? [
             { title: '执行实例', dataIndex: 'worker', render: (value?: string) => value ?? '等待分配 / 已结束' },
             { title: '执行尝试', dataIndex: 'attempts' },
@@ -291,6 +297,15 @@ function Overview({
     </>
   );
 }
+function RemoteQuery({ run, item, pending, onQuery }: {
+  run: Run; item: Case; pending: boolean; onQuery: () => void;
+}) {
+  const { state } = useWorkbench();
+  if (!item.can_query_remote) return '—';
+  return <Button size="small" disabled={pending || actionBlocked(state, run, 'recover')}
+    onClick={onQuery}>继续查询原任务</Button>;
+}
+
 function CoverageDetails({ item }: { item: Case }) {
   const details = item.review_details ?? [];
   if (!details.length) return '—';
@@ -351,10 +366,10 @@ export function RunDetail({
       });
       return;
     }
-    if (['review', 'eval', 'report', 'workflow', 'resume', 'compare-martian'].includes(action)) {
+    if (['review', 'eval', 'report', 'workflow', 'resume', 'recover', 'compare-martian'].includes(action)) {
       modal.confirm({
-        title: `开始${actions[action]}？`,
-        content: actionDescription(action, task, record?.score_locked_reason),
+        title: `开始${record ? actionLabel(action, record) : actions[action]}？`,
+        content: actionDescription(action, task, record),
         okText: '开始执行',
         cancelText: '取消',
         onOk: () => execute(action, profile, task, retry),
@@ -525,7 +540,10 @@ function profileForRun(record: Run | undefined, profiles: { id: string; review_m
   return record?.profile ?? profiles.find((p) => p.review_model === record?.model)?.id ?? '';
 }
 
-function actionDescription(action: string, task: string, scoreLock?: string) {
+function actionDescription(action: string, task: string, run?: Run) {
+  const scoreLock = run?.score_locked_reason;
+  if (action === 'recover' && run?.distributed)
+    return `继续查询 ${task || '所选案例'} 已保存的服务任务，不创建新任务。保留首次超时与后续查询记录。${scoreLock ?? '取得完整答卷后统一评分。'}`;
   if (action === 'resume')
     return '请确认旧扫描进程和容器已停止。将解除队列暂停，跳过完整答卷，继续未完成案例；尚未评分时完成后评分。可能产生模型用量。' + (scoreLock ?? '');
   const scope = action === 'eval' ? '所有完整答卷；未完成案例排除' : task || '全部案例 / 轮次';

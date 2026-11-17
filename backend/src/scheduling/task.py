@@ -80,6 +80,9 @@ def review(payload, data, run):
     raw = run / 'raw'
     remote = raw / (item.safe_id + '.remote.json')
     resume = cfg['reviewer'] == 'server_agent' and remote.exists()
+    if payload.get('query_only'):
+        if not resume or read(remote).get('task_id') != payload.get('remote_task_id'):
+            raise ValueError('原服务任务记录缺失或 ID 不一致；禁止改为新建检视')
     if resume and not read(remote).get('task_id'):
         raise ValueError('远程提交状态不确定，禁止重复创建服务任务；请核对服务端任务')
     if cfg['reviewer'] == 'lcr':

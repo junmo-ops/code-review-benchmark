@@ -3,6 +3,7 @@ import hashlib
 import uuid
 from .queue import CaseQueue
 from .contracts import decode, encode, identifier, task_identity
+from .recovery import finished_status
 
 TERMINAL = {'succeeded', 'failed', 'interrupted', 'cancelled'}
 
@@ -51,14 +52,14 @@ class Workflow(CaseQueue):
             from .resources import reconcile
             reconcile(self, db)
             db.execute("SELECT run_id FROM bench_scheduler_runs WHERE scope=%s AND status NOT IN "
-                       "('succeeded','failed','cancelled','ready')", (self.scope,))
+                       "('succeeded','partial','failed','cancelled','ready')", (self.scope,))
             for row in db.fetchall():
                 self._advance(db, row['run_id'])
 
     def _advance(self, db, run_id):
         db.execute('SELECT * FROM bench_scheduler_runs WHERE scope=%s AND run_id=%s', (self.scope, run_id))
         run = db.fetchone()
-        if not run or run['status'] in {'succeeded', 'failed', 'ready', 'cancelled'}:
+        if not run or run['status'] in {'succeeded', 'partial', 'failed', 'ready', 'cancelled'}:
             return
         rows = self._rows(db, run_id)
         if run['status'] == 'cancelling':
@@ -79,9 +80,11 @@ class Workflow(CaseQueue):
         latest = next(row for row in rows if row['task_id'] == run['aggregate_id'])
         if latest['status'] in TERMINAL:
             result = decode(latest['result'])
+            cases = [row for row in rows if decode(row['payload'])['stage'] == 'case']
+            status = finished_status(latest['status'], cases, (result or {}).get('summary'))
             db.execute('UPDATE bench_scheduler_runs SET result=%s,status=%s,updated_at=UTC_TIMESTAMP(6) '
                        'WHERE scope=%s AND run_id=%s',
-                       (encode(result), 'succeeded' if latest['status'] == 'succeeded' else 'failed', self.scope, run['run_id']))
+                       (encode(result), status, self.scope, run['run_id']))
 
     def _prepared(self, db, run, task, plan):
         if task['status'] not in TERMINAL:
@@ -110,6 +113,8 @@ class Workflow(CaseQueue):
                         attempts=self._attempt_history(db, row['task_id']),
                         result=_evidence_pointer(row['result']), checkpoint=_evidence_pointer(row['checkpoint'])) for row in cases]
         prior = decode(run['result'])
+        if action == 'eval' and (prior or {}).get('summary', {}).get('metrics'):
+            action = 'report'  # Recovery must not overwrite already published scoring coverage.
         payload = dict(stage='aggregate', action=action, previous=prior, run_id=run['run_id'], prepared=decode(run['prepared']),
                        cases=records, profile=plan['profile'])
         self._insert_task(db, run['run_id'], case_id, payload, plan['pool'], 3)
@@ -133,14 +138,26 @@ class Workflow(CaseQueue):
     def runs(self):
         with self.database.transaction() as db:
             db.execute('SELECT * FROM bench_scheduler_runs WHERE scope=%s ORDER BY created_at DESC', (self.scope,))
-            return [{**row, **{key: decode(row[key]) for key in ('job', 'plan', 'prepared', 'result')}}
+            runs = [{**row, **{key: decode(row[key]) for key in ('job', 'plan', 'prepared', 'result')}}
                     for row in db.fetchall()]
+            # Old releases marked partial batches succeeded. Correct their read view too.
+            for run in runs:
+                if run['status'] == 'succeeded':
+                    rows = self._rows(db, run['run_id'])
+                    cases = [row for row in rows if decode(row['payload'])['stage'] == 'case']
+                    run['status'] = finished_status('succeeded', cases, (run['result'] or {}).get('summary'))
+            return runs
+
+    def recover_agent(self, run_id, job, case_id, expected):
+        from .recovery import requeue
+        with self._locked() as (db, _):
+            requeue(self, db, run_id, job, case_id, expected)
 
     def operate(self, run_id, job, action):
         with self._locked() as (db, _):
             db.execute('SELECT * FROM bench_scheduler_runs WHERE scope=%s AND run_id=%s', (self.scope, run_id))
             run = db.fetchone()
-            if not run or run['status'] not in {'ready', 'succeeded', 'failed'}:
+            if not run or run['status'] not in {'ready', 'succeeded', 'partial', 'failed'}:
                 raise ValueError('批次尚未完成，不能重复执行操作')
             plan = decode(run['plan'])
             if action == 'workflow' and run['status'] == 'ready':

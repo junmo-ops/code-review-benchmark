@@ -46,6 +46,10 @@ export const actions: Record<string, string> = {
   create: '创建批次',
   comparison: '模型对比实验',
 };
+export function actionLabel(action: string, run: Run) {
+  return run.distributed && run.reviewer === 'server_agent' && action === 'recover'
+    ? '继续查询原任务' : actions[action];
+}
 export const active = (status: string) => ['queued', 'running', 'cancelling'].includes(status);
 export function runStatus(run: Run, jobs: Job[]) {
   const executing = jobs.find((job) => job.key === run.key && active(job.status));
@@ -84,6 +88,8 @@ export function primary(run: Run | undefined, job: Job | undefined, queueMode = 
   return { action: 'workflow', label: run.suite === 'ccrab' ? '开始单例验证' : '开始测评' };
 }
 export function runStages(run: Run) {
+  if (run.distributed)
+    return [...(run.reviewer === 'server_agent' ? ['recover'] : []), 'eval', 'report', 'export'];
   if (run.suite === 'ccrab') return ['check'];
   if (run.suite === 'mcr')
     return ['check', 'review', 'eval', 'report', 'compare-martian', 'export'];
@@ -95,6 +101,7 @@ export function actionBlocked(state: Snapshot, run: Run, action: string) {
   if (action === 'eval' && run.score_locked_reason) return true;
   if (!editable(state) || (!state.queue_mode && state.active)) return true;
   if (run.compatibility_warning && (action !== 'export' || run.suite === 'mcr')) return true;
+  if (run.distributed) return clusterActionBlocked(run, action);
   return run.suite === 'ccrab' && action === 'workflow' && !run.can_run;
 }
 export function caseLabel(status: string, live: boolean) {
@@ -109,6 +116,7 @@ export function resourceImportTask(task: ImportTask | null, repository: boolean)
 }
 
 function canResumeBatch(run: Run, job: Job | undefined, queueMode: boolean) {
+  if (run.distributed) return false;
   if (!queueMode || !['interrupted', 'cancelled'].includes(job?.status ?? '')) return false;
   if (run.compatibility_warning || run.reviewer !== 'lcr') return false;
   return !['mcr', 'ccrab'].includes(run.suite);
@@ -116,4 +124,11 @@ function canResumeBatch(run: Run, job: Job | undefined, queueMode: boolean) {
 
 function partialReviewReady(run: Run, job?: Job) {
   return !run.compatibility_warning && run.status === 'partial' && run.completed > 0 && job?.status === 'succeeded' && job.action === 'review';
+}
+
+function clusterActionBlocked(run: Run, action: string) {
+  if (['preparing', 'reviewing', 'scoring', 'cancelling'].includes(run.cluster_status ?? '')) return true;
+  if (action === 'recover') return !run.cases.some((item) => item.can_query_remote);
+  if (action === 'workflow') return run.cluster_status !== 'ready';
+  return !['eval', 'report', 'export'].includes(action);
 }

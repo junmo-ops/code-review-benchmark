@@ -26,12 +26,12 @@ def _restore(store, payload, checkpoint, data):
     else:
         store.restore(payload['prepared']['snapshot'], run)
     if payload['stage'] == 'aggregate':
+        if payload.get('previous') and payload['previous'].get('snapshot'):
+            store.restore(payload['previous']['snapshot'], run)
         for case in payload['cases']:
             record = case['result'] or case['checkpoint']
             if record and record.get('snapshot'):
                 store.restore(record['snapshot'], run)
-        if payload.get('previous') and payload['previous'].get('snapshot'):
-            store.restore(payload['previous']['snapshot'], run)
         save(run / 'cluster-attempts.json', payload['cases'])
     if checkpoint and checkpoint.get('snapshot'):
         store.restore(checkpoint['snapshot'], run)

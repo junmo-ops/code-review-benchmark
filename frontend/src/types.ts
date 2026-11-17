@@ -35,6 +35,7 @@ export interface Metrics {
   pairs?: [number, number][];
 }
 export interface Case {
+  can_query_remote?: boolean;
   worker?: string;
   attempts?: number;
   review_coverage?: string;

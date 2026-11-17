@@ -60,7 +60,7 @@ class ClusterDashboard(Dashboard):
                        message=_status_message(status))
             if status != 'preparing':
                 job['started_at'] = row['created_at'].isoformat() + '+00:00'
-            if status in {'ready', 'succeeded', 'failed', 'cancelled'}:
+            if status in {'ready', 'succeeded', 'partial', 'failed', 'cancelled'}:
                 job['ended_at'] = row['updated_at'].isoformat() + '+00:00'
             self.jobs[job['id']] = job
         self.active = next((job['id'] for job in self.jobs.values() if job['status'] == 'running'), None)
@@ -68,11 +68,24 @@ class ClusterDashboard(Dashboard):
     def enqueue(self, job, request, spec):
         job['display_name'] = request.get('display_name') or job['key']
         if spec is None:
-            self.queue.operate(job['key'], job, request['action'])
+            if request['action'] == 'recover':
+                self._recover(job, request.get('task'))
+            else:
+                self.queue.operate(job['key'], job, request['action'])
         else:
             self._create(job, spec)
         self.sync()
         return dict(job_id=job['id'], key=job['key'])
+
+    def _recover(self, job, case_id):
+        from .recovery import available, inspect
+        row = self.records[job['key']]
+        case = next((case for case in row['plan']['cases'] if case['id'] == case_id), None)
+        task = next((task for task in self.queue.tasks(job['key']) if task['case_id'] == case_id), None)
+        if not case or not task or not available(task, row['plan']['spec']['reviewer']):
+            raise ValueError('请选择一个有保存证据的未完成服务端 Agent 案例，继续查询原任务')
+        expected = inspect(self.store, task, case['safe_id'])
+        self.queue.recover_agent(job['key'], job, case_id, expected)
 
     def _create(self, job, spec):
         from runner.cloud import checked_instances
@@ -108,8 +121,8 @@ class ClusterDashboard(Dashboard):
             key = request.get('key')
             if key not in self.records:
                 raise ValueError('集群只操作共享数据库中登记的批次')
-            if request.get('task') or request.get('retry'):
-                raise ValueError('集群暂不支持原批次单例重跑；请用所选案例新建批次')
+            if request.get('retry') or (request.get('task') and request.get('action') != 'recover'):
+                raise ValueError('集群仅支持服务端 Agent 的原任务查询恢复，不支持在原批次重新提交检视')
             row = self.records[key]
             job = dict(row['job'], id=uuid.uuid4().hex, action=request.get('action'),
                        status='queued', created_at=now())
@@ -122,16 +135,7 @@ class ClusterDashboard(Dashboard):
         spec, job = row['plan']['spec'], row['job']
         result = row['result'] or row['prepared'] or {}
         value = dict(result.get('summary') or {})
-        cases = {case['id']: dict(case, status='pending', scored=False) for case in row['plan']['cases']}
-        for task in self.queue.tasks(key):
-            if task['case_id'] not in cases:
-                continue
-            current = cases[task['case_id']]
-            current.update(status=task['status'], worker=task['owner'], attempts=task['generation'])
-            result_case = next((case for case in (task['result'] or {}).get('summary', {}).get('cases', [])
-                                if case['id'] == task['case_id']), None)
-            if result_case:
-                current.update(result_case)
+        cases = _case_views(row, self.queue.tasks(key))
         _scored_cases(row, cases)
         value.update(key=key, name=key, display_name=job.get('display_name', key), suite=spec['suite'], reviewer=spec['reviewer'],
                      model=value.get('model', '—'), judge_model=value.get('judge_model', '—'),
@@ -141,6 +145,10 @@ class ClusterDashboard(Dashboard):
         value.setdefault('status', 'pending')
         value.setdefault('metrics', {})
         value.setdefault('artifacts', [])
+        if row['status'] in {'partial', 'failed', 'cancelled'}:
+            value['status'] = 'partial_scored' if value['metrics'] else row['status']
+        if row['status'] in {'reviewing', 'scoring'}:
+            value['status'] = row['status']
         return value
 
     def snapshot(self, compact=False):
@@ -219,11 +227,29 @@ def _scored_cases(row, cases):
         return
     for case in row['result']['summary'].get('cases', []):
         if case['id'] in cases:
-            cases[case['id']].update(case)
+            # Old aggregate coverage remains frozen; it must not overwrite a new query's status.
+            cases[case['id']].update({key: case[key] for key in ('scored', 'metrics') if key in case})
+
+
+def _case_views(row, tasks):
+    from .recovery import available, FINISHED
+    cases = {case['id']: dict(case, status='pending', scored=False) for case in row['plan']['cases']}
+    for task in tasks:
+        if task['case_id'] not in cases:
+            continue
+        current = cases[task['case_id']]
+        result_case = next((case for case in (task['result'] or {}).get('summary', {}).get('cases', [])
+                            if case['id'] == task['case_id']), {})
+        current.update(result_case)
+        status = result_case.get('status', 'complete') if task['status'] == 'succeeded' else task['status']
+        current.update(status=status, worker=task['owner'], attempts=task['generation'],
+                       can_query_remote=row['status'] in FINISHED and available(task, row['plan']['spec']['reviewer']))
+    return cases
 
 
 def _status_message(status):
     return {'preparing':'等待兼容版本 Worker 创建批次', 'reviewing':'多个 Worker 正在检视案例',
             'scoring':'案例已结束，正在统一评分并生成报告', 'ready':'批次已创建，可开始检视',
             'succeeded':'任务完成，结果已保存到 COS', 'failed':'任务失败，已保存的证据保留',
+            'partial':'部分完成；报告或评分仅覆盖已完成答卷，未完成案例可查看日志',
             'cancelling':'正在停止各实例任务', 'cancelled':'任务已停止'}.get(status, status)
