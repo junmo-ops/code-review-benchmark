@@ -43,10 +43,14 @@ class ExecutionPlanner:
             env['BENCH_DSH_OWNER_PID'] = str(os.getpid())
         args=[stage,'--run-id',run_id,'--runs-root',str(self.context.data/'runs')]
         limit=cfg['timeout_minutes']*60+90 if stage in {'review','recover'} else 900
+        if stage == 'review' and not task and cfg.get('reviewer', cfg.get('reviewer_id')) == 'server_agent':
+            limit = self._agent_batch_budget(run_id, cfg)
         if stage == 'eval':
             limit = self._scoring_budget(cfg, self.context.data/'runs'/run_id)
         if init is not None:
             args+=['--evaluation-mode', init.get('evaluation_mode', 'quality'), '--reviewer',init['reviewer'],'--suite',init['suite'],'--dataset',str(self.context.dataset_path(init['dataset'])),'--evaluator',init['evaluator'],'--model',env.get('LCR_LLM_MODEL',''),'--timeout-minutes',str(init['timeout_minutes'])]
+            if init['reviewer'] == 'server_agent':
+                args += ['--case-jobs', str(init.get('case_jobs', 1))]
             if init['reviewer'] == 'dsh_skill':
                 args += ['--skill-mode', init['skill_mode'],
                          '--dsh-runtime-mode', init.get('dsh_runtime_mode', 'sandbox'),
@@ -55,6 +59,16 @@ class ExecutionPlanner:
         if task:args+=['--instance',task]
         if stage=='review':args+=['--external-timeout-seconds',str(limit)]
         return [sys.executable,str(self.context.root/'backend/src/cloud.py')]+args,env,limit
+
+    @staticmethod
+    def _batch_reviewer(cfg):
+        return cfg.get('reviewer', cfg.get('reviewer_id', 'lcr')) in {'lcr', 'server_agent'}
+
+    def _agent_batch_budget(self, run_id, cfg):
+        from runner.cloud import checked_instances
+        count = len(checked_instances(self.context.data / 'runs' / run_id / 'dataset.jsonl', cfg['suite']['id']))
+        jobs = cfg.get('case_jobs', 1)
+        return ((count + jobs - 1) // jobs) * (cfg['timeout_minutes'] * 60 + 61) + 90
 
     def _skill_init_arguments(self, init, args):
         """Append the frozen Skill member CLI arguments for a dsh_skill init.
@@ -190,7 +204,7 @@ class ExecutionPlanner:
             case_ids = [request['task']]
         if action == 'check':
             return [('prepare-repos' if mcr else 'check', None, None)]
-        if action == 'review' and not request.get('task') and not mcr and self.context.config(key).get('reviewer', 'lcr') == 'lcr':
+        if action == 'review' and not request.get('task') and not mcr and self._batch_reviewer(self.context.config(key)):
             return [('review', None, None)]
         if action in {'review','preview','recover'}:
             return [(action, case, None) for case in case_ids]
@@ -204,7 +218,7 @@ class ExecutionPlanner:
     def _plan_workflow(self, key, request, mcr, case_ids):
         cfg = self.context.config(key)
         steps = [] if mcr and cfg['reviewer'] == 'llm_direct' else [('prepare-repos' if mcr else 'check', None, None)]
-        review_steps = [('review', None, None)] if not mcr and cfg.get('reviewer', 'lcr') == 'lcr' and not request.get('task') else [('review', case, None) for case in case_ids]
+        review_steps = [('review', None, None)] if not mcr and self._batch_reviewer(cfg) and not request.get('task') else [('review', case, None) for case in case_ids]
         eval_steps = [] if self.context.summary(key) or cfg.get('simulation') else [('eval', None, None)]
         return steps + review_steps + eval_steps
 

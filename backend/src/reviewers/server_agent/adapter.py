@@ -9,7 +9,7 @@ import uuid
 from urllib.parse import urlsplit, quote
 import httpx
 from runner.storage import ROOT, save, validate_answer
-from . import company
+from . import company, polling
 
 CAPABILITIES=frozenset({'git_range','findings'})
 CONFIG=None
@@ -131,15 +131,22 @@ def request(method,kind,task_id=None,body=None,key=None,remaining=20):
     token='' if CONFIG['contract'] == company.CONTRACT else os.getenv(CONFIG.get('token_env','BENCH_AGENT_TOKEN'),'')
     if token:headers['Authorization']='Bearer '+token
     if key:headers['Idempotency-Key']=key
-    # No redirects, implicit retries, or model-provider credentials.
+    retryable_query = method == 'GET' and kind in ('status', 'result')
+    # Creation is never retried. Query retries are bounded by polling.query.
     try:
         with httpx.Client(timeout=min(CONFIG.get('request_timeout_seconds',20),max(.01,remaining)),follow_redirects=False,trust_env=False) as client:
             r=client.request(method,CONFIG['base_url'].rstrip('/')+path,headers=headers,json=body)
+        if retryable_query and r.status_code in polling.TRANSIENT_STATUS_CODES:
+            raise polling.TransientQueryError('Agent HTTP '+str(r.status_code))
         if r.status_code not in (200,201,202):raise ValueError('Agent HTTP '+str(r.status_code))
         data=r.json()
         if not isinstance(data,dict):raise ValueError('Agent 响应必须为 JSON 对象')
         return company.normalize(data, kind, task_id) if CONFIG['contract'] == company.CONTRACT else data
-    except httpx.HTTPError as exc:raise ValueError('Agent 网络请求失败：'+type(exc).__name__) from None
+    except httpx.HTTPError as exc:
+        error = 'Agent 网络请求失败：'+type(exc).__name__
+        if retryable_query and isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)):
+            raise polling.TransientQueryError(error) from None
+        raise ValueError(error) from None
 
 
 def convert(item,data,task_id):
@@ -205,7 +212,7 @@ def raise_remote_failure(item, raw, data, state):
 def poll_case(item,run,record,record_path,execution,started,deadline,event):
     raw=run/'raw';task_id=record['task_id']
     while time.monotonic()<deadline:
-        d=request('GET','status',task_id,remaining=deadline-time.monotonic())
+        d=polling.query(request,'status',task_id,deadline,event)
         status_value=field(d,CONFIG.get('response_fields',{}).get('status','status'))
         state=CONFIG.get('status_values',{}).get(status_value,status_value)
         if state not in ('queued','running','succeeded','failed','partial','cancelled'):raise ValueError('服务返回未知任务状态')
@@ -215,7 +222,7 @@ def poll_case(item,run,record,record_path,execution,started,deadline,event):
         save(execution,dict(status='running',task_id=task_id,remote_status=state,elapsed_seconds=round(time.monotonic()-started,3)))
         if state in ('failed','partial','cancelled'):raise_remote_failure(item,raw,d,state)
         if state=='succeeded':
-            d=request('GET','result',task_id,remaining=deadline-time.monotonic())
+            d=polling.query(request,'result',task_id,deadline,event)
             save(raw/(item.safe_id+'.result.json'),json.loads(redact(json.dumps(d,ensure_ascii=False))))
             answer=convert(item,d,task_id)
             if CONFIG['simulation']:
@@ -260,10 +267,13 @@ def _execute_case(item,run,preview=False,resume=False):
         if not record:
             record=dict(idempotency_key=str(uuid.uuid4()),state='creating',request=payload(item))
             save(record_path,record)  # Persist before the potentially billable POST.
+            from runner.distributed_checkpoint import checkpoint
+            checkpoint()
             data=request('POST','create',body=record['request'],key=record['idempotency_key'],remaining=deadline-time.monotonic())
             task_id=field(data,CONFIG.get('response_fields',{}).get('task_id','task_id'))
             if not isinstance(task_id,str) or not task_id or len(task_id)>200:raise ValueError('服务未返回有效任务 ID')
             record.update(task_id=task_id,state='submitted');save(record_path,record);event('submitted',task_id=task_id)
+            checkpoint()
         task_id=record['task_id'];print('服务任务 ID：',task_id,flush=True)
         status=poll_case(item,run,record,record_path,execution,started,deadline,event)
         if status is not None:return

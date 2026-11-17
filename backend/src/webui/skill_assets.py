@@ -57,7 +57,7 @@ def detail(dashboard, identifier):
     try:
         record = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
         _verify(folder, record, identifier)
-        if mode() == 'cos':
+        if mode() == 'cos' and not getattr(dashboard, 'shared_catalog', False):
             from .skill_storage import confirmed
             confirmed(dashboard.data, record)
         record['archives'] = _archives(dashboard, record)
@@ -126,9 +126,9 @@ def listing(dashboard):
     return result
 
 
-def install(dashboard, archive, progress):
+def install(dashboard, archive, progress, *, persist=True):
     storage = None
-    if mode() == 'cos':
+    if mode() == 'cos' and persist:
         from .skill_storage import SkillAssetStorage
         storage = SkillAssetStorage(dashboard.data)
         storage.restore(dashboard)

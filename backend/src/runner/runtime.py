@@ -36,6 +36,8 @@ def config_root(root):
 
 def repository_root(root, frozen_path):
     """Resolve the former default repository path after local data migration."""
+    if os.environ.get('BENCH_CLUSTER_TASK') == '1':
+        return data_root(root) / 'repos'
     path = Path(frozen_path)
     if path != root / 'repos' or path.exists() or 'BENCH_DATA_ROOT' in os.environ:
         return path

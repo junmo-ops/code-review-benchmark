@@ -35,6 +35,8 @@ export interface Metrics {
   pairs?: [number, number][];
 }
 export interface Case {
+  worker?: string;
+  attempts?: number;
   review_coverage?: string;
   review_details?: { kind: string; file?: string | null; message: string }[];
   id: string;
@@ -51,6 +53,8 @@ export interface Artifact {
   report?: boolean;
 }
 export interface Run {
+  distributed?: boolean;
+  cluster_status?: string;
   key: string;
   name: string;
   display_name?: string;
@@ -152,6 +156,7 @@ export interface Snapshot {
   platform: string;
   dsh_runtime_mode?: 'sandbox' | 'pod';
   queue_mode?: boolean;
+  cluster_mode?: boolean;
   active?: string;
   worker_ready?: boolean;
   recovery_required?: boolean;

@@ -8,18 +8,16 @@ from .files import now
 
 
 def remote_wait_message(run, task, started):
-    if not task:
-        return None
-    path = run / 'raw' / (task.replace('/', '__') + '.execution.json')
+    path = run / 'raw' / (task.replace('/', '__') + '.execution.json' if task else 'agent-batch-attention.json')
     try:
         if path.stat().st_mtime < started:
             return None
         record = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
-    if not isinstance(record, dict) or record.get('status') != 'remote_wait_timeout':
+    if not isinstance(record, dict) or (task and record.get('status') != 'remote_wait_timeout'):
         return None
-    return (f"等待服务端任务 {record.get('task_id', '')} 超时，任务可能仍在运行；"
+    return (f"服务端任务 {record.get('task_id') or '未知'} 状态未确认，任务可能仍在运行；"
             '本次不继续评分。请选择该案例，点击“从已有输出恢复结果”，成功后再评分；不要重复检视。')
 
 

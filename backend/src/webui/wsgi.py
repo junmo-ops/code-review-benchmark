@@ -97,17 +97,34 @@ def _authorize_local(token):
 
 
 def create_app(dashboard=None, *, local_token=None, start_background=True):
+    from .factory import create_dashboard
+    dashboard = dashboard or create_dashboard()
+    if getattr(dashboard, 'cluster_mode', False):
+        from scheduling.web_http import session_token
+        token = session_token(dashboard)
+        if local_token is not None:
+            local_token = token
+        else:
+            os.environ['BENCH_CSRF_TOKEN'] = token
     settings = None if local_token is not None else _server_settings()
     csrf = local_token if local_token is not None else settings[3]
     app=Flask(__name__,static_folder=None);app.config['MAX_CONTENT_LENGTH']=16384
     default_frontend = PROJECT_ROOT/'frontend'/'dist' if local_token is not None else PROJECT_ROOT/'frontend-dist'
     frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', default_frontend)).resolve()
     pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide','/zip-tool','/tools','/tools/repository-zip'}
-    dashboard=dashboard or DurableDashboard()
     @app.before_request
     def authorize():
         # The gateway must overwrite identity headers, never forward browser values.
         return _authorize_local(local_token) if local_token is not None else _authorize_request(*settings)
+    @app.before_request
+    def cluster_guard():
+        from .cluster_routes import guard
+        guard(dashboard, request)
+
+    if getattr(dashboard, 'cluster_mode', False):
+        from scheduling.web_http import install
+        install(app, dashboard, csrf)
+
     @app.after_request
     def headers(response):
         response.headers['Cache-Control']='public, max-age=31536000, immutable' if getattr(g,'frontend_asset',False) else 'no-store'
@@ -350,7 +367,8 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     def artifact():return jsonify(dashboard.artifact(request.args['key'],request.args['path']))
     @app.get('/api/export')
     def export():
-        root=dashboard.run_dir(request.args['key']);path=root.parent/(root.name+'-results.tar.gz')
+        from .cluster_routes import export_root
+        root=export_root(dashboard, request.args['key']);path=root.parent/(root.name+'-results.tar.gz')
         if not path.is_file() or path.is_symlink():raise ValueError('请先生成结果归档')
         return send_file(path,as_attachment=True,download_name=path.name)
     @app.post('/api/comparisons')

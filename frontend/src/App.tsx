@@ -47,6 +47,8 @@ const navigation = [
   { key: '/guide', label: '使用指南', icon: <QuestionCircleOutlined /> },
 ];
 function RuntimeNote({ state }: { state: Snapshot }) {
+  if (state.cluster_mode)
+    return <Alert type="info" message="集群模式 · 案例由多个 Worker 分担，完成后统一评分。实例中断后按租约接手；结果发布前保存到 COS。" />;
   if (!state.queue_mode)
     return (
       <Typography.Text type="secondary">本地运行 · 数据与日志保存在当前项目。</Typography.Text>

@@ -10,3 +10,6 @@ mdurl==0.1.2
 Flask>=3.1,<4
 gunicorn>=23,<24; sys_platform != "win32"
 boto3>=1.35,<2
+
+# Shared case queue for MySQL/TDSQL deployments.
+PyMySQL[rsa]>=1.1.1,<2

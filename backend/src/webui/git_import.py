@@ -61,7 +61,7 @@ def prepare(dashboard, url, progress):
     return cache
 
 
-def install(dashboard, request_path, progress):
+def install(dashboard, request_path, progress, *, persist=True):
     from runner.git_bundles import create_complete_bundle
     from .case_assets import install_repositories, _hash_file
     request = json.loads(request_path.read_text())
@@ -81,5 +81,5 @@ def install(dashboard, request_path, progress):
         with zipfile.ZipFile(archive, 'w', allowZip64=True) as output:
             output.write(bundle, key)
             output.writestr('manifest.json', json.dumps(manifest))
-        result = install_repositories(dashboard, archive, background=True, progress=progress)
+        result = install_repositories(dashboard, archive, background=True, progress=progress, persist=persist)
     return dict(result, message='Git 仓库已导入或更新：' + name)

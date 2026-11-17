@@ -24,6 +24,8 @@ def _directory(dashboard):
 
 
 def current(dashboard, identifier=None):
+    if hasattr(dashboard, "shared_uploads"):
+        return dashboard.shared_uploads.import_status(identifier)
     if identifier is not None and not re.fullmatch(r'[a-f0-9]{32}', identifier):
         raise ValueError('导入任务标识无效')
     if identifier:
@@ -77,6 +79,8 @@ def _save_task(dashboard, task):
 
 
 def submit(dashboard, archive, kind="dataset", upload_id=None):
+    if hasattr(dashboard, "shared_uploads"):
+        return dashboard.shared_uploads.submit_file(archive, kind)
     folder = _directory(dashboard)
     folder.mkdir(parents=True, exist_ok=True)
     with (dashboard.state / 'case-upload.lock').open('a+b') as lock:
@@ -107,6 +111,9 @@ def _queue_archive(dashboard, archive, folder, kind, upload_id=None):
 
 
 def start(dashboard):
+    if getattr(dashboard, "cluster_mode", False):
+        # Cluster Web only submits; the independent Worker owns all resource work.
+        return
     key = str(dashboard.state.resolve())
     with _guard:
         thread = _workers.get(key)

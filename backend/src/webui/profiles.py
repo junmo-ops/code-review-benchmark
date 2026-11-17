@@ -70,7 +70,7 @@ def profile_label(path):
     return name
 
 
-def create_profile(dashboard, data):
+def create_profile(dashboard, data, *, persist=True):
     label, config = resolve_profile(dashboard, data)
     with dashboard.lock:
         if any(p['label']==label for p in dashboard.profiles() if not p.get('internal')):
@@ -87,7 +87,8 @@ def create_profile(dashboard, data):
             with os.fdopen(label_fd,'w',encoding='utf-8') as handle:
                 handle.write(label)
             from deployment.model_storage import persist_profile
-            persist_profile(dashboard.root, filename)
+            if persist:
+                persist_profile(dashboard.root, filename)
         except Exception:
             path.unlink(missing_ok=True)
             path.with_suffix('.label').unlink(missing_ok=True)
@@ -136,7 +137,7 @@ def _write_private(path, content):
         temp.unlink(missing_ok=True)
 
 
-def update_profile(dashboard, profile_id, data):
+def update_profile(dashboard, profile_id, data, *, persist=True):
     path, old_config, payload = _existing_profile(dashboard, profile_id, data)
     old_config_bytes = path.read_bytes()
     label_path = path.with_suffix('.label')
@@ -155,7 +156,8 @@ def update_profile(dashboard, profile_id, data):
             _write_private(path, (json.dumps(config, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
             _write_private(label_path, label.encode('utf-8'))
             from deployment.model_storage import persist_profile
-            persist_profile(dashboard.root, profile_id)
+            if persist:
+                persist_profile(dashboard.root, profile_id)
         except Exception as error:
             _write_private(path, old_config_bytes)
             if old_label_bytes:
@@ -168,7 +170,7 @@ def update_profile(dashboard, profile_id, data):
     return {'id': profile_id}
 
 
-def delete_profile(dashboard, profile_id):
+def delete_profile(dashboard, profile_id, *, persist=True):
     path = _managed_path(dashboard, profile_id)
     label_path = path.with_suffix('.label')
     try:
@@ -181,7 +183,8 @@ def delete_profile(dashboard, profile_id):
         label_path.unlink(missing_ok=True)
         try:
             from deployment.model_storage import remove_profile
-            remove_profile(dashboard.root, profile_id)
+            if persist:
+                remove_profile(dashboard.root, profile_id)
         except Exception as error:
             _write_private(path, old_config)
             if old_label is not None:

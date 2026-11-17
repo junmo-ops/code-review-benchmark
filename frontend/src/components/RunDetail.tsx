@@ -255,6 +255,7 @@ function Overview({
       {run.score_locked_reason && (
         <Alert className="section-gap" type={run.status === 'partial_scored' ? 'warning' : 'info'} message={run.score_locked_reason} />
       )}
+      {run.distributed && <Alert className="section-gap" type="info" message="集群批次由共享队列执行。支持整批检视、评分、报告和归档；单例补跑请用所选案例新建批次。" />}
       <Metrics run={run} />
       <EvaluationSummary run={run} />
       <ActionControls
@@ -270,6 +271,10 @@ function Overview({
         columns={[
           { title: '案例 / 轮次', dataIndex: 'id' },
           { title: '仓库', dataIndex: 'repo' },
+          ...(run.distributed ? [
+            { title: '执行实例', dataIndex: 'worker', render: (value?: string) => value ?? '等待分配 / 已结束' },
+            { title: '执行尝试', dataIndex: 'attempts' },
+          ] : []),
           { title: '检视覆盖', dataIndex: 'review_coverage', render: (value?: string) => value ?? '未提供' },
           { title: '失败 / 跳过原因', render: (_: unknown, item: Case) => <CoverageDetails item={item} /> },
           {

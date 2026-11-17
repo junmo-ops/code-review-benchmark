@@ -149,8 +149,8 @@ def _execution_limits(args, reviewer_id):
     if case_jobs is None: case_jobs = 1
     if type(case_jobs) is not int or not 1 <= case_jobs <= 16:
         raise ValueError('案例并发必须为 1–16 的整数')
-    if reviewer_id != 'lcr' and case_jobs != 1:
-        raise ValueError('案例并发仅适用于 LCR')
+    if reviewer_id not in {'lcr', 'server_agent'} and case_jobs != 1:
+        raise ValueError('案例并发仅适用于 LCR 或服务端 Agent')
     max_case_retries = getattr(args, 'max_case_retries', None)
     if max_case_retries is None:
         max_case_retries = 1 if reviewer_id == 'lcr' else 0
@@ -207,7 +207,8 @@ def init_run(args, run):
     (run/'dataset.jsonl').write_bytes(dataset.read_bytes())
     save(run/'run-config.json',cfg)
     print(f'案例集：{suite.name}；适配器版本：{suite.version}')
-    print(f'批次已冻结：{run}\n案例数：{len(items)}；案例并发：{case_jobs}；每案例文件并发：1')
+    file_concurrency = {'server_agent': '文件并发由服务端控制'}.get(reviewer_id, '每案例文件并发：1')
+    print(f'批次已冻结：{run}\n案例数：{len(items)}；案例并发：{case_jobs}；{file_concurrency}')
 
 
 def require_model(cfg):
@@ -233,7 +234,7 @@ def _arguments():
     p.add_argument('--repos-root')
     p.add_argument('--model')
     p.add_argument('--timeout-minutes',type=int,default=None,help='仅 init 生效；服务端 Agent 默认60分钟，DSH 默认10分钟，其他默认30分钟')
-    p.add_argument('--case-jobs',type=int,default=None,help='仅 init 指定，LCR 案例并发 1–16，默认1')
+    p.add_argument('--case-jobs',type=int,default=None,help='仅 init 指定，LCR/服务端 Agent 案例并发 1–16，默认1')
     p.add_argument('--max-case-retries',type=int,default=None,help='仅 init 指定，失败案例自动重试 0–2 次，默认1')
     p.add_argument('--instance',help='preview/recover 必填；review 不指定时调度所有未完成案例')
     p.add_argument('--external-timeout-seconds',type=int,help='实际为本次工具命令设置的时限；review 必填')
@@ -304,6 +305,9 @@ def _execute_run(args, run):
         return
     if args.stage == 'review' and not args.instance and cfg.get('reviewer_id', 'lcr') == 'lcr':
         return _review_all_lcr_cases(args, cfg, suite, items, snapshot, run)
+    if args.stage == 'review' and not args.instance and cfg.get('reviewer_id') == 'server_agent':
+        from reviewers.server_agent.batch import review
+        return review(args, cfg, items, snapshot, run)
     _selected_stage(args, cfg, suite, items, snapshot, run)
 
 
@@ -391,7 +395,7 @@ def _selected_stage(args, cfg, suite, items, snapshot, run):
     try:
         adapter._stage_review([selected],run,args.stage=='preview')
     finally:
-        if args.stage=='review':
+        if args.stage=='review' and not getattr(args, 'agent_child', False):
             adapter.write_summary(items,run)
             save(run/'cloud-status.json',states(items,run))
 

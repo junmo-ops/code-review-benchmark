@@ -29,18 +29,21 @@ def start(root):
 
 
 class Progress:
-    def __init__(self, folder, row):
+    def __init__(self, folder, row, observer=None):
         self.folder, self.row = folder, row
+        self.observer = observer
 
     def __call__(self, message):
         self.row.update(message=message, status='running')
         store.save(self.folder, self.row)
+        if self.observer:
+            self.observer(self.row)
 
 
-def execute(root, row):
+def execute(root, row, observer=None):
     folder = root / row['id']
     with store.locked(folder / 'lock'):
-        progress = Progress(folder, row)
+        progress = Progress(folder, row, observer)
         work = folder / 'work'
         shutil.rmtree(work, ignore_errors=True)
         for leftover in folder.glob('bench-zip-*'):

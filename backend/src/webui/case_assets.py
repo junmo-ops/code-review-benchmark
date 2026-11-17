@@ -668,7 +668,7 @@ def _install_transaction(dashboard, archive, persist, progress):
         raise
 
 
-def install_repositories(dashboard, archive, background=False, progress=None):
+def install_repositories(dashboard, archive, background=False, progress=None, persist=True):
     from .case_import import ensure_idle
     if not background:
         ensure_idle(dashboard)
@@ -687,7 +687,8 @@ def install_repositories(dashboard, archive, background=False, progress=None):
             from .case_storage import persist_repository_upload
             try:
                 _notify(progress, "persist", "补充历史已合并，正在保存仓库新版本")
-                persist_repository_upload(dashboard.data, versions)
+                if persist:
+                    persist_repository_upload(dashboard.data, versions)
             except Exception as error:
                 if previous is None:
                     path.unlink(missing_ok=True)

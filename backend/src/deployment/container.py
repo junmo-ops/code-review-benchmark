@@ -36,6 +36,10 @@ def prepare():
     from runner.runtime import data_root, config_root
     for path in (data_root(ROOT), config_root(ROOT), Path(os.environ['HOME'])):
         path.mkdir(parents=True, exist_ok=True)
+    from scheduling.settings import enabled
+    if enabled(ROOT):
+        print('集群 Web 仅提供接口；Worker 负责资源初始化及任务执行。', flush=True)
+        return
     from deployment.run_storage import restore_run_data
     restore_run_data(ROOT)
     from deployment.model_storage import restore_profiles
@@ -71,6 +75,9 @@ def _wait_preparation(stop, children):
 
 
 def _start_synchronizer(role):
+    from scheduling.settings import enabled as cluster_enabled
+    if cluster_enabled(ROOT):
+        return None
     enabled = role in {'all', 'worker'} and os.environ.get('BENCH_RUN_STORAGE_MODE', 'local').strip().lower() == 'cos'
     if not enabled:
         return None
@@ -164,17 +171,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-build', action='store_true')
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--role', choices=('web', 'worker', 'all'), help='同一镜像的启动角色')
     args = parser.parse_args()
     if args.check_build:
         check_build()
     elif args.prepare:
         prepare()
     else:
-        raise SystemExit(_run_container())
+        raise SystemExit(_run_container(args.role))
 
 
-def _run_container():
-    role = os.environ.get('BENCH_CONTAINER_ROLE', 'all')
+def _run_container(role=None):
+    role = role or os.environ.get('BENCH_CONTAINER_ROLE', 'all')
+    os.environ['BENCH_CONTAINER_ROLE'] = role
     if role not in {'all', 'web', 'worker'}:
         raise ValueError('BENCH_CONTAINER_ROLE 须为 all、web 或 worker')
     if os.environ.get('BENCH_AUTH_MODE', 'none') in {'none', 'basic'}:

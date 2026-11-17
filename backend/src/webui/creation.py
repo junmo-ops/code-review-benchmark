@@ -86,8 +86,8 @@ def _integer(request, name, default, lower, upper):
 def _limits(request, suite, reviewer):
     jobs = _integer(request, 'case_jobs', 1, 1, 16)
     retries = _integer(request, 'max_case_retries', 1 if reviewer == 'lcr' else 0, 0, 2)
-    if (suite in {'mcr', 'ccrab'} or reviewer != 'lcr') and jobs != 1:
-        raise ValueError('案例并发仅适用于单轮 LCR 测评')
+    if (suite in {'mcr', 'ccrab'} or reviewer not in {'lcr', 'server_agent'}) and jobs != 1:
+        raise ValueError('案例并发仅适用于单轮 LCR 或服务端 Agent 测评')
     if reviewer != 'lcr' and retries:
         raise ValueError('失败案例自动重试当前仅支持 LCR')
     return dict(timeout_minutes=_integer(request, 'timeout_minutes', 60 if reviewer == 'server_agent' else 10, 1, 120),

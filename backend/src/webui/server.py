@@ -78,7 +78,8 @@ def main():
             lock_instance_file(lock)
         except (BlockingIOError, OSError):
             parser.error('本项目的页面服务已经运行，请打开原页面')
-        app=Dashboard()
+        from .factory import create_dashboard
+        app=create_dashboard(local=True)
         try:
             server=ThreadingHTTPServer(('127.0.0.1',args.port),handler_for(app,secrets.token_urlsafe(32)))
         except OSError:

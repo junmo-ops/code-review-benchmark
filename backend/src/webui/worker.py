@@ -101,6 +101,10 @@ def run_worker(app, *, install_signals=True, acknowledge=False):
 
 
 def main():
+    from scheduling.settings import enabled
+    if enabled():
+        from scheduling.worker import main as cluster_main
+        return cluster_main()
     parser = argparse.ArgumentParser()
     parser.add_argument('--ack-interrupted', action='store_true',
                         help='确认旧进程已停止后清除恢复阻塞，不重跑中断任务')

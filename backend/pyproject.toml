@@ -16,6 +16,9 @@ bench-cloud = "runner.cloud:main"
 bench-mcr = "mcr:main"
 bench-ccrab = "executable.ccrab:main"
 
+[project.optional-dependencies]
+mysql = ["PyMySQL[rsa]>=1.1.1,<2"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 py-modules = ["local", "cloud", "mcr", "ccrab", "ui"]
@@ -26,6 +29,7 @@ namespaces = true
 exclude = ["*.__pycache__*"]
 
 [tool.setuptools.package-data]
+"scheduling" = ["schema.sql", "web_schema.sql"]
 "reviewers.lcr" = ["*.json"]
 "reviewers.cline_skill" = ["skills/**/*.md"]
 
