@@ -13,15 +13,21 @@ import zipfile
 from runner.runtime import data_root
 
 from runner.paths import PROJECT_ROOT as ROOT
+from scheduling.local_config import active_local_settings
+
 CONFIG_PATH = ROOT / 'deployment' / 'case-storage.json'
 ARCHIVE_ID = re.compile(r'^[a-f0-9]{64}$')
 
 
 def _settings():
-    try:
-        value = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        raise RuntimeError('无法读取 deployment/case-storage.json') from None
+    local = active_local_settings()
+    if local is not None:
+        value = {'mode': 'cos', 's3': local['cos']}
+    else:
+        try:
+            value = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            raise RuntimeError('无法读取 deployment/case-storage.json') from None
     if not isinstance(value, dict) or value.get('mode') not in {'local', 'cos'}:
         raise RuntimeError('案例包存储配置无效')
     mode = os.environ.get('BENCH_CASE_STORAGE_MODE', value['mode']).strip().lower()
@@ -30,7 +36,7 @@ def _settings():
     s3 = value.get('s3')
     if not isinstance(s3, dict):
         raise RuntimeError('案例包 COS 配置无效')
-    return mode, _prefix_overrides(s3)
+    return mode, s3 if local is not None else _prefix_overrides(s3)
 
 
 def _prefix_overrides(options):

@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from runner.paths import PROJECT_ROOT
 
+from .local_config import MYSQL_CREDENTIALS as ENV_CREDENTIALS, active_local_settings
 
-ENV_CREDENTIALS = {'user': 'BENCH_DB_USER', 'password': 'BENCH_DB_PASSWORD'}
 CONNECTION_FIELDS = {'host', 'port', 'database', 'ssl'}
 
 
@@ -14,10 +14,14 @@ def _environment_settings(root):
     missing = [name for name in ENV_CREDENTIALS.values() if not os.environ.get(name, '').strip()]
     if missing:
         raise ValueError('数据库环境变量缺失或为空：' + '、'.join(missing))
-    path = Path(root) / 'deployment/database.json'
-    values = json.loads(path.read_text(encoding='utf-8-sig'))
-    if not isinstance(values, dict) or set(values) - CONNECTION_FIELDS:
-        raise ValueError('deployment/database.json 仅允许 host/port/database/ssl；账号密码须通过环境变量配置')
+    local = active_local_settings()
+    if local is not None:
+        values = local['mysql']
+    else:
+        path = Path(root) / 'deployment/database.json'
+        values = json.loads(path.read_text(encoding='utf-8-sig'))
+        if not isinstance(values, dict) or set(values) - CONNECTION_FIELDS:
+            raise ValueError('deployment/database.json 仅允许 host/port/database/ssl；账号密码须通过环境变量配置')
     values.update({key: os.environ[name] for key, name in ENV_CREDENTIALS.items()})
     return values
 

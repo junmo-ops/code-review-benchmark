@@ -1,0 +1,20 @@
+{
+  "scope": "localtest",
+  "mysql": {
+    "host": "mysql.example.invalid",
+    "port": 3306,
+    "database": "codebench",
+    "user": "",
+    "password": ""
+  },
+  "cos": {
+    "endpoint": "https://cos.example.invalid",
+    "region": "",
+    "bucket": "",
+    "prefix": "code-review-benchmark/localtest/case-archives",
+    "run_prefix": "code-review-benchmark/localtest/run-data",
+    "access_key_id": "",
+    "secret_access_key": "",
+    "session_token": ""
+  }
+}

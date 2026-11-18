@@ -31,6 +31,24 @@ py -3.12 tools/prepare_windows.py
 
 完成后可在批次详情查看中文报告。要迁移到行内服务器时，重新打包源码并使用 Linux x86_64 / Python 3.11 资源包；Windows 的 `.venv`、LCR 可执行文件和运行批次不能直接当作 Linux 部署资源。
 
+## 本地连接 MySQL 和 COS
+
+在项目根目录复制一次模板。已有 `cluster.local.json` 时直接编辑原文件。
+
+```powershell
+Copy-Item .\examples\cluster.local.example.json .\cluster.local.json
+```
+
+填写同一个测试环境的 `scope`、MySQL 地址、库名及账号，以及 COS 地址、桶、前缀及密钥。只有使用临时 COS 凭据时才填写 `session_token`。MySQL 需要 TLS 时可在 `mysql` 中添加 `ssl` 对象。数据库须已初始化调度表。
+
+编辑后运行 `npm run dev`。另开 PowerShell，在同一工程目录启动 Worker。
+
+```powershell
+.\.venv\Scripts\python.exe -m webui.worker
+```
+
+Web 和 Worker 启动时自动读取 `cluster.local.json`。该文件启用集群模式，并以文件里的 scope 和连接信息为准。修改配置后重启两个进程。普通本地启动可继续使用默认单机配置。服务器部署继续用平台环境变量及 `deployment/` 下的配置。`cluster.local.json` 由 Git 和 Docker 忽略，请只保留在本机。
+
 ## 当前验收边界
 
 本地代码已补 Windows Python 路径、`.cmd` LCR 调用和子进程树终止处理。五例完整检视、取消/超时清理、结果恢复、模型接口与工作台交互仍需在目标 Windows 电脑完成实机验收后，才能称为 Windows 版已跑通。

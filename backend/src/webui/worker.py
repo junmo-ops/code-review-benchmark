@@ -101,7 +101,12 @@ def run_worker(app, *, install_signals=True, acknowledge=False):
 
 
 def main():
+    from scheduling.local_config import load_local_cluster
     from scheduling.settings import enabled
+    try:
+        load_local_cluster()
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     if enabled():
         from scheduling.worker import main as cluster_main
         return cluster_main()

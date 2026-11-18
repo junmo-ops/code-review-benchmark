@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from runner.paths import PROJECT_ROOT
 from .contracts import identifier, positive
+from .local_config import active_local_settings
 
 
 def concurrency_limit(previous):
@@ -17,8 +18,12 @@ def concurrency_limit(previous):
 
 
 def settings(root=PROJECT_ROOT):
-    path = Path(root) / 'deployment/cluster.json'
-    value = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {'mode': 'single'}
+    local = active_local_settings()
+    if local is not None:
+        value = {'mode': 'mysql', 'scope': local['scope']}
+    else:
+        path = Path(root) / 'deployment/cluster.json'
+        value = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {'mode': 'single'}
     if not isinstance(value, dict):
         raise ValueError('集群配置须为 JSON 对象')
     if value.get('mode') not in {'single', 'mysql'}:

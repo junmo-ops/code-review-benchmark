@@ -8,6 +8,7 @@ import sys
 from application.files import read, save
 from runner.paths import PROJECT_ROOT
 from webui.service import Dashboard
+from .local_config import CLUSTER_CREDENTIALS
 
 
 def command(run, stage, extra=(), timeout=900):
@@ -31,7 +32,7 @@ def _run(args, env, timeout):
 
 def _command_environment():
     env = dict(os.environ)
-    for key in ('BENCH_CASE_S3_ACCESS_KEY_ID', 'BENCH_CASE_S3_SECRET_ACCESS_KEY', 'BENCH_CASE_S3_SESSION_TOKEN'):
+    for key in CLUSTER_CREDENTIALS:
         env.pop(key, None)
     return env
 

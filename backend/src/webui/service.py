@@ -10,6 +10,8 @@ from runner.runtime import data_root, config_root
 from application.files import read, save, now
 
 from runner.paths import PROJECT_ROOT as ROOT
+from scheduling.local_config import CLUSTER_CREDENTIALS
+
 CATALOG = [
     dict(id='aacr', name='AACR', role='主测', description='真实代码变更 · 缺陷检出与定位', datasets=['pilot1.jsonl', 'pilot5.jsonl']),
     dict(id='swe_prbench_llm', name='SWE-PRBench', role='辅测', description='PR 检视意见 · 统一大模型评分', datasets=['swe-prbench-pilot1.jsonl']),
@@ -69,9 +71,8 @@ class Dashboard:
     def environment(self, profile):
         from local import ALLOWED
         env = dict(os.environ)
-        # COS credentials are used only by the workbench service. Do not pass
-        # them to LCR, evaluators, or other per-job child processes.
-        for name in ('BENCH_CASE_S3_ACCESS_KEY_ID', 'BENCH_CASE_S3_SECRET_ACCESS_KEY', 'BENCH_CASE_S3_SESSION_TOKEN'):
+        # Review and scoring commands do not need the service's cluster credentials.
+        for name in CLUSTER_CREDENTIALS:
             env.pop(name, None)
         if profile != 'environment':
             if profile not in {p['id'] for p in self.profiles()}:
@@ -88,7 +89,7 @@ class Dashboard:
 
     def redact(self, text):
         # Both console logs and browsed artifacts are filtered. Never return config contents.
-        secrets = [os.getenv(name) for name in ('BENCH_AGENT_TOKEN', 'BENCH_BASIC_PASSWORD', 'BENCH_PROXY_TOKEN',
+        secrets = [os.getenv(name) for name in ('BENCH_AGENT_TOKEN', 'BENCH_DB_PASSWORD', 'BENCH_BASIC_PASSWORD', 'BENCH_PROXY_TOKEN',
                                                 'BENCH_CSRF_TOKEN', 'BENCH_CASE_S3_ACCESS_KEY_ID',
                                                 'BENCH_CASE_S3_SECRET_ACCESS_KEY', 'BENCH_CASE_S3_SESSION_TOKEN')]
         try:
