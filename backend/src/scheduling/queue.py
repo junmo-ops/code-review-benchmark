@@ -112,7 +112,8 @@ class CaseQueue:
         positive(lease_seconds)
         with self._locked() as (db, settings):
             self._expire(db)
-            if settings['paused'] or not self._capacity(db, settings, owner):
+            from .cos_maintenance import active
+            if settings['paused'] or active(db, self.scope) or not self._capacity(db, settings, owner):
                 return None
             clause, parameters = _runtime_filter(runtimes)
             db.execute('SELECT t.* FROM bench_scheduler_tasks t JOIN bench_scheduler_pools p '

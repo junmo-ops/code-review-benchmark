@@ -49,8 +49,10 @@ export async function createRun(page, model, dataset = '浏览器回归案例', 
   await select(page, '被测模型', `回归-${model}`);
   await select(page, '裁判模型', '回归-success');
   if (caseJobs !== 1) {
-    await page.getByText('高级参数', { exact: true }).click();
-    await page.getByLabel('案例并发', { exact: true }).fill(String(caseJobs));
+    // The legacy single-process scenarios exercise the API's per-run setting.
+    await page.route('**/api/jobs', (route) => route.continue({
+      postData: JSON.stringify({ ...route.request().postDataJSON(), case_jobs: caseJobs }),
+    }), { times: 1 });
   }
   const response = page.waitForResponse((reply) => reply.url().endsWith('/api/jobs') && reply.request().method() === 'POST');
   await page.getByRole('button', { name: '创建并开始', exact: true }).click();

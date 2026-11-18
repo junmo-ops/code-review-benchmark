@@ -25,7 +25,6 @@ class Artifacts:
         from webui.case_storage import CaseArchiveStorage
         storage = storage or CaseArchiveStorage()
         self.client, self.bucket = storage.client, storage.bucket
-        self.uploaded = set()
         self.max_file = max_file
         self.prefix = storage.run_prefix.rstrip('/') + '/cluster/' + identifier(scope, 64) + '/'
 
@@ -48,12 +47,10 @@ class Artifacts:
                     snapshot.write(chunk)
             sha = digest.hexdigest()
             snapshot.seek(0)
-            if sha not in self.uploaded:
-                self.client.put_object(Bucket=self.bucket, Key=self._key(sha), Body=snapshot,
-                                       ContentLength=size, Metadata={'sha256': sha})
-                if len(self.uploaded) >= 4096:
-                    self.uploaded.clear()
-                self.uploaded.add(sha)
+            # Cleanup can remove an unreferenced object cached by a long-lived process.
+            # Always persist before publishing a new pointer, including after maintenance.
+            self.client.put_object(Bucket=self.bucket, Key=self._key(sha), Body=snapshot,
+                                   ContentLength=size, Metadata={'sha256': sha})
         return {'sha256': sha, 'size': size}
 
     def get(self, record, destination):

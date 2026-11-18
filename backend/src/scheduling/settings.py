@@ -1,8 +1,19 @@
 """Explicit opt-in; retain the existing single-instance deployment by default."""
 import json
+import os
 from pathlib import Path
 from runner.paths import PROJECT_ROOT
 from .contracts import identifier, positive
+
+
+def concurrency_limit(previous):
+    raw = os.environ.get('BENCH_GLOBAL_CONCURRENCY')
+    if raw is None:
+        return positive(previous) if previous is not None else None
+    try:
+        return positive(int(raw))
+    except ValueError as error:
+        raise ValueError('BENCH_GLOBAL_CONCURRENCY 必须为 1–10000 的整数') from error
 
 
 def settings(root=PROJECT_ROOT):
@@ -14,8 +25,7 @@ def settings(root=PROJECT_ROOT):
         raise ValueError('cluster.mode 须为 single 或 mysql')
     if value['mode'] == 'mysql':
         identifier(value['scope'], 64)
-        if 'concurrency' in value:
-            positive(value['concurrency'])
+        value['concurrency'] = concurrency_limit(value.get('concurrency'))
         # Execution capacity and leases are implementation details, not deployment knobs.
         value.update(pool='shared_gateway', worker_slots=5, lease_seconds=90)
         value.pop('model_pools', None)

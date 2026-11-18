@@ -164,7 +164,9 @@ def _execute(queue, store, lease, settings, stop):
 
 def _attempt(queue, store, lease, settings, stop):
     try:
-        _execute(queue, store, lease, settings, stop)
+        from .cos_maintenance import writer
+        with writer(queue, 'worker'):
+            _execute(queue, store, lease, settings, stop)
     except Exception as error:
         # No uncertain attempt can publish. Expiration records loss and bounds takeovers.
         print(f'集群尝试未发布：{lease.task_id}/{lease.generation} {type(error).__name__}', flush=True)

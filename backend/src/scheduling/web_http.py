@@ -16,7 +16,7 @@ def install(app, dashboard, csrf):
         if request.path == '/readyz':
             ready = catalog.ready()
             return jsonify(status='ready' if ready else 'resources_initializing'), 200 if ready else 503
-        if not request.path.startswith('/api/') or request.path == '/api/session':
+        if not request.path.startswith('/api/') or request.path == '/api/session' or request.path.startswith('/api/cos/'):
             return None
         if not catalog.ready():
             return jsonify(error='共享资源正在初始化，请确认 Worker 已启动；失败详情见 Worker 日志'), 503

@@ -23,7 +23,6 @@ interface Values {
   skill_versions?: string[];
   evaluator: string;
   timeout_minutes: number;
-  case_jobs: number;
   max_case_retries: number;
   max_tokens: number;
   dsh_max_output_tokens?: number;
@@ -45,7 +44,6 @@ function defaults(state: Snapshot, suiteId?: string, datasetId?: string): Values
     evaluator:
       suite.id === 'ccrab' ? 'executable' : suite.id === 'codefuse_cr' ? 'martian' : 'original',
     timeout_minutes: 10,
-    case_jobs: 1,
     max_case_retries: 1,
     max_tokens: 32768,
   };
@@ -187,10 +185,9 @@ function ready(state: Snapshot, values: Partial<Values>) {
     (values.suite === 'ccrab' || (legacy ? !!judge?.ready : !!judge?.review_ready))
   );
 }
-function Advanced({ suite, reviewer, cluster = false }: { suite: string; reviewer: string; cluster?: boolean }) {
+function Advanced({ suite, reviewer }: { suite: string; reviewer: string }) {
   const form = Form.useFormInstance<Values>();
   const stability = Form.useWatch('evaluation_mode', form) === 'stability';
-  const concurrent = !['mcr', 'ccrab'].includes(suite) && ['lcr', 'server_agent'].includes(reviewer);
   return (
     <Collapse
       items={[
@@ -212,26 +209,14 @@ function Advanced({ suite, reviewer, cluster = false }: { suite: string; reviewe
                   <InputNumber min={1} max={120} className="full-width" />
                 </Form.Item>
               )}
-              {concurrent && (
-                <>
-                  <Form.Item
-                    hidden={cluster}
-                    name="case_jobs"
-                    label="案例并发"
-                    extra={reviewer === 'server_agent' ? '同时提交并等待的案例数，建议先设为 2；服务端文件并发由服务端控制。' : '同时运行的案例数；每案例内部文件顺序检视。'}
-                    rules={[{ required: true }]}
-                  >
-                    <InputNumber min={1} max={16} precision={0} className="full-width" />
-                  </Form.Item>
-                  <Form.Item
-                    hidden={reviewer !== 'lcr'}
-                    name="max_case_retries"
-                    label="失败案例自动重试次数"
-                    extra="可能增加模型调用和耗时。"
-                  >
-                    <InputNumber min={0} max={2} precision={0} className="full-width" disabled={stability} />
-                  </Form.Item>
-                </>
+              {reviewer === 'lcr' && !['mcr', 'ccrab'].includes(suite) && (
+                <Form.Item
+                  name="max_case_retries"
+                  label="失败案例自动重试次数"
+                  extra="可能增加模型调用和耗时。"
+                >
+                  <InputNumber min={0} max={2} precision={0} className="full-width" disabled={stability} />
+                </Form.Item>
               )}
               {suite === 'mcr' && (
                 <Form.Item name="max_tokens" label="直接模型输出上限">
@@ -286,7 +271,6 @@ export function CreateRun({
         ...data,
         action: 'create',
         start_after_create: start,
-        case_jobs: ['lcr', 'server_agent'].includes(data.reviewer) ? data.case_jobs : 1,
         max_case_retries: data.reviewer === 'lcr' && data.evaluation_mode !== 'stability' ? data.max_case_retries : 0,
         skill_mode: skillMode(data),
         // 统一发成员列表（新契约）；基线不发空数组（后端 creation 拒绝空列表，仅按 skill_mode 判别）。
@@ -383,7 +367,7 @@ export function CreateRun({
         <Form.Item name="evaluator" label="评分方法">
           <Select options={evaluators(values.suite ?? '')} />
         </Form.Item>
-        <Advanced suite={values.suite ?? ''} reviewer={values.reviewer ?? ''} cluster={state.cluster_mode} />
+        <Advanced suite={values.suite ?? ''} reviewer={values.reviewer ?? ''} />
         <Alert
           className="section-gap"
           type="info"

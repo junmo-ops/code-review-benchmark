@@ -122,6 +122,8 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
         guard(dashboard, request)
 
     if getattr(dashboard, 'cluster_mode', False):
+        from scheduling.cos_maintenance import install as install_cos_barrier
+        install_cos_barrier(app, dashboard)
         from scheduling.web_http import install
         install(app, dashboard, csrf)
 
@@ -416,4 +418,6 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     register_zip_tool(app, dashboard, csrf)
     from .cos_inventory import register as register_cos_inventory
     register_cos_inventory(app)
+    from .cos_cleanup import register as register_cos_cleanup
+    register_cos_cleanup(app, dashboard)
     return app
