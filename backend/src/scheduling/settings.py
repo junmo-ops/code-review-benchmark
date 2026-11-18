@@ -1,10 +1,8 @@
 """Explicit opt-in; retain the existing single-instance deployment by default."""
-import json
 import os
-from pathlib import Path
 from runner.paths import PROJECT_ROOT
 from .contracts import identifier, positive
-from .local_config import active_local_settings
+from .config import cluster_options
 
 
 def concurrency_limit(previous):
@@ -18,14 +16,7 @@ def concurrency_limit(previous):
 
 
 def settings(root=PROJECT_ROOT):
-    local = active_local_settings()
-    if local is not None:
-        value = {'mode': 'mysql', 'scope': local['scope']}
-    else:
-        path = Path(root) / 'deployment/cluster.json'
-        value = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {'mode': 'single'}
-    if not isinstance(value, dict):
-        raise ValueError('集群配置须为 JSON 对象')
+    value = cluster_options(root)
     if value.get('mode') not in {'single', 'mysql'}:
         raise ValueError('cluster.mode 须为 single 或 mysql')
     if value['mode'] == 'mysql':
@@ -49,7 +40,7 @@ def services(root=PROJECT_ROOT):
     from webui.case_storage import mode
     if mode() != 'cos':
         raise ValueError('多实例模式必须配置 COS，不能使用本地资源存储')
-    database = Database.from_config(Path(root) / value.get('database_config', 'database.local.json'), root=root)
+    database = Database.from_config(root=root)
     return Workflow(database, value['scope']), Artifacts(value['scope']), value
 
 

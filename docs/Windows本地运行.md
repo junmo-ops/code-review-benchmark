@@ -47,7 +47,7 @@ Copy-Item .\examples\cluster.local.example.json .\cluster.local.json
 .\.venv\Scripts\python.exe -m webui.worker
 ```
 
-Web 和 Worker 启动时自动读取 `cluster.local.json`。该文件启用集群模式，并以文件里的 scope 和连接信息为准。修改配置后重启两个进程。普通本地启动可继续使用默认单机配置。服务器部署继续用平台环境变量及 `deployment/` 下的配置。`cluster.local.json` 由 Git 和 Docker 忽略，请只保留在本机。
+Web 和 Worker 启动时自动读取 `cluster.local.json`。该文件启用集群模式，并以文件里的 scope 和连接信息为准。修改配置后重启两个进程。普通本地启动可继续使用默认单机配置。行内使用同结构的 `deployment/cluster.json`，凭据由平台注入。调度管理命令 `python -m scheduling` 默认也读取当前环境的集群配置。`cluster.local.json` 由 Git 和 Docker 忽略，请只保留在本机。
 
 ## 当前验收边界
 

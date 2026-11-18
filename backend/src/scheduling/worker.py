@@ -230,6 +230,6 @@ def _runtimes():
 
 
 if __name__ == '__main__':
-    from .local_config import load_local_cluster
+    from .config import load_local_cluster
     load_local_cluster()
     main()

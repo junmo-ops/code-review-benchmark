@@ -66,7 +66,7 @@ def main():
     args=parser.parse_args()
     if os.getenv("BENCH_SERVER_MODE"):
         parser.error("服务器模式请使用部署文档中的 Gunicorn 与独立 Worker，不使用本地 API 入口")
-    from scheduling.local_config import load_local_cluster
+    from scheduling.config import load_local_cluster
     try:
         load_local_cluster(ROOT)
     except ValueError as error:

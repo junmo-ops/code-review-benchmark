@@ -8,7 +8,7 @@ import sys
 from application.files import read, save
 from runner.paths import PROJECT_ROOT
 from webui.service import Dashboard
-from .local_config import CLUSTER_CREDENTIALS
+from .config import CLUSTER_CREDENTIALS
 
 
 def command(run, stage, extra=(), timeout=900):

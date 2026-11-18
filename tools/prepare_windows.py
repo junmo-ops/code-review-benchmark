@@ -73,6 +73,7 @@ def main():
     launcher = [os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/c', r'call bin\lcr.cmd version']
     subprocess.run(launcher, cwd=ROOT, check=True)
     restore_repositories(parser)
+    from runner.runtime import data_root
     runtime = data_root(ROOT)
     runtime.mkdir(parents=True, exist_ok=True)
     (runtime/'local-runtime.json').write_text(json.dumps({

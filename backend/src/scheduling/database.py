@@ -5,29 +5,20 @@ import os
 from pathlib import Path
 from runner.paths import PROJECT_ROOT
 
-from .local_config import MYSQL_CREDENTIALS as ENV_CREDENTIALS, active_local_settings
-
-CONNECTION_FIELDS = {'host', 'port', 'database', 'ssl'}
+from .config import MYSQL_CONNECTION_FIELDS, MYSQL_CREDENTIALS, legacy_database_path, mysql_options
 
 
 def _environment_settings(root):
-    missing = [name for name in ENV_CREDENTIALS.values() if not os.environ.get(name, '').strip()]
+    missing = [name for name in MYSQL_CREDENTIALS.values() if not os.environ.get(name, '').strip()]
     if missing:
         raise ValueError('数据库环境变量缺失或为空：' + '、'.join(missing))
-    local = active_local_settings()
-    if local is not None:
-        values = local['mysql']
-    else:
-        path = Path(root) / 'deployment/database.json'
-        values = json.loads(path.read_text(encoding='utf-8-sig'))
-        if not isinstance(values, dict) or set(values) - CONNECTION_FIELDS:
-            raise ValueError('deployment/database.json 仅允许 host/port/database/ssl；账号密码须通过环境变量配置')
-    values.update({key: os.environ[name] for key, name in ENV_CREDENTIALS.items()})
+    values = mysql_options(root)
+    values.update({key: os.environ[name] for key, name in MYSQL_CREDENTIALS.items()})
     return values
 
 
 def _validate_settings(settings):
-    if not isinstance(settings, dict) or set(settings) - (CONNECTION_FIELDS | set(ENV_CREDENTIALS)):
+    if not isinstance(settings, dict) or set(settings) - (MYSQL_CONNECTION_FIELDS | set(MYSQL_CREDENTIALS)):
         raise ValueError('数据库配置字段无效')
     if any(not isinstance(settings.get(key), str) or not settings[key].strip()
            for key in ('host', 'user', 'password', 'database')):
@@ -45,12 +36,12 @@ class Database:
         self.settings = dict(settings)
 
     @classmethod
-    def from_config(cls, path='database.local.json', *, root=PROJECT_ROOT):
-        # Deployment uses tracked connection settings and injected credentials together.
-        # Keep local file connections only when no credential variable is present.
-        if any(name in os.environ for name in ENV_CREDENTIALS.values()) or not Path(path).exists():
-            return cls(_validate_settings(_environment_settings(root)))
-        return cls.from_file(path)
+    def from_config(cls, path=None, *, root=PROJECT_ROOT):
+        legacy = Path(path) if path is not None else legacy_database_path(root)
+        has_credentials = any(name in os.environ for name in MYSQL_CREDENTIALS.values())
+        if legacy is not None and not has_credentials and legacy.exists():
+            return cls.from_file(legacy)
+        return cls(_validate_settings(_environment_settings(root)))
 
     @classmethod
     def from_file(cls, path):

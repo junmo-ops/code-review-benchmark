@@ -10,7 +10,7 @@ from runner.runtime import data_root, config_root
 from application.files import read, save, now
 
 from runner.paths import PROJECT_ROOT as ROOT
-from scheduling.local_config import CLUSTER_CREDENTIALS
+from scheduling.config import CLUSTER_CREDENTIALS
 
 CATALOG = [
     dict(id='aacr', name='AACR', role='主测', description='真实代码变更 · 缺陷检出与定位', datasets=['pilot1.jsonl', 'pilot5.jsonl']),

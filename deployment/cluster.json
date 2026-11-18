@@ -1,4 +1,19 @@
 {
-  "mode": "single",
-  "scope": "dev"
+  "mode": "mysql",
+  "scope": "dev",
+  "concurrency": 2,
+  "mysql": {
+    "host": "codereviewst.tdsql.dbdns.cmbchina.cn",
+    "port": 6666,
+    "database": "codebench"
+  },
+  "cos": {
+    "mode": "cos",
+    "endpoint": "http://cos.shenzhen.t1ppd.cmbchina.cn",
+    "region": "shenzhen",
+    "bucket": "lv0150-code-review-benchmark-dev-1255000140",
+    "prefix": "code-review-benchmark/case-archives",
+    "run_prefix": "code-review-benchmark/run-data",
+    "timeout_ms": 600000
+  }
 }

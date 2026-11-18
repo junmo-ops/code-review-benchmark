@@ -101,7 +101,7 @@ def run_worker(app, *, install_signals=True, acknowledge=False):
 
 
 def main():
-    from scheduling.local_config import load_local_cluster
+    from scheduling.config import load_local_cluster
     from scheduling.settings import enabled
     try:
         load_local_cluster()

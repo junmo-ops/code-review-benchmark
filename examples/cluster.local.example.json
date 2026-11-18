@@ -1,4 +1,5 @@
 {
+  "mode": "mysql",
   "scope": "localtest",
   "mysql": {
     "host": "mysql.example.invalid",
@@ -8,6 +9,7 @@
     "password": ""
   },
   "cos": {
+    "mode": "cos",
     "endpoint": "https://cos.example.invalid",
     "region": "",
     "bucket": "",
