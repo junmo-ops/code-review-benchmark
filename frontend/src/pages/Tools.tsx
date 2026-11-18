@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Heading } from '../components/Common';
 
 const tools = [
+  { path: '/tools/cos', name: 'COS 空间整理', description: '盘点对象容量，筛选大文件，查看整理建议并导出清单。', icon: <FolderOutlined /> },
   {
     path: '/tools/repository-zip',
     name: '仓库 ZIP 工具',

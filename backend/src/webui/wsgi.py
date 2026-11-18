@@ -111,7 +111,7 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     app=Flask(__name__,static_folder=None);app.config['MAX_CONTENT_LENGTH']=16384
     default_frontend = PROJECT_ROOT/'frontend'/'dist' if local_token is not None else PROJECT_ROOT/'frontend-dist'
     frontend_root=Path(os.environ.get('BENCH_FRONTEND_DIST', default_frontend)).resolve()
-    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide','/zip-tool','/tools','/tools/repository-zip'}
+    pages={'/','/jobs','/experiments','/comparisons','/models','/cases','/repositories','/skills','/guide','/zip-tool','/tools','/tools/repository-zip','/tools/cos'}
     @app.before_request
     def authorize():
         # The gateway must overwrite identity headers, never forward browser values.
@@ -414,4 +414,6 @@ def create_app(dashboard=None, *, local_token=None, start_background=True):
     install_request_diagnostics(app)
     from .zip_tool import register as register_zip_tool
     register_zip_tool(app, dashboard, csrf)
+    from .cos_inventory import register as register_cos_inventory
+    register_cos_inventory(app)
     return app

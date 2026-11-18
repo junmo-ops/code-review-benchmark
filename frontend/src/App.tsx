@@ -17,6 +17,7 @@ import { useAction } from './hooks/useAction';
 import { api } from './api';
 import { ErrorAlert } from './components/Common';
 import type { Snapshot } from './types';
+const CosStorage = lazy(() => import('./pages/CosStorage').then((module) => ({ default: module.CosStorage })));
 const Tools = lazy(() => import('./pages/Tools').then((module) => ({ default: module.Tools })));
 const ZipTool = lazy(() => import('./pages/ZipTool').then((module) => ({ default: module.ZipTool })));
 const Assets = lazy(() => import('./pages/Assets').then((module) => ({ default: module.Assets })));
@@ -114,7 +115,7 @@ export default function App() {
     [params, setParams] = useSearchParams();
   const [selection, setSelection] = useState<{ suite?: string; dataset?: string }>();
   const path = location.pathname.replace(/\/$/, '') || '/';
-  const title = [...navigation, { key: '/tools/repository-zip', label: '工具箱 / 仓库 ZIP 工具' }, { key: '/experiments', label: '历史实验与报告' }, { key: '/comparisons', label: '历史实验与报告' }].find((n) => n.key === path)?.label ?? '测评工作台';
+  const title = [...navigation, { key: '/tools/cos', label: '工具箱 / COS 空间整理' }, { key: '/tools/repository-zip', label: '工具箱 / 仓库 ZIP 工具' }, { key: '/experiments', label: '历史实验与报告' }, { key: '/comparisons', label: '历史实验与报告' }].find((n) => n.key === path)?.label ?? '测评工作台';
   const openRun = (key: string, job?: string) =>
     setParams({ run: key, tab: job ? 'log' : 'overview', ...(job ? { job } : {}) });
   const openExperiment = (key: string, results = false) =>
@@ -183,6 +184,7 @@ export default function App() {
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/cases" element={<Assets key="cases" />} />
                   <Route path="/repositories" element={<Assets key="repositories" repository />} />
+                  <Route path="/tools/cos" element={<CosStorage />} />
                   <Route path="/tools" element={<Tools />} />
                   <Route path="/tools/repository-zip" element={<ZipTool />} />
                   <Route path="/zip-tool" element={<Navigate to="/tools/repository-zip" replace />} />
