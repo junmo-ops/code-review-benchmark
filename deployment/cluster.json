@@ -1,7 +1,6 @@
 {
   "mode": "mysql",
   "scope": "dev",
-  "concurrency": 2,
   "mysql": {
     "host": "codereviewst.tdsql.dbdns.cmbchina.cn",
     "port": 6666,

@@ -5,7 +5,7 @@ import tempfile
 import uuid
 from application.files import now, read
 from webui.service import Dashboard, ROOT
-from .settings import services
+from .settings import concurrency_limit, services
 from .contracts import identifier
 
 
@@ -37,7 +37,7 @@ class ClusterDashboard(Dashboard):
     def __init__(self, root=ROOT):
         super().__init__(root, load_jobs=False)
         self.queue, self.store, self.cluster = services(root)
-        limit = self.queue.bootstrap(self.cluster.get('concurrency'))
+        limit = self.queue.bootstrap(concurrency_limit())
         print(f'集群就绪：{self.cluster["scope"]}；全局并发上限 {limit}', flush=True)
         self.records = {}
         self.queries = ClusterQueries(self)

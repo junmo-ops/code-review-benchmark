@@ -5,10 +5,10 @@ from .contracts import identifier, positive
 from .config import cluster_options
 
 
-def concurrency_limit(previous):
+def concurrency_limit():
     raw = os.environ.get('BENCH_GLOBAL_CONCURRENCY')
     if raw is None:
-        return positive(previous) if previous is not None else None
+        return None
     try:
         return positive(int(raw))
     except ValueError as error:
@@ -20,8 +20,7 @@ def settings(root=PROJECT_ROOT):
     if value.get('mode') not in {'single', 'mysql'}:
         raise ValueError('cluster.mode 须为 single 或 mysql')
     if value['mode'] == 'mysql':
-        identifier(value['scope'], 64)
-        value['concurrency'] = concurrency_limit(value.get('concurrency'))
+        identifier(value.get('scope'), 64)
         # Execution capacity and leases are implementation details, not deployment knobs.
         value.update(pool='shared_gateway', worker_slots=5, lease_seconds=90)
         value.pop('model_pools', None)

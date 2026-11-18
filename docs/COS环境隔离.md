@@ -1,15 +1,18 @@
 # dev / st 共用代码和 COS 桶
 
-存储前缀支持部署环境变量覆盖，优先于 `deployment/cluster.json` 的 `cos` 配置。没有设置环境变量时完全沿用配置文件，st 无需修改。显式设置为空或包含空路径段、`.`、`..` 时会报错，不回退到默认位置。
+部署平台通过 `BENCH_CLUSTER_SCOPE` 选择 MySQL 批次和调度使用的 scope，同一环境的 Web 和 Worker 必须使用相同值。根据历史批次实际使用的 scope 设置该变量。
+
+`BENCH_COS_PREFIX` 和 `BENCH_COS_RUN_PREFIX` 分别覆盖 `deployment/cluster.json` 中的资源前缀和运行数据前缀。省略环境变量时使用文件中的值。显式设置空值或包含空路径段、`.`、`..` 时会报错。已有环境应沿用原来的桶和前缀。
 
 在 dev 部署平台配置：
 
 ```text
+BENCH_CLUSTER_SCOPE=dev
 BENCH_COS_PREFIX=code-review-benchmark/dev/case-archives
 BENCH_COS_RUN_PREFIX=code-review-benchmark/dev/run-data
 ```
 
-两项均需设置才能完整隔离资源和运行记录；它们不改变桶、地址、认证方式或 local/cos 存储模式。
+scope 决定数据库里的批次范围，也用于集群证据的子目录。两个 COS 前缀分别决定资源和运行数据的存储位置。
 
 | 数据 | dev 中的路径 |
 | --- | --- |

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from runner.paths import PROJECT_ROOT
-from .contracts import identifier, positive
+from .contracts import identifier
 
 LOCAL_PROFILE = 'cluster.local.json'
 DEPLOYMENT_PROFILE = 'deployment/cluster.json'
@@ -48,8 +48,15 @@ def _profile(root):
 
 
 def cluster_options(root=PROJECT_ROOT):
-    profile, _ = _profile(root)
-    return {key: value for key, value in profile.items() if key not in _SECTIONS}
+    profile, local = _profile(root)
+    options = {key: value for key, value in profile.items() if key not in _SECTIONS | {'concurrency'}}
+    scope = os.environ.get('BENCH_CLUSTER_SCOPE')
+    if options.get('mode') == 'mysql' and not local and scope is not None:
+        try:
+            options['scope'] = identifier(scope.strip(), 64)
+        except ValueError as error:
+            raise ValueError('BENCH_CLUSTER_SCOPE 须为 1–64 位字母、数字、下划线或连字符') from error
+    return options
 
 
 def legacy_database_path(root=PROJECT_ROOT):
@@ -124,20 +131,17 @@ def _local_profile(profile):
     from .database import _validate_settings
 
     required = {'scope', *_SECTIONS}
+    # Accept the retired field in existing local profiles without applying it.
     if required - profile.keys() or profile.keys() - (required | {'mode', 'concurrency'}):
         raise ValueError(f'{LOCAL_PROFILE} 须包含 scope、mysql 和 cos')
     if profile.get('mode', 'mysql') != 'mysql':
         raise ValueError(f'{LOCAL_PROFILE} 的 mode 须为 mysql')
     try:
         scope = identifier(profile['scope'], 64)
-        concurrency = profile.get('concurrency')
-        if concurrency is not None:
-            positive(concurrency)
         mysql = dict(_validate_settings(profile['mysql']))
     except ValueError as error:
         raise ValueError(f'{LOCAL_PROFILE}：{error}') from None
-    return {'mode': 'mysql', 'scope': scope, 'concurrency': concurrency,
-            'mysql': mysql, 'cos': _local_cos(profile['cos'])}
+    return {'mode': 'mysql', 'scope': scope, 'mysql': mysql, 'cos': _local_cos(profile['cos'])}
 
 
 def load_local_cluster(root=PROJECT_ROOT):

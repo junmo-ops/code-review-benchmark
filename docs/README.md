@@ -1,60 +1,229 @@
-# 操作文档
+\# Issue Audit API 文档\
+\
+\## 接口概述\
+\
+Issue Audit（报告审核）接口用于管理代码审查报告的复核流程，支持发起审核、查看待审核列表、完成审核等功能。\
+\
+\*\*基础路径\*\*: \`/issue-audit\`\
+\
+\*\*统一返回格式\*\*: \`Response\<T>\`\
+\
+\## 接口清单\
+\
+\| 接口名称 | 方法 | URL | 用途 |\
+\|---------|------|-----|------|\
+\| 发起人待发起的审核列表 | POST | \`/issue-audit/ready/my\` | 查询发起人待发起的审核报告 |\
+\| 发起人发起中的审核列表 | POST | \`/issue-audit/pending/my\` | 查询发起人发起中的审核报告 |\
+\| 发起人已审核报告列表 | POST | \`/issue-audit/reviewed/my\` | 查询发起人已审核的报告 |\
+\| 发起审核 | POST | \`/issue-audit/initiate\` | 发起新的审核流程 |\
+\| 待我复核的审核列表（不分页） | GET | \`/issue-audit/pending\` | 审核人查询待复核的审核报告 |\
+\| 已复核的审核列表（不分页） | GET | \`/issue-audit/reviewed\` | 审核人查询已复核的审核报告 |\
+\| 完成审核 | POST | \`/issue-audit/complete\` | 复核人完成审核操作 |\
+\
+\## 请求参数说明\
+\
+\### 公共查询参数\
+\
+\| 参数名 | 类型 | 是否必填 | 描述 | 格式 |\
+\|--------|------|----------|------|------|\
+\| startDate | LocalDate | 是 | 开始日期 | yyyy-MM-dd |\
+\| endDate | LocalDate | 是 | 结束日期 | yyyy-MM-dd |\
+\
+\### 发起审核参数 (InitiateAuditRequest)\
+\
+\`\`\`json\
+{\
+&#x20; "meetingId": "string",\
+&#x20; "troopId": "string",\
+&#x20; "commitIds": [1, 2, 3],\
+&#x20; "rtcIds": ["rtc1", "rtc2"]\
+}\
+\`\`\`\
+\
+\| 字段名 | 类型 | 是否必填 | 验证规则 | 描述 |\
+\|--------|------|----------|----------|------|\
+\| meetingId | String | 是 | @NotBlank(message = "无审批会议信息") | 会议 ID（仅展示，可为空） |\
+\| troopId | String | 是 | @NotBlank(message = "未传递TroopId") | 团队 ID |\
+\| commitIds | List\<Long> | 是 | @NotEmpty(message = "请选择提交记录") | 要审核的提交记录 ID 列表 |\
+\| rtcIds | List\<String> | 是 | @NotEmpty(message = "请选择复核人") | 复核人 RTC ID 列表 |\
+\
+\### 完成审核参数 (CompleteAuditRequest)\
+\
+\`\`\`json\
+{\
+&#x20; "commitIds": [1, 2, 3]\
+}\
+\`\`\`\
+\
+\| 字段名 | 类型 | 是否必填 | 描述 |\
+\|--------|------|----------|------|\
+\| commitIds | List\<Long> | 是 | 要完成审核的提交记录 ID 列表 |\
+\
+\## 响应参数说明\
+\
+\### 统一响应格式 (Response\<T>)\
+\
+\`\`\`json\
+{\
+&#x20; "code": 0,\
+&#x20; "message": "success",\
+&#x20; "data": null\
+}\
+\`\`\`\
+\
+\| 字段名 | 类型 | 描述 |\
+\|--------|------|------|\
+\| code | Integer | 响应码 |\
+\| message | String | 响应消息 |\
+\| data | T | 响应数据 |\
+\
+\### 审核响应数据类型\
+\
+\#### CommitReviewAuditResponseDto\
+\
+\| 字段名 | 类型 | 描述 |\
+\|--------|------|------|\
+\| commitId | Long | 提交记录 ID |\
+\| commitScanReportSummaryDtos | List\<CommitScanReportSummaryDto> | 扫描报告摘要列表 |\
+\| auditReview | List\<AuditReviewDto> | 审核明细列表 |\
+\
+\#### AuditReviewDto\
+\
+\| 字段名 | 类型 | 描述 | 格式 |\
+\|--------|------|------|------|\
+\| batchId | String | 批次 ID ||\
+\| meetingId | String | 会议 ID ||\
+\| meetingDate | LocalDate | 会议日期 | yyyy-MM-dd |\
+\| rtcId | String | RTC ID ||\
+\| commitId | Long | 提交记录 ID ||\
+\| status | AuditDetailStatusEnum | 审核状态 | 枚举值 |\
+\| initiatedAt | LocalDateTime | 发起时间 | yyyy-MM-dd HH:mm:ss |\
+\| reviewedAt | LocalDateTime | 审核时间 | yyyy-MM-dd HH:mm:ss |\
+\
+\#### InitiateAuditResponse\
+\
+\| 字段名 | 类型 | 描述 |\
+\|--------|------|------|\
+\| batchId | String | 批次 ID |\
+\| meetingId | String | 会议 ID |\
+\| meetingDate | LocalDate | 会议日期 | yyyy-MM-dd |\
+\| commitCount | int | 提交记录数量 |\
+\| reviewerCount | int | 复核人数量 |\
+\| notifiedCount | int | 已通知人数 |\
+\
+\## 审核状态枚举 (AuditDetailStatusEnum)\
+\
+\| 枚举值 | 描述 |\
+\|--------|------|\
+\| PENDING | 未完成（邀请已发送，复核人尚未完成审核） |\
+\| REVIEWED | 已完成（复核人已完成审核） |\
+\
+\## 请求示例\
+\
+\### 1. 发起审核\
+\
+\*\*请求\*\*:\
+\`\`\`bash\
+POST /issue-audit/initiate\
+Content-Type: application/json\
+\
+{\
+&#x20; "meetingId": "meeting_001",\
+&#x20; "troopId": "troop_001",\
+&#x20; "commitIds": [1001, 1002, 1003],\
+&#x20; "rtcIds": ["rtc001", "rtc002"]\
+}\
+\`\`\`\
+\
+\*\*响应\*\*:\
+\`\`\`json\
+{\
+&#x20; "code": 0,\
+&#x20; "message": "success",\
+&#x20; "data": {\
+&#x20;   "batchId": "batch_001",\
+&#x20;   "meetingId": "meeting_001",\
+&#x20;   "meetingDate": "2023-11-18",\
+&#x20;   "commitCount": 3,\
+&#x20;   "reviewerCount": 2,\
+&#x20;   "notifiedCount": 0\
+&#x20; }\
+}\
+\`\`\`\
+\
+\### 2. 完成审核\
+\
+\*\*请求\*\*:\
+\`\`\`bash\
+POST /issue-audit/complete\
+Content-Type: application/json\
+\
+{\
+&#x20; "commitIds": [1001, 1002, 1003]\
+}\
+\`\`\`\
+\
+\*\*响应\*\*:\
+\`\`\`json\
+{\
+&#x20; "code": 0,\
+&#x20; "message": "success",\
+&#x20; "data": null\
+}\
+\`\`\`\
+\
+\### 3. 查询待发起审核列表\
+\
+\*\*请求\*\*:\
+\`\`\`bash\
+POST /issue-audit/ready/my\
+Content-Type: application/x-www-form-urlencoded\
+\
+startDate=2023-11-01&endDate=2023-11-30\
+\`\`\`\
+\
+\*\*响应\*\*:\
+\`\`\`json\
+{\
+&#x20; "code": 0,\
+&#x20; "message": "success",\
+&#x20; "data": [\
+&#x20;   {\
+&#x20;     "commitId": 1001,\
+&#x20;     "commitScanReportSummaryDtos": [],\
+&#x20;     "auditReview": []\
+&#x20;   }\
+&#x20; ]\
+}\
+\`\`\`\
+\
+\## 错误码说明\
+\
+\| 错误码 | 描述 | 可能原因 |\
+\|--------|------|----------|\
+\| 0 | 成功 | - |\
+\| 400 | 参数错误 | 请求参数校验失败 |\
+\| 401 | 未授权 | 登录状态失效 |\
+\| 500 | 服务器错误 | 系统内部错误 |\
+\
+\## 注意事项\
+\
+1\. \*\*日期范围\*\*: 所有查询接口都需要提供开始日期和结束日期，格式为 \`yyyy-MM-dd\`\
+2\. \*\*参数校验\*\*: 所有必填字段都有相应的校验规则，前端应做好验证\
+3\. \*\*分页处理\*\*: 当前接口均为不分页实现，如需分页请与开发确认\
+4\. \*\*审核状态\*\*: 审核状态为枚举值，前端应使用下拉选择器展示\
+5\. \*\*时间格式\*\*: 所有日期时间字段都使用指定格式，前端应统一处理\
+\
+\## 相关文件\
+\
+\- Controller: \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/adapter/api/IssueAuditController.java\`\
+\- DTOs: \
+&#x20; \- \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/adapter/api/dto/CommitReviewAuditResponseDto.java\`\
+&#x20; \- \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/adapter/api/dto/AuditReviewDto.java\`\
+&#x20; \- \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/adapter/api/dto/InitiateAuditRequest.java\`\
+&#x20; \- \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/adapter/api/dto/InitiateAuditResponse.java\`\
+\- 枚举: \`src/main/java/com/cmbchina/cmbkb/service/issueaudit/domain/enums/AuditDetailStatusEnum.java\`
 
-安装、目录和日常启动请先看 [项目 README](../README.md)。
 
-- [dev / st COS 环境隔离](COS环境隔离.md)：同一代码、同一桶按环境变量区分数据路径。
 
-- [DSH 部署操作单](../deployment/DSH部署操作单.md)：先发布独立 headless 内部 npm，再更新测评镜像和 POD；无需 RPM 或归档入 Git。
-- [DSH 源码发布核查](../deployment/DSH源码发布核查.md)：源码发行范围、固定平台输入和依赖核查报告的解释。
-- [DSH + Skill 测评规格](DSH-Skill测评方案.md)：用户故事、实现决策、测试边界与排除范围。
-- [DSH Linux 基线](DSH-Linux基线.md)：工单 01 的固定依赖、隔离边界与本地验证；完成状态以工单证据为准。
-- [探索性验收记录](探索性验收记录-2026-10-14.md)：本轮复现的问题、修复和故障/压力证据。
-- [浏览器自动回归](浏览器自动回归.md)：隔离运行核心页面与业务流程，失败保留截图和回放。
-- [Windows 资源准备](Windows本地运行.md)：Git、LCR 与案例资源。
-- [Mac 资源准备](Mac本地验证.md)：本地运行时。
-- [案例集扩展](案例集扩展.md)：添加测评案例。
-- [仓库与案例集上传](../deployment/案例集网页上传.md)：仓库复用、批量导入和补充提交。
-- [容器部署](../deployment/单服务部署.md)：Python 单服务、页面构建和运行环境变量。
-- [COS 案例包存储](../deployment/案例包COS存储.md)：案例资源持久化。
-- [多模型对比](对比实验.md)：统一模型、案例与预算。
-- [测评对比规则](测评对比规则.md)：范围和结果解读。
-
-旧文档中的 Python 操作入口已改为 `backend/src/` 下的路径；日常启动优先使用项目级 npm 命令。历史验证文档记录当时结果，不能代替当前版本或行内环境验收。
-
-## Skill 资源
-
-工作台 `/skills` 提供完整待测 Skill ZIP 导入、进度、版本详情、资源清单和原包下载。包内须有唯一的 `SKILL.md`，YAML 元数据包含 `name` 和 `description`；支持 ZIP 根目录或单一外层 Skill 目录。本地 Markdown 链接引用的资源须在该 Skill 目录内，导入不执行脚本或修改原文。
-
-内容版本以按路径排序的逐文件路径、大小及 SHA-256 清单计算身份，与 ZIP 字节 SHA-256 分开。同名内容变化生成新版本；重打包的相同内容复用版本并保留各原包。列表、详情和下载均重新校验内容，不一致的版本显示为不可用，不会被重新导入静默覆盖。
-
-沿用 `BENCH_CASE_UPLOAD=1` 上传开关和现有分块上传、后台任务；Skill 默认上传上限 32 MiB、解压上限 64 MiB、最多 2000 条目，主说明最多 1 MiB。可按现有 MiB 配置模式设置 `BENCH_SKILL_UPLOAD_MAX_MIB` 和 `BENCH_SKILL_UNPACK_MAX_MIB`，同时受公共上传上限约束。COS 版本记录（含完整路径清单）最多 4 MiB，导入时与恢复使用相同上限，超限不会发布版本。
-
-Skill 沿用案例资源的 `BENCH_CASE_STORAGE_MODE` 和 `deployment/cluster.json` 中的 COS 连接、凭证及专用资源前缀。本地模式只落盘；COS 模式在原 ZIP、完整内容身份、文件清单和最终发布标记保存确认后才显示成功并可选。每个新对象都完整回读并重算 SHA-256，不再仅用 HEAD 大小和摘要元数据确认；保存失败不能退化为本地成功。重复打包的原 ZIP 保留并关联相同内容身份。
-
-2026-10-28 行内手工验收确认当前接口不执行两种防覆盖头，使用者同意改为 [追加发布协议](adr/0004-append-only-skill-publications.md)。新对象放在资源前缀的 `v2/skills/append-v2/<内容身份>/<随机事务>/` 下，原 ZIP、记录和最终提交标记各自的路径都包含完整内容摘要。写入者不更新共享索引，不覆盖已有事务；失败后重新上传使用新事务，丢失写入响应只回读确认，不重放同一 PUT。原有本地重打包归档随主记录一起提交；没写完发布标记的中间对象不可选，不自动删除，须按组织认可的前缀审计及清理策略管理。
-
-该协议不依赖厂商专用头，不修改桶配置，也不提供服务端对象锁或原子首次写入选主。有权限的外部写入者仍可能破坏对象；读取内容、摘要路径或已确认身份不一致时停止，不静默恢复到另一份。并发发布相同冻结身份允许保留多份事务记录；同一内容身份出现不同主原包等冻结字段时明确阻止恢复，不按时间或排序覆盖历史身份。旧格式仅只读恢复已提交版本，不补写旧提交标记；未提交的旧中间记录不会自动发布。新流程不再运行条件写探测或要求为探测开放删除权限。新旧格式、原包保留、故障和并发验证均不代替实际行内 COS 验收。
-
-容器入口在开放服务前恢复并核验 Skill 原包实际摘要、解包清单与内容身份；缺失、损坏、不可变冲突会阻止启动，不自动换版本或调用模型。直接启动本地开发服务不替代容器入口的 COS 启动恢复。原包及单个资源仍可在版本详情下载。
-
-资源模式与 `BENCH_RUN_STORAGE_MODE` 独立：后者沿用普通运行材料的异步 COS 备份、失败警示和正常退出最终同步。DSH 的 `raw/` 脱敏事件、原生会话、完整模型输入及加载证明、冻结配置、Skill 快照、答卷、评分记录与报告均在普通 `runs/` 备份范围；临时 HOME 与工作区不作为唯一证据。已备份批次恢复后可在原页面查看、下载并零检视调用恢复；裁判仍按所选协议恢复。强杀、宿主故障或网络失败可能丢失最后尚未同步的数据，最近同步时间不是整批已持久化的事务确认。
-
-## DSH 指定 Skill 版本
-
-在现有“新建测评”中选择 AACR、DSH + Skill，再选择“加载指定 Skill 版本”及一个成功导入的内容版本，或明确选择“不加载 Skill（基线）”。每次只创建一个普通批次；被测模型、裁判和原始 AACR / Martian 评分仍独立选择。切换工具或模式会清除不适用的版本参数，保存配置不调用模型。
-
-排队时冻结完整文件清单、原包身份和部署运行模式，初始化时再次核验全部内容并保存批次快照。同名新导入不会替换旧批次；内容、模式或固定运行依赖变化时停止，不静默改用另一版本。每案例使用新快照与会话；sandbox 模式只读挂载配套资源，pod 模式通过软件工具/路径检查限制资源访问，不提供 OS 级隔离。Skill 正文和策略不改写，不执行其中的脚本。
-
-行内容器当前明确选择 pod 模式，页面和报告标注“POD 内运行，无操作系统级沙盒”。同容器数据或网络没有额外 OS 边界，不应与 sandbox 模式当作相同执行条件。不需要 Bubblewrap/RPM，也不再把依赖归档提交 Git；先发布独立检视专用内部 npm，再部署测评镜像，见 [DSH 部署操作单](../deployment/DSH部署操作单.md)。内部发行身份单独冻结，不冒称完整的官方 DSH 产品。
-
-固定 Linux DSH 使用原生显式注入加载候选 Skill。完整的原生会话记录与实际模型通道输入共同核验加载，也识别相关联的原生 `skill` 工具加载记录；启动参数、加载指令、截断投影或单独的 `loaded` 标记不构成证明。禁用能力的调用、明确的权限拒绝或 Skill 声明所需能力不支持时，保留依据且不发布质量分。普通文件不存在不被直接认定为依赖禁用能力；包内未使用脚本也不导致武断拒绝。
-
-普通执行记录、报告与结果归档保留版本或基线、完整性、加载证明和已知用量。`raw/` 中包含脱敏会话、实际模型输入、加载证明和执行前后内容完整性记录；批次 `skill/` 保留原包、清单和原始资源。临时 HOME 清理后仍可读取；恢复只解析已有记录，不重新调用检视模型。失败、格式错误、截断或位置非法的结果不作为完整零意见答卷。
-
-案例串行执行，默认 10 分钟是每案例检视预算，页面按冻结清单逐例安排外层监督。普通报告列出完整答卷、失败、超时及实际评分范围；失败不会变成零意见。主动停止显示“已停止”，服务或 Worker 中断显示“曾中断”；两者均不自动重放检视。停止与整例超时会回收隔离进程及其后代，保留执行和清理耗时。Worker 消失时，其拥有的 DSH CLI 会主动中断并清理当前案例。
-
-“高级参数”中的“DSH 单次输出上限（tokens）”与整例时限独立，默认仍为 8192，可显式设置为 1–65536 的整数；CLI 对应 `init --dsh-max-output-tokens`。该值在排队、初始化、实际模型请求和报告中保持一致并按批次冻结，不改动裁判参数或其他被测工具。服务端可能另有更低限制，调高配置不保证模型会完整结束。`max-tokens` 表示模型返回了输出截断，保留为失败答卷，不自动续写或重试；调整限额须新建批次，Skill 与无 Skill 基线应采用相同预算。历史批次缺少新字段时按原 8192 解释，不静默扩大上限。
-
-新批次保存 `dsh-frozen-config.json`，在每个 CLI 阶段及执行结束核验初始冻结条件。冻结条件变化、隔离或进程回收无法确认时停止整个批次，不自动继续队列评分。恢复不会覆盖已有完整答卷，也不能把因冻结条件失效而停止的记录变成质量答卷。缺少该初始冻结身份的历史 DSH 批次不自动升级或继续执行；工作台仍可读取其已有答卷、日志和报告，重测须另建批次。
-
-依赖与本地验证命令见 [DSH Linux 基线](DSH-Linux基线.md)。本功能使用实际 Linux DSH 联调本地模型接口替身，不以此声称真实模型质量、真实 COS、生产镜像或行内镜像已验收。工单 03 的最终验证记录见 `.scratch/dsh-skill/issues/03-skill-review.md`；五十例生命周期专项及真实已导入清单的待验收范围见 `.scratch/dsh-skill/issues/04-aacr-50-lifecycle.md`。合成 50 例不替代用户已有真实清单的验收；Skill 资产及运行材料恢复验证见 `.scratch/dsh-skill/issues/05-skill-persistence.md`。
+后端更新了一版接口文档，你看看
