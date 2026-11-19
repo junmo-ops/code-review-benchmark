@@ -21,7 +21,10 @@ SKILL_EXTRA_ROWS = frozenset({'bash-sandbox', 'tool-bash'})
 # 先放宽到 10 分钟；引入中继首字节/流停顿上限（240s，见 gateway.READ_TIMEOUT_S）后，
 # 中继要在客户端放弃前完成有界重试与转交，上限再放宽到 20 分钟作为吸收余量；
 # 总时长仍受批次 timeout_minutes 控制。bridge.mjs 的 undici 等待上限保持同值。
-STREAM_IDLE_TIMEOUT_MS = 1200000
+# 提供方 SDK（openai 兼容客户端）另有一个默认 10 分钟的总请求超时（600000ms）；
+# 只放宽流空闲而不设置它，长推理（实测 605 秒）仍会在客户端侧被截断为 TIMEOUT，
+# 所以请求总超时和服务端/POD 侧等待一起对齐到这个 20 分钟上限。
+STREAM_IDLE_TIMEOUT_MS = runtime.REQUEST_TIMEOUT_SECONDS * 1000
 
 
 class BundleLoader(yaml.SafeLoader):
@@ -93,6 +96,7 @@ def overlay(model, skill=None, work=None, max_output_tokens=8192, evaluation_mod
             apiKeyEnv='BENCH_DSH_KEY', models=[dict(id=model, contextWindow=131072,
                                                  maxTokens=runtime.output_limit(max_output_tokens))],
             streamIdleTimeoutMs=STREAM_IDLE_TIMEOUT_MS,
+            timeoutMs=STREAM_IDLE_TIMEOUT_MS,
             retryPolicy=dict(mode='normal', maxRetries=0))}),
     }
     patches += [dict(id=name, config=config) for name, config in settings.items()]

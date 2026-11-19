@@ -484,8 +484,8 @@ def write_summary(items, run):
     lines = ['# DSH + Skill 执行记录', '', _subject() + '；DSH ' + runtime.VERSION,
              execution_conditions(CFG), retry_conditions(CFG),
              '检视用量仅统计模型通道已知值，与裁判用量分开；缺失不计零。',
-             '模型通道瞬态失败（限速/5xx/截断流/首字节停顿）由检视中继有界重试，不新增答卷轮次、'
-             '不改变评分协议；每次尝试记录在 raw/ 请求证据中。',
+             '模型通道瞬态失败（限速/5xx/网关工具调用 485/截断流/零事件空流/空内容完成/心跳流无可用事件/首字节停顿）由检视中继有界重试，'
+             '不新增答卷轮次、不改变评分协议；每次尝试记录在 raw/ 请求证据中。',
              completion(run, items)[0], '']
     for item in items:
         path = run / 'results' / (item.safe_id + '.json')

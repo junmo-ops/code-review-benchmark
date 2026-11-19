@@ -14,8 +14,14 @@ VERSION = '0.2.1-rc.2'
 RUNTIME = PROJECT_ROOT / 'dependencies/dsh'
 MODULES = RUNTIME / 'node_modules'
 ENTRY = MODULES / '@deepseek-ai/dsh/lib/bin.js'
+# Total single-request allowance for the provider SDK. The SDK default (600 s)
+# is shorter than the relay's 3 × 240 s retry envelope and cut long reasoning
+# off as TIMEOUT (aacr-20261111064715892). Stream idle and the bridge's undici
+# bounds use the same value.
+REQUEST_TIMEOUT_SECONDS = 1200
 POLICY = dict(request_retries=0, compaction_retries=1, overflow_retries=1,
               compaction_failure='abort_turn_no_recovery', context_window=131072, max_output_tokens=8192,
+              request_timeout_seconds=REQUEST_TIMEOUT_SECONDS,
               compaction='fixed_default_threshold', tools=['read', 'glob', 'grep'],
               tool_read_scope='case_and_task_input_only',
               isolation='bubblewrap_pid_mount_network', model_transport='fixed_endpoint_unix_relay')

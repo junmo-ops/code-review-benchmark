@@ -5,10 +5,15 @@ rate limits (425/429/432), server errors (any 5xx, including the 585/504
 observed on this deployment) and truncated SSE streams. DSH itself is frozen
 with ``retryPolicy maxRetries=0`` (ADR 0001), so each such hiccup used to kill
 the whole case. The relay now retries only failures that produced no usable
-completion, inside the whole-case deadline, and records every attempt in the
-request evidence for audit. Client errors (4xx), bounded-response violations
-and deadline expiry are never retried. DSH-side request retries stay disabled;
-known usage is counted from every transmission, including failed attempts.
+completion — including a completed SSE turn with no text and no tool call, and
+a stream that keeps sending bytes (keepalive comments or an unterminated event)
+without one usable event — inside the whole-case deadline, and records every
+attempt in the request evidence for audit. Client errors (4xx) are never retried, except the
+gateway's 485 wrapper for a model replica that rejects tool calls because it
+was started without ``--enable-auto-tool-choice``; the same payload succeeds on
+healthy replicas, so that one is a server routing failure. Bounded-response
+violations and deadline expiry are never retried. DSH-side request retries stay
+disabled; known usage is counted from every transmission, including failed attempts.
 """
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -26,6 +31,15 @@ from .wire import response_observations
 
 RATE_LIMIT_STATUSES = frozenset({425, 429, 432})
 TRANSIENT_STATUSES = frozenset({408, 500, 502, 503, 504, 520, 522, 524})
+
+# LAILAS1485 is the platform gateway's wrapper for an upstream 400. One known
+# cause is a model replica started without --enable-auto-tool-choice /
+# --tool-call-parser: every request that carries tools is rejected there while
+# sibling replicas serve the identical payload, so the same request succeeds on
+# another route. Treat exactly that marker as a server-side routing failure and
+# retry it; every other 485 keeps the client-error (no retry) semantics.
+GATEWAY_INVALID_REQUEST_STATUS = 485
+TOOL_CHOICE_CONFIG_MARKER = b'enable-auto-tool-choice'
 
 # A model response that produced no body byte for this long is a stuck
 # upstream (headers arrived, stream never started), and one that pauses
@@ -104,34 +118,66 @@ class CaseDeadlineError(ValueError):
     """The shared whole-case deadline expired during a model request."""
 
 
+class StalledStreamError(ValueError):
+    """Bytes keep arriving but no usable SSE event does within the read bound.
+
+    ``httpx``'s read timeout only measures socket reads, so an upstream that
+    sends SSE comments/heartbeats or an unterminated event can keep a request
+    alive indefinitely while DSH sees no progress; the client then dies at its
+    own 20-minute idle bound without the relay ever retrying.
+    """
+
+
 def _error_kind(error, deadline):
     if isinstance(error, ResponseLimitError):
         return 'response_too_large'
     if isinstance(error, CaseDeadlineError) or time.monotonic() >= deadline:
         return 'case_deadline_exceeded'
-    if isinstance(error, httpx.TimeoutException):
+    if isinstance(error, (StalledStreamError, httpx.TimeoutException)):
         return 'upstream_timeout'
     return 'transport_or_contract_error'
+
+
+def _no_usable_content(observed):
+    return (observed['finish_reason'] is not None
+            and not observed['delta_nonblank'] and not observed['message_nonblank']
+            and not observed['tool_fragments'] and not observed['nonstring_content'])
 
 
 def _transient_observed(status, content_type, body):
     """Classify a completed upstream transmission.
 
     Returns ``(None, observations)`` when the response is usable as-is and
-    ``('rate_limit'|'server'|'truncated_stream', observations)`` when it failed
-    without producing a usable completion and deserves a bounded retry. The
-    observations are parsed once and reused by the caller.
+    ``('rate_limit'|'server'|'truncated_stream'|'empty_completion', observations)``
+    when it failed without producing a usable completion and deserves a bounded
+    retry. The observations are parsed once and reused by the caller.
     """
     observed = response_observations(body, content_type)
     if status in RATE_LIMIT_STATUSES:
         return 'rate_limit', observed
+    if (status == GATEWAY_INVALID_REQUEST_STATUS
+            and TOOL_CHOICE_CONFIG_MARKER in body):
+        # Bad gateway replica, not a bad request: the payload has no
+        # tool_choice and identical requests succeed on healthy replicas.
+        return 'server', observed
     if status == 408 or status in TRANSIENT_STATUSES or status >= 500:
         return 'server', observed
-    if (content_type.lower().startswith('text/event-stream') and observed['event_count'] > 0
+    if (content_type.lower().startswith('text/event-stream')
             and not observed['done_marker'] and observed['finish_reason'] is None):
         # Mirrors DSH's 'Stream ended without finish_reason': the upstream
-        # stopped mid-stream, so the response is not a usable completion.
+        # stopped before producing a completion. The zero-event case is the
+        # same defect with the body left empty (observed as a 200 with
+        # response_bytes=0), so it must retry too rather than be forwarded as
+        # a usable response.
         return 'truncated_stream', observed
+    if (content_type.lower().startswith('text/event-stream')
+            and _no_usable_content(observed)):
+        # A completed turn that carries reasoning only (or nothing at all) is
+        # no usable completion: DSH would end the turn with empty assistant
+        # text, and compaction reports 'summarization produced no text summary
+        # content' and aborts the case fail-closed. Observed once in the
+        # aacr-20261113064218441 batch (wavetermdev@61b0fb4 compaction call).
+        return 'empty_completion', observed
     return None, observed
 
 
@@ -199,7 +245,8 @@ class Handler(BaseHTTPRequestHandler):
             except (httpx.TransportError, OSError, ValueError) as error:
                 transmission.update(status='failed', error_kind=_error_kind(error, self.server.deadline))
                 save(self.server.evidence, self.server.records)
-                if isinstance(error, (httpx.TransportError, OSError)) and number < plan.max_attempts:
+                if (isinstance(error, (httpx.TransportError, OSError, StalledStreamError))
+                        and number < plan.max_attempts):
                     self._pause(plan, number, 'transport', None, record)
                     continue
                 raise
@@ -227,7 +274,8 @@ class Handler(BaseHTTPRequestHandler):
                 record.update(status='receiving', http_status=reply.status_code, response_bytes=0,
                               headers_seconds=round(time.monotonic() - self.request_started, 3))
                 save(self.server.evidence, self.server.records)
-                body = _bounded_response(reply, self.server.deadline, record, self.request_started)
+                body = _bounded_response(reply, self.server.deadline, record,
+                                         self.request_started, read_timeout)
                 return (reply.status_code, reply.headers.get('Content-Type', 'application/json'),
                         body, _retry_after_seconds(reply.headers.get('Retry-After')))
 
@@ -256,8 +304,26 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def _bounded_response(reply, deadline, record, started):
+PROGRESS_FIELDS = ('delta_nonblank', 'message_nonblank', 'reasoning_chars',
+                   'tool_fragments', 'nonstring_content')
+
+
+def _usable_event(block):
+    """Whether one complete SSE event carries model progress.
+
+    Comments/heartbeats and empty deltas carry bytes but no progress; counting
+    them would let such a stream defeat every bound until DSH's own timeout.
+    """
+    observed = response_observations(block, 'text/event-stream')
+    return (any(observed[field] for field in PROGRESS_FIELDS)
+            or observed['finish_reason'] is not None or observed['done_marker']
+            or observed['usage'] is not None)
+
+
+def _bounded_response(reply, deadline, record, started, progress_timeout_s):
     parts, size = [], 0
+    pending = b''
+    progress = time.monotonic()
     try:
         for chunk in reply.iter_bytes():
             size += len(chunk)
@@ -266,6 +332,13 @@ def _bounded_response(reply, deadline, record, started):
             if size > 16 * 1024 * 1024:
                 raise ResponseLimitError('模型响应超过 16MiB 大小上限')
             parts.append(chunk)
+            pending = (pending + chunk).replace(b'\r\n', b'\n')
+            while b'\n\n' in pending:
+                block, pending = pending.split(b'\n\n', 1)
+                if _usable_event(block + b'\n\n'):
+                    progress = time.monotonic()
+            if time.monotonic() - progress > progress_timeout_s:
+                raise StalledStreamError('模型流持续无可用事件，超过通道读上限')
             if time.monotonic() >= deadline:
                 raise CaseDeadlineError('读取模型响应时 DSH 整例检视时限已到')
     finally:

@@ -1,3 +1,5 @@
 #!/bin/sh
 # Fast local gate; the delivery and CI gates additionally build and test.
+set -e
+node scripts/fix-staged-line-endings.mjs
 exec npm run check

@@ -49,10 +49,12 @@ def retry_conditions(cfg):
     attempts = policy.get('max_attempts')
     label = str(attempts) if attempts is not None else '历史批次未记录'
     runtime_policy = cfg['dsh_policy']
+    timeout = runtime_policy.get('request_timeout_seconds')
+    timeout_text = f'单请求总超时与流空闲 {timeout} 秒' if timeout is not None else '单请求总超时历史未记录'
     return (f"整例预算 {cfg['timeout_minutes']} 分钟；案例最多尝试 {label} 次；新策略下多次尝试共享整例预算。"
             f"模型请求重试 {runtime_policy.get('request_retries', '未记录')} 次，"
             f"压缩重试 {runtime_policy.get('compaction_retries', '未记录')} 次，"
-            f"溢出恢复 {runtime_policy.get('overflow_retries', '未记录')} 次。"
+            f"溢出恢复 {runtime_policy.get('overflow_retries', '未记录')} 次；{timeout_text}。"
             '仅答卷格式失败允许整例重试；失败尝试的已知用量一并累计。')
 
 
@@ -62,14 +64,17 @@ def annotate(run, cfg, items):
         return
     text, statuses, scored = completion(run, items)
     retried = _retried_requests(run, items) or 0
+    timeout = cfg['dsh_policy'].get('request_timeout_seconds')
+    timeout_text = (f'客户端单请求总超时与流空闲同为 {timeout} 秒'
+                    if timeout is not None else '客户端单请求总超时历史记录未提供')
     lines = [MARKER, '', subject(cfg) + '；DSH ' + cfg['tool_hashes']['version'] + '。',
              text,
              execution_conditions(cfg),
              '每案例全新会话，head 快照与 merge-base diff；工具：' + ' / '.join(cfg['dsh_policy']['tools']) + '。',
              f"整例预算 {cfg['timeout_minutes']} 分钟；压缩失败与上下文溢出额外重试关闭；"
-             f"模型通道瞬态失败（限速/5xx/截断流/首字节停顿）由检视中继有界重试（每请求最多 "
+             f"模型通道瞬态失败（限速/5xx/网关工具调用 485/截断流/零事件空流/空内容完成/心跳流无可用事件/首字节停顿）由检视中继有界重试（每请求最多 "
              f"{cfg.get('dsh_relay_max_attempts', 3)} 次，计入整例预算），本批被重试的案例 {retried} 个，"
-             '每次尝试均记录在 raw/ 请求证据中。',
+             f"每次尝试均记录在 raw/ 请求证据中；{timeout_text}。",
              f"单次模型输出上限 {cfg['dsh_policy']['max_output_tokens']} tokens；上下文窗口 {cfg['dsh_policy']['context_window']} tokens。", '',
              '| 案例 | 检视状态 / 评分范围 | 已知检视用量 | 请求覆盖 | 检视秒数 | 清理秒数 | Skill 加载 / 能力 |',
              '|---|---|---|---|---:|---:|---|']
