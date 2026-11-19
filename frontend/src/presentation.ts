@@ -37,6 +37,7 @@ export const actions: Record<string, string> = {
   preview: '预览',
   review: '检视',
   eval: '评分',
+  rescore: '重新评分',
   report: '生成报告',
   export: '生成归档',
   recover: '从已有输出恢复结果',
@@ -47,6 +48,7 @@ export const actions: Record<string, string> = {
   comparison: '模型对比实验',
 };
 export function actionLabel(action: string, run: Run) {
+  if (action === 'rescore') return Object.keys(run.metrics ?? {}).length ? '重新评分' : '评分';
   return run.distributed && run.reviewer === 'server_agent' && action === 'recover'
     ? '继续查询原任务' : actions[action];
 }
@@ -66,6 +68,15 @@ export const stamp = (value?: string) =>
   value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
 export const availableProfiles = (state: Snapshot) =>
   state.profiles.filter((p) => !p.internal && (p.id !== 'environment' || p.review_ready));
+export function judgeChoices(state: Snapshot) {
+  const profiles = availableProfiles(state);
+  const choices = profiles.map((p) => ({ value: p.id, label: `${p.label} · ${p.review_model}`, model: p.review_model }));
+  for (const p of state.profiles) {
+    if (!p.internal && p.judge_model && p.judge_model !== '未设置' && !profiles.some((v) => v.review_model === p.judge_model))
+      choices.push({ value: 'legacy-judge:' + p.id, label: p.judge_model + ' · 旧裁判配置', model: p.judge_model });
+  }
+  return choices;
+}
 export const suiteName = (state: Snapshot, id: string) =>
   state.catalog.find((s) => s.id === id)?.name ?? id;
 export const editable = (state: Snapshot) => state.access_role !== 'viewer';
@@ -74,8 +85,8 @@ export const canSubmit = (state: Snapshot) =>
 export function primary(run: Run | undefined, job: Job | undefined, queueMode = false) {
   if (job && active(job.status)) return { tab: 'log', label: '查看运行进度' };
   if (!run) return { tab: 'log', label: '查看创建进度' };
-  if (['scored', 'partial_scored', 'complete', 'complete_no_findings'].includes(run.status))
-    return { tab: 'report', label: '查看结果' };
+  const savedAction = savedRunAction(run);
+  if (savedAction) return savedAction;
   if (canResumeBatch(run, job, queueMode))
     return { action: 'resume', label: run.score_locked_reason ? '继续未完成案例' : '继续未完成案例并评分' };
   if (job && ['failed', 'cancelled', 'interrupted'].includes(job.status))
@@ -87,9 +98,16 @@ export function primary(run: Run | undefined, job: Job | undefined, queueMode = 
   if (run.status === 'reviewed') return { action: 'eval', label: '开始评分' };
   return { action: 'workflow', label: run.suite === 'ccrab' ? '开始单例验证' : '开始测评' };
 }
+function savedRunAction(run: Run) {
+  if (['scored', 'partial_scored', 'complete', 'complete_no_findings'].includes(run.status))
+    return { tab: 'report', label: '查看结果' };
+  if (run.completed && (run.cluster_status === 'archived' || run.status === 'reviewed' && run.distributed))
+    return { tab: 'overview', label: '查看答卷' };
+  if (run.cluster_status === 'archived') return { tab: 'report', label: '查看历史结果' };
+}
 export function runStages(run: Run) {
   if (run.distributed)
-    return [...(run.reviewer === 'server_agent' ? ['recover'] : []), 'eval', 'report', 'export'];
+    return [...(run.reviewer === 'server_agent' ? ['recover'] : []), 'report', 'export'];
   if (run.suite === 'ccrab') return ['check'];
   if (run.suite === 'mcr')
     return ['check', 'review', 'eval', 'report', 'compare-martian', 'export'];
@@ -98,11 +116,16 @@ export function runStages(run: Run) {
   );
 }
 export function actionBlocked(state: Snapshot, run: Run, action: string) {
+  if (action === 'rescore') return historyScoreBlocked(state, run);
+  if (run.history_source) return true;
   if (action === 'eval' && run.score_locked_reason) return true;
   if (!editable(state) || (!state.queue_mode && state.active)) return true;
   if (run.compatibility_warning && (action !== 'export' || run.suite === 'mcr')) return true;
   if (run.distributed) return clusterActionBlocked(run, action);
   return run.suite === 'ccrab' && action === 'workflow' && !run.can_run;
+}
+function historyScoreBlocked(state: Snapshot, run: Run) {
+  return !state.cluster_mode || !editable(state) || !run.completed || !!run.rescore_blocked_reason;
 }
 export function caseLabel(status: string, live: boolean) {
   if (!live && ['reviewing', 'scoring'].includes(status)) return '已中断 · 需检查';

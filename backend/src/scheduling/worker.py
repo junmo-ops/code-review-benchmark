@@ -218,9 +218,10 @@ def _dispatch(queue, store, settings, owner, stop, runtimes, executor, health):
 
 
 def _runtimes():
+    from .rescore import RUNTIME as RESCORE_RUNTIME
     from .settings import runtime_key
     from .resources import RUNTIME
-    keys = [RUNTIME]
+    keys = [RUNTIME, RESCORE_RUNTIME]
     for reviewer in ('lcr', 'server_agent', 'dsh_skill'):
         try:
             keys.append(runtime_key(reviewer))

@@ -116,6 +116,13 @@ def aggregate(payload, run):
     command(run, 'export')
 
 
+def rescore(run):
+    from application.planning import ExecutionPlanner
+    config = read(run / 'run-config.json')
+    timeout = ExecutionPlanner._scoring_budget(config, run) + 960
+    _run([sys.executable, '-m', 'scheduling.rescore', str(run)], _command_environment(), timeout)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('request')
@@ -129,6 +136,8 @@ def main():
         initialize(payload, data, run)
     elif payload['stage'] == 'case':
         review(payload, data, run)
+    elif payload['stage'] == 'rescore':
+        rescore(run)
     else:
         aggregate(payload, run)
     # Query the actual files with the existing presentation/scoring logic.

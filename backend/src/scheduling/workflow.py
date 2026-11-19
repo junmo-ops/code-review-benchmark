@@ -35,6 +35,17 @@ class Workflow(CaseQueue):
                        "VALUES(%s,%s,%s,%s,'preparing')", (self.scope, job['key'], encode(job), encode(plan)))
             self._insert_task(db, job['key'], '__prepare__', dict(stage='prepare', run_id=job['key'], **plan), pool, 3)
 
+    def create_rescore(self, job, spec, prepared, pool, source):
+        run_id = identifier(job['key'])
+        case_id = '__rescore__'
+        plan = dict(spec=spec, history_source=source)
+        with self._locked() as (db, _):
+            db.execute('INSERT INTO bench_scheduler_runs(scope,run_id,job,plan,prepared,aggregate_id,status) '
+                       "VALUES(%s,%s,%s,%s,%s,%s,'scoring')",
+                       (self.scope, run_id, encode(job), encode(plan), encode(prepared), task_identity(run_id, case_id)))
+            payload = dict(stage='rescore', run_id=run_id, prepared=prepared, profile=job['profile'])
+            self._insert_task(db, run_id, case_id, payload, pool, 3)
+
     def _rows(self, db, run_id):
         db.execute('SELECT * FROM bench_scheduler_tasks WHERE scope=%s AND run_id=%s', (self.scope, run_id))
         return db.fetchall()
@@ -160,6 +171,8 @@ class Workflow(CaseQueue):
             if not run or run['status'] not in {'ready', 'succeeded', 'partial', 'failed'}:
                 raise ValueError('批次尚未完成，不能重复执行操作')
             plan = decode(run['plan'])
+            if plan.get('history_source'):
+                raise ValueError('请在批次详情选择裁判并提交新的评分')
             if action == 'workflow' and run['status'] == 'ready':
                 self._cases(db, run_id, plan, decode(run['prepared']))
             elif action in {'report', 'export', 'eval'} and run['prepared']:

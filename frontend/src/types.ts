@@ -56,6 +56,8 @@ export interface Artifact {
 export interface Run {
   distributed?: boolean;
   cluster_status?: string;
+  history_source?: string;
+  rescore_blocked_reason?: string | null;
   key: string;
   name: string;
   display_name?: string;

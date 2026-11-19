@@ -299,25 +299,34 @@ def _collect_stream_probe(response):
     return {'choices': [{'message': {'content': ''.join(content)}, 'finish_reason': finish}]}
 
 
+def _model_values(dashboard, identifier, legacy=False):
+    if not isinstance(identifier, str):
+        raise ValueError('请选择模型配置')
+    source = identifier.removeprefix('legacy-judge:') if legacy else identifier
+    if not any(p['id'] == source and not p.get('internal') for p in dashboard.profiles()):
+        raise ValueError('所选模型配置不存在')
+    env = dashboard.environment(source)
+    keys = ('JUDGE_BASE_URL', 'JUDGE_API_KEY', 'JUDGE_MODEL') if legacy else ('LCR_LLM_BASE_URL', 'LCR_LLM_TOKEN', 'LCR_LLM_MODEL')
+    values = [env.get(key, '') for key in keys]
+    if not all(isinstance(value, str) and value.strip() for value in values):
+        raise ValueError('所选模型的地址、模型名或密钥未配置完整')
+    return values
+
+
+def judge_configuration(dashboard, judge_id):
+    legacy = isinstance(judge_id, str) and judge_id.startswith('legacy-judge:')
+    values = _model_values(dashboard, judge_id, legacy)
+    return dict(zip(('JUDGE_BASE_URL', 'JUDGE_API_KEY', 'JUDGE_MODEL'), values), JUDGE_USE_MOCK='false')
+
+
 def compose_roles(dashboard, review_id, judge_id, needs_judge=True):
     """Resolve independent model entries into the existing runner's role fields."""
-    profiles = {p['id']: p for p in dashboard.profiles() if not p.get('internal')}
-    def selected(identifier, legacy=False):
-        if not isinstance(identifier, str):
-            raise ValueError('请选择模型配置')
-        source = identifier.removeprefix('legacy-judge:') if legacy else identifier
-        if source not in profiles:
-            raise ValueError('所选模型配置不存在')
-        env = dashboard.environment(source)
-        keys = ('JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL') if legacy else ('LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL')
-        values = [env.get(k, '') for k in keys]
-        if not all(isinstance(v, str) and v.strip() for v in values):
-            raise ValueError('所选模型的地址、模型名或密钥未配置完整')
-        return values
-    review = selected(review_id)
-    judge = selected(judge_id, isinstance(judge_id,str) and judge_id.startswith('legacy-judge:')) if needs_judge else ('','','')
+    review = _model_values(dashboard, review_id)
+    judge = judge_configuration(dashboard, judge_id) if needs_judge else {
+        'JUDGE_BASE_URL': '', 'JUDGE_API_KEY': '', 'JUDGE_MODEL': '', 'JUDGE_USE_MOCK': 'false'}
     stream_env = dashboard.environment(review_id).get('LCR_LLM_STREAM', 'false')
-    return dict(zip(('LCR_LLM_BASE_URL','LCR_LLM_TOKEN','LCR_LLM_MODEL','JUDGE_BASE_URL','JUDGE_API_KEY','JUDGE_MODEL'), (*review,*judge)), LCR_LLM_STREAM=stream_env, JUDGE_USE_MOCK='false')
+    return dict(zip(('LCR_LLM_BASE_URL', 'LCR_LLM_TOKEN', 'LCR_LLM_MODEL'), review),
+                **judge, LCR_LLM_STREAM=stream_env)
 
 
 def save_run_profile(dashboard, config):

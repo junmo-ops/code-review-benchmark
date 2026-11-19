@@ -28,6 +28,7 @@ import {
   actions,
   active,
   caseStatus,
+  judgeChoices,
   labels,
   pct,
   primary,
@@ -231,6 +232,31 @@ function ActionControls({
     />
   );
 }
+function SavedAnswerScoreControls({ run, pending, onScore }: {
+  run: Run;
+  pending: boolean;
+  onScore: (judge: string) => void;
+}) {
+  const { state } = useWorkbench();
+  const controlId = useId();
+  const [selected, setSelected] = useState<string>();
+  const choices = judgeChoices(state);
+  const judge = selected ?? choices.find((choice) => choice.model === run.judge_model)?.value;
+  if (run.rescore_blocked_reason) return <Alert type="info" message={run.rescore_blocked_reason} />;
+  if (!choices.length) return <Alert type="info" message="请先在模型配置中添加可用的裁判模型。" />;
+  return (
+    <Space wrap className="section-gap">
+      <label htmlFor={controlId}>裁判模型</label>
+      <Select id={controlId} options={choices} value={judge} onChange={setSelected}
+        placeholder="选择裁判模型" style={{ minWidth: 240 }} />
+      <Button type="primary" loading={pending} disabled={!judge || actionBlocked(state, run, 'rescore')}
+        onClick={() => { if (judge) onScore(judge); }}>
+        {actionLabel('rescore', run)}
+      </Button>
+    </Space>
+  );
+}
+
 function Overview({
   run,
   latest,
@@ -246,6 +272,7 @@ function Overview({
   profile: string;
   setProfile: (value: string) => void;
 }) {
+  const { state } = useWorkbench();
   return (
     <>
       <Alert
@@ -253,19 +280,17 @@ function Overview({
         message={`${run.completed}/${run.total} 份完整答卷已保存`}
         description={`评分覆盖 ${run.scored_cases ?? '以评分文件为准'}；未完成案例不视为零分。${latest?.message ?? ''}`}
       />
-      {run.score_locked_reason && (
+      {!state.cluster_mode && run.score_locked_reason && (
         <Alert className="section-gap" type={run.status === 'partial_scored' ? 'warning' : 'info'} message={run.score_locked_reason} />
       )}
-      {run.distributed && <Alert className="section-gap" type="info" message="集群批次由共享队列执行。服务端 Agent 可在案例行继续查询原任务，不重复提交检视；已发布评分保持原覆盖范围，新恢复答卷不会覆盖原评分。" />}
       <Metrics run={run} />
       <EvaluationSummary run={run} />
-      <ActionControls
-        run={run}
-        onAction={onAction}
-        pending={pending}
-        profile={profile}
-        setProfile={setProfile}
-      />
+      {state.cluster_mode && (
+        <SavedAnswerScoreControls run={run} pending={pending} onScore={(judge) => onAction('rescore', judge, '', false)} />
+      )}
+      {run.cluster_status !== 'archived' && !run.history_source && (
+        <ActionControls run={run} onAction={onAction} pending={pending} profile={profile} setProfile={setProfile} />
+      )}
       <Table
         rowKey="id"
         dataSource={run.cases}
@@ -328,7 +353,7 @@ export function RunDetail({
   onTab: (tab: string, job?: string) => void;
   close: () => void;
 }) {
-  const { state, refresh, importBusy } = useWorkbench();
+  const { state, refresh, importBusy, openRun } = useWorkbench();
   const { modal } = App.useApp();
   const { run: perform, busy, error } = useAction();
   const ownRequest = useRequestScope(runKey);
@@ -346,7 +371,7 @@ export function RunDetail({
         throw new Error('当前批次不可执行，请检查任务和版本状态');
       if (action === 'workflow' && task)
         throw new Error('一键流程请选全部案例；单例请使用检视按钮');
-      const result = await api<JobReply>('/api/jobs', {
+      const result = await api<JobReply>('/api/jobs', action === 'rescore' ? { action, key: runKey, judge_profile: profile } : {
         action,
         key: runKey,
         profile,
@@ -355,7 +380,9 @@ export function RunDetail({
         confirmed: action === 'resume' ? true : undefined,
       });
       await refresh();
-      if (current()) onTab('log', result.job_id);
+      if (!current()) return;
+      if (action === 'rescore') openRun(result.key, result.job_id);
+      else onTab('log', result.job_id);
     });
   const start = (action: string, profile: string, task = '', retry = false) => {
     if (record?.case_resources_purged && ['review', 'workflow', 'resume', 'recover', 'eval', 'report'].includes(action)) {
@@ -366,7 +393,7 @@ export function RunDetail({
       });
       return;
     }
-    if (['review', 'eval', 'report', 'workflow', 'resume', 'recover', 'compare-martian'].includes(action)) {
+    if (['review', 'eval', 'rescore', 'report', 'workflow', 'resume', 'recover', 'compare-martian'].includes(action)) {
       modal.confirm({
         title: `开始${record ? actionLabel(action, record) : actions[action]}？`,
         content: actionDescription(action, task, record),
@@ -541,6 +568,8 @@ function profileForRun(record: Run | undefined, profiles: { id: string; review_m
 }
 
 function actionDescription(action: string, task: string, run?: Run) {
+  if (action === 'rescore')
+    return '使用已保存的完整答卷新建评分批次。调用所选裁判可能产生模型用量。';
   const scoreLock = run?.score_locked_reason;
   if (action === 'recover' && run?.distributed)
     return `继续查询 ${task || '所选案例'} 已保存的服务任务，不创建新任务。保留首次超时与后续查询记录。${scoreLock ?? '取得完整答卷后统一评分。'}`;

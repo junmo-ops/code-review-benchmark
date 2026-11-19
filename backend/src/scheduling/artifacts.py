@@ -98,7 +98,7 @@ class Artifacts:
             manifest.write_text(json.dumps(files, ensure_ascii=False), encoding='utf-8')
             return self.put(manifest)
 
-    def restore(self, record, root):
+    def restore(self, record, root, *, only=None):
         root = Path(root).resolve()
         with tempfile.TemporaryDirectory() as temporary:
             manifest = Path(temporary) / 'manifest.json'
@@ -113,7 +113,8 @@ class Artifacts:
             target = root.joinpath(*relative.parts)
             if total > MAX_TOTAL or not target.resolve().is_relative_to(root):
                 raise ValueError('集群证据超限或路径越界')
-            self.get(item, target)
+            if only is None or name in only:
+                self.get(item, target)
 
 
 def _files(root):

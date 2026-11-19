@@ -2,7 +2,7 @@ import { Alert, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space
 import { useEffect, useRef } from 'react';
 import { creationName, submitCreation } from '../creation';
 import { useWorkbench } from '../context';
-import { availableProfiles, canSubmit } from '../presentation';
+import { availableProfiles, canSubmit, judgeChoices } from '../presentation';
 import { useAction } from '../hooks/useAction';
 import { useRequestScope } from '../hooks/useRequestScope';
 import { useRemote } from '../hooks/useRemote';
@@ -68,18 +68,6 @@ function evaluators(suite: string) {
   const result = [{ value: 'martian', label: 'Martian 语义评分' }];
   if (suite !== 'codefuse_cr') result.push({ value: 'original', label: '案例集原始评分' });
   return result;
-}
-function judgeChoices(state: Snapshot) {
-  const profiles = availableProfiles(state),
-    choices = profiles.map((p) => ({ value: p.id, label: `${p.label} · ${p.review_model}` }));
-  for (const p of profiles)
-    if (
-      p.judge_model &&
-      p.judge_model !== '未设置' &&
-      !profiles.some((v) => v.review_model === p.judge_model)
-    )
-      choices.push({ value: 'legacy-judge:' + p.id, label: p.judge_model + ' · 旧裁判配置' });
-  return choices;
 }
 function SkillStateHint({ mode, selected, labelOf }: {
   mode?: 'baseline' | 'skill';

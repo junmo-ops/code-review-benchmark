@@ -71,12 +71,15 @@ def _trim_jsonl_snapshot(path):
 
 
 class RunDataStorage:
-    def __init__(self, root=ROOT):
+    def __init__(self, root=ROOT, *, prefix=None):
         from webui.case_storage import CaseArchiveStorage
         case_storage = CaseArchiveStorage(data_root(root))
         self.client = case_storage.client
         self.bucket = case_storage.bucket
-        self.prefix = case_storage.run_prefix.rstrip('/')
+        if prefix is not None and (not isinstance(prefix, str)
+                                   or any(part in {'', '.', '..'} for part in prefix.split('/'))):
+            raise ValueError('运行数据 COS 前缀无效')
+        self.prefix = case_storage.run_prefix.rstrip('/') if prefix is None else prefix
         self.data = data_root(root)
         self.manifest_prefix = f'{self.prefix}/manifests/'
         self.object_prefix = f'{self.prefix}/objects/'
@@ -91,6 +94,28 @@ class RunDataStorage:
 
     def _object_key(self, digest):
         return f'{self.object_prefix}{digest[:2]}/{digest}'
+
+    def backup_runs(self):
+        prefix = self.manifest_prefix + 'runs/'
+        names = []
+        paginator = self.client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for item in page.get('Contents', []):
+                key = item.get('Key', '')
+                if key.startswith(prefix) and key.endswith('.json'):
+                    group = key[len(self.manifest_prefix):-5]
+                    if self._safe_group(group):
+                        names.append(group.removeprefix('runs/'))
+        return sorted(set(names))
+
+    def backup_files(self, name):
+        group = 'runs/' + name
+        if not self._safe_group(group):
+            raise ValueError('旧批次名称无效')
+        manifest = self._previous_manifest(group)
+        if manifest.get('group') != group or not manifest['files']:
+            raise ValueError('这条旧批次的备份不存在或没有文件')
+        return manifest['files']
 
     @staticmethod
     def _safe_group(group):
@@ -248,7 +273,8 @@ class RunDataStorage:
                 return {'version': 1, 'files': {}}
             raise
         manifest = json.loads(response['Body'].read().decode('utf-8'))
-        if manifest.get('version') != 1 or manifest.get('group') != group or not isinstance(manifest.get('files'), dict):
+        if (not isinstance(manifest, dict) or manifest.get('version') != 1
+                or manifest.get('group') != group or not isinstance(manifest.get('files'), dict)):
             raise RuntimeError('COS 运行数据清单格式无效')
         return manifest
 
@@ -336,7 +362,7 @@ class RunDataStorage:
         self.manifests[group] = manifest
         root = self._local_group(group)
         for relative, record in manifest['files'].items():
-            self._restore_file(root, relative, record)
+            self.restore_file(root, relative, record)
             self.uploaded.add(record['sha256'])
 
     def _local_group(self, group):
@@ -375,7 +401,7 @@ class RunDataStorage:
             if not success:
                 shutil.rmtree(folder, ignore_errors=True)
 
-    def _restore_file(self, root, relative, record):
+    def restore_file(self, root, relative, record):
         pure = self._safe_relative_path(relative)
         digest, size = self._checked_record(record)
         target = root.joinpath(*pure.parts)

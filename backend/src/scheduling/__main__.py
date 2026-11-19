@@ -21,8 +21,15 @@ def main():
     pool.add_argument('--limit', type=int, required=True)
     status = commands.add_parser('status')
     status.add_argument('run_id')
+    history = commands.add_parser('restore-history', help='预览或导入单实例历史批次')
+    history.add_argument('--apply', action='store_true', help='确认导入，省略时仅列出旧批次')
+    history.add_argument('--batch', help='只处理一个旧批次，使用预览中显示的名称')
+    history.add_argument('--source-prefix', default='code-review-benchmark/run-data',
+                         help='旧 COS 运行前缀，默认为 ST 单实例前缀')
     args = parser.parse_args()
     try:
+        if args.command == 'restore-history':
+            return _restore_history(args)
         queue = _queue(args)
     except ValueError as error:
         parser.error(str(error))
@@ -34,6 +41,19 @@ def main():
         queue.configure_pool(args.name, args.limit)
     else:
         print(json.dumps(queue.tasks(args.run_id), ensure_ascii=False, indent=2, default=str))
+
+
+def _restore_history(args):
+    from botocore.exceptions import BotoCoreError, ClientError
+    from pymysql import MySQLError
+    from .history import migrate
+    if args.config is not None:
+        raise ValueError('恢复历史使用当前 Web 容器的配置')
+    try:
+        return migrate(scope=args.scope or 'st', apply=args.apply, batch=args.batch,
+                       source_prefix=args.source_prefix)
+    except (BotoCoreError, ClientError, MySQLError) as error:
+        raise ValueError(f'读取 COS 或 MySQL 失败（{error}）') from None
 
 
 def _queue(args):
@@ -48,4 +68,4 @@ def _queue(args):
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

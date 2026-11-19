@@ -7,6 +7,7 @@ from application.files import now, read
 from webui.service import Dashboard, ROOT
 from .settings import concurrency_limit, services
 from .contracts import identifier
+from .history import RunHistory, is_history
 
 
 class ClusterQueries:
@@ -14,17 +15,24 @@ class ClusterQueries:
         self.app = app
 
     def all(self, details=False):
-        return [self.app.describe(row['run_id']) for row in self.app.records.values()]
+        runs = [self.app.describe(row['run_id']) for row in self.app.records.values()]
+        return sorted(runs + self.app.history.views(), key=lambda row: row['created'], reverse=True)
 
     def detail(self, key):
-        return self.app.describe(key) if key in self.app.records else None
+        if is_history(key):
+            return self.app.history.detail(key)
+        if key not in self.app.records:
+            return None
+        from .rescore import blocked_reason
+        view = self.app.describe(key)
+        return dict(view, rescore_blocked_reason=blocked_reason(view))
 
     def page(self, page=1, page_size=10, suite='', search=''):
         if type(page) is not int or page < 1 or not 1 <= page_size <= 100:
             raise ValueError('分页参数无效')
         rows = self.all()
         rows = [row for row in rows if (not suite or row['suite'] == suite)
-                and search.casefold() in (row['name'] + row['model']).casefold()]
+                and search.casefold() in (row['name'] + (row['model'] or '')).casefold()]
         total = len(rows)
         page = min(page, max(1, (total + page_size - 1) // page_size))
         return dict(items=rows[(page-1)*page_size:page*page_size], total=total, page=page, page_size=page_size)
@@ -40,6 +48,7 @@ class ClusterDashboard(Dashboard):
         limit = self.queue.bootstrap(concurrency_limit())
         print(f'集群就绪：{self.cluster["scope"]}；全局并发上限 {limit}', flush=True)
         self.records = {}
+        self.history = RunHistory(self.queue, root)
         self.queries = ClusterQueries(self)
         self.sync()
         from .web_catalog import WebCatalog
@@ -114,6 +123,11 @@ class ClusterDashboard(Dashboard):
         self.queue.create(job, spec, record, cases, pool, profile)
 
     def submit(self, request):
+        if request.get('action') == 'rescore':
+            from .rescore import submit
+            return submit(self, request)
+        if is_history(request.get('key')):
+            raise ValueError('请从批次详情选择裁判并提交评分')
         self.sync()
         if request.get('action') == 'create' and request.get('name') in self.records:
             raise ValueError('批次名已存在')
@@ -129,18 +143,25 @@ class ClusterDashboard(Dashboard):
             return self.enqueue(job, request, None)
         return super().submit(request)
 
-    def describe(self, key):
+    def describe(self, key, *, tasks=None):
         identifier(key)
         row = self.records[key]
         spec, job = row['plan']['spec'], row['job']
         result = row['result'] or row['prepared'] or {}
         value = dict(result.get('summary') or {})
-        cases = _case_views(row, self.queue.tasks(key))
-        _scored_cases(row, cases)
+        history_source = row['plan'].get('history_source')
+        if history_source:
+            value = dict(row['prepared']['summary'], **value)
+            value['history_source'] = history_source
+            cases = value['cases']
+        else:
+            case_views = _case_views(row, self.queue.tasks(key) if tasks is None else tasks)
+            _scored_cases(row, case_views)
+            cases = list(case_views.values())
         value.update(key=key, name=key, display_name=job.get('display_name', key), suite=spec['suite'], reviewer=spec['reviewer'],
                      model=value.get('model', '—'), judge_model=value.get('judge_model', '—'),
                      evaluator=spec['evaluator'], created=job['created_at'], profile=job['profile'],
-                     cases=list(cases.values()), total=len(cases), completed=sum(c['status']=='complete' for c in cases.values()),
+                     cases=cases, total=len(cases), completed=sum(c['status']=='complete' for c in cases),
                      cluster_status=row['status'], distributed=True)
         value.setdefault('status', 'pending')
         value.setdefault('metrics', {})
@@ -160,6 +181,8 @@ class ClusterDashboard(Dashboard):
         return value
 
     def materialize(self, key):
+        if is_history(key):
+            return self.history.materialize_export(key)
         identifier(key)
         self.sync()
         row = self.records.get(key)
@@ -180,8 +203,20 @@ class ClusterDashboard(Dashboard):
         return destination
 
     def artifact(self, key, relative):
+        if is_history(key):
+            return self.history.artifact(key, relative)
         self.materialize(key)
         return super().artifact(key, relative)
+
+    def config(self, key):
+        if is_history(key):
+            return self.history.config(key)
+        return super().config(key)
+
+    def run_dir(self, key):
+        if is_history(key):
+            return self.history.run_dir(key)
+        return super().run_dir(key)
 
     def logs(self, job_id):
         self.sync()
